@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+  <style>
+    :root {
+      --maroon: #AE152D; --gold-dark: #BDA345; --gold-soft: #FBF3E3; --red: #D9261C;
+      --ink: #17161C; --ink-soft: #5B534C; --paper: #FFFFFF; --sand: #F7F4EF; --line: #E6DFD3;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: var(--maroon); text-decoration: none; }
+    :focus-visible { outline: 2px solid var(--maroon); outline-offset: 2px; }
+    .page { font-family: 'Roboto', system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--sand); min-height: 100%; display: flex; flex-direction: column; }
+    .header-bar { display: flex; align-items: center; justify-content: space-between; padding: 14px 40px; background: var(--paper); border-bottom: 1px solid var(--line); }
+    .header-left { display: flex; align-items: center; gap: 14px; }
+    .header-logo { height: 30px; width: auto; }
+    .admin-badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--maroon); border: 1px solid var(--maroon); border-radius: 6px; padding: 2px 8px; }
+    .header-nav { display: flex; gap: 20px; }
+    .header-nav a { font-size: 14px; font-weight: 600; color: var(--ink-soft); }
+    .header-nav a:hover, .header-nav a.active { color: var(--maroon); }
+
+    .body { padding: 40px; }
+    .title { font-size: 24px; font-weight: 700; margin: 0 0 6px 0; }
+    .subtitle { font-size: 14px; color: var(--ink-soft); margin: 0 0 24px 0; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 16px; border-radius: 6px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; font-family: inherit; background: var(--maroon); color: #fff; }
+
+    table { width: 100%; border-collapse: collapse; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 8px 24px rgba(148, 156, 168, 0.2); }
+    th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--sand); }
+    td { padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 14px; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    .slug { font-family: ui-monospace, monospace; font-size: 12px; color: var(--ink-soft); }
+    .toggle-pill { display: inline-flex; align-items: center; gap: 8px; height: 26px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1.5px solid var(--line); background: var(--paper); color: var(--ink-soft); cursor: pointer; }
+    .toggle-pill.is-active { border-color: var(--gold-dark); color: var(--gold-dark); background: var(--gold-soft); }
+    .toggle-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+    .btn-xs { height: 28px; padding: 0 10px; font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer; font-family: inherit; background: transparent; border: 1.5px solid var(--line); color: var(--ink-soft); }
+  </style>
+</helmet>
+
+<div class="page">
+  <div class="header-bar">
+    <div class="header-left">
+      <img src="oge-logo.svg" alt="OGE logo" class="header-logo">
+      <span class="admin-badge">Moderator</span>
+    </div>
+    <div class="header-nav">
+      <a href="#">Queue</a>
+      <a href="#" class="active">Catalog</a>
+    </div>
+  </div>
+
+  <div class="body">
+    <h1 class="title">Achievements</h1>
+    <p class="subtitle">Shown as a full checklist on the submission form — already-ticked instances on existing testimonials are unaffected by changes here.</p>
+
+    <div class="section-head">
+      <span></span>
+      <button class="btn">+ Add achievement</button>
+    </div>
+    <table>
+      <tr><th>Label</th><th>Slug</th><th>Order</th><th>Active</th><th></th></tr>
+      <tr><td>Made new friends here</td><td class="slug">new_friends</td><td>1</td><td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td><td><button class="btn-xs">Edit</button></td></tr>
+      <tr><td>Found love / started a relationship</td><td class="slug">romance</td><td>2</td><td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td><td><button class="btn-xs">Edit</button></td></tr>
+      <tr><td>Built professional connections or a network</td><td class="slug">networking</td><td>3</td><td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td><td><button class="btn-xs">Edit</button></td></tr>
+      <tr><td>Got a job/internship opportunity through the exchange</td><td class="slug">job_opportunity</td><td>4</td><td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td><td><button class="btn-xs">Edit</button></td></tr>
+      <tr><td>Traveled to nearby countries</td><td class="slug">traveled_abroad</td><td>5</td><td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td><td><button class="btn-xs">Edit</button></td></tr>
+      <tr><td>Traveled within India</td><td class="slug">traveled_india</td><td>6</td><td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td><td><button class="btn-xs">Edit</button></td></tr>
+      <tr><td>Tried and enjoyed spicy Indian food</td><td class="slug">spicy_food</td><td>7</td><td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td><td><button class="btn-xs">Edit</button></td></tr>
+      <tr><td>Learned to cook a local dish (old wording)</td><td class="slug">local_cooking_v1</td><td>8</td><td><button class="toggle-pill"><span class="toggle-dot"></span>Inactive</button></td><td><button class="btn-xs">Edit</button></td></tr>
+      <tr><td>Would keep in touch with people I met here</td><td class="slug">keep_in_touch</td><td>17</td><td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td><td><button class="btn-xs">Edit</button></td></tr>
+    </table>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

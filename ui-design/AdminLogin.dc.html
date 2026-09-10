@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+  <style>
+    :root {
+      --maroon: #AE152D; --maroon-dark: #8C001E; --ink: #17161C; --ink-soft: #5B534C;
+      --paper: #FFFFFF; --sand: #F7F4EF; --line: #E6DFD3; --red: #D9261C; --red-soft: #FBEAE8;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: var(--maroon); text-decoration: none; }
+    a:hover { color: var(--maroon-dark); text-decoration: underline; }
+    :focus-visible { outline: 2px solid var(--maroon); outline-offset: 2px; }
+    .page { font-family: 'Roboto', system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--sand); min-height: 100%; display: flex; flex-direction: column; }
+    .header-bar { display: flex; align-items: center; gap: 14px; padding: 14px 40px; background: var(--paper); border-bottom: 1px solid var(--line); }
+    .header-logo { height: 30px; width: auto; }
+    .admin-badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--maroon); border: 1px solid var(--maroon); border-radius: 6px; padding: 2px 8px; }
+    .body { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px; }
+    .wrap { width: 100%; max-width: 420px; }
+    .title { font-size: 24px; font-weight: 700; margin: 0 0 6px 0; text-align: center; }
+    .subtitle { font-size: 14px; line-height: 1.6; color: var(--ink-soft); margin: 0 0 20px 0; text-align: center; }
+    .card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 28px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 8px 24px rgba(148, 156, 168, 0.2); }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field-label { font-size: 14px; font-weight: 600; }
+    .field-input { height: 44px; border: 1.5px solid var(--line); border-radius: 6px; padding: 0 14px; font-size: 15px; font-family: inherit; color: var(--ink); background: var(--paper); }
+    .otp-row { display: flex; gap: 8px; }
+    .otp-cell { width: 44px; height: 52px; border: 1.5px solid var(--line); border-radius: 6px; text-align: center; font-size: 20px; font-weight: 700; font-family: 'Roboto', system-ui, sans-serif; color: var(--ink); background: var(--paper); }
+    .resend-link { font-size: 13px; font-weight: 600; align-self: flex-end; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; height: 44px; padding: 0 20px; border-radius: 6px; font-size: 15px; font-weight: 600; border: none; cursor: pointer; font-family: inherit; }
+    .btn-primary { background: var(--maroon); color: #fff; }
+    .error { display: flex; gap: 10px; align-items: flex-start; background: var(--red-soft); border: 1px solid var(--red); border-radius: 6px; padding: 12px 14px; }
+    .error-mark { color: var(--red); font-weight: 700; line-height: 1.4; }
+    .error-text { font-size: 14px; line-height: 1.5; color: var(--ink); margin: 0; }
+    .state-note { font-size: 12px; line-height: 1.6; color: var(--ink-soft); margin: 14px 0 0 0; padding-left: 12px; border-left: 2px solid var(--line); }
+  </style>
+</helmet>
+
+<div class="page">
+  <div class="header-bar">
+    <img src="oge-logo.svg" alt="OGE logo" class="header-logo">
+    <span class="admin-badge">Admin</span>
+  </div>
+  <div class="body">
+    <div class="wrap">
+      <h1 class="title">IITM Beacon moderation</h1>
+      <p class="subtitle">One shared admin account. Enter the admin email, then the code we send to it.</p>
+      <div class="card">
+        <div class="error">
+          <span class="error-mark">!</span>
+          <p class="error-text">That code is wrong or has expired. Try again, or resend.</p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="admin-email">Admin email</label>
+          <input class="field-input" id="admin-email" value="admin@iitm-beacon.example">
+        </div>
+        <div class="field">
+          <label class="field-label">One-time code</label>
+          <div class="otp-row">
+            <input class="otp-cell" maxlength="1" value="7" style="border-color: var(--red);">
+            <input class="otp-cell" maxlength="1" value="1" style="border-color: var(--red);">
+            <input class="otp-cell" maxlength="1" value="K" style="border-color: var(--red);">
+            <input class="otp-cell" maxlength="1" value="D" style="border-color: var(--red);">
+            <input class="otp-cell" maxlength="1" value="9" style="border-color: var(--red);">
+            <input class="otp-cell" maxlength="1" value="F" style="border-color: var(--red);">
+          </div>
+          <a class="resend-link" href="#">Resend code</a>
+        </div>
+        <button class="btn btn-primary">Sign in</button>
+      </div>
+      <p class="state-note">Drawn in its wrong-code state — the error strip is absent on a first visit and present after a failed check. A correct code redirects to the moderation queue.</p>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

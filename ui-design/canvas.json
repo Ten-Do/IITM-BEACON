@@ -1,0 +1,27 @@
+{
+  "pages": [
+    { "id": "design-system", "name": "Design System" },
+    { "id": "visitor", "name": "Visitor flow" },
+    { "id": "admin", "name": "Admin flow" }
+  ],
+  "artboards": [
+    { "file": "DesignSystem.dc.html", "x": 0, "y": 0, "w": 1400, "h": 4400, "page": "design-system", "title": "Design System" },
+
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 1300, "page": "visitor", "title": "Homepage / Dashboard" },
+    { "file": "Gallery.dc.html", "x": 1540, "y": 0, "w": 1440, "h": 1500, "page": "visitor", "title": "Gallery / Browse" },
+    { "file": "GalleryEmpty.dc.html", "x": 3080, "y": 0, "w": 1440, "h": 900, "page": "visitor", "title": "Gallery — empty state" },
+    { "file": "Article.dc.html", "x": 4620, "y": 0, "w": 1440, "h": 1700, "page": "visitor", "title": "Expanded testimonial" },
+    { "file": "PhotoViewer.dc.html", "x": 6160, "y": 0, "w": 1440, "h": 900, "page": "visitor", "title": "Fullscreen photo viewer" },
+    { "file": "VisitorLoginEmail.dc.html", "x": 0, "y": 1900, "w": 1000, "h": 800, "page": "visitor", "title": "Visitor login — email" },
+    { "file": "VisitorLoginCode.dc.html", "x": 1100, "y": 1900, "w": 1000, "h": 900, "page": "visitor", "title": "Visitor login — code" },
+    { "file": "SubmissionForm.dc.html", "x": 2200, "y": 1900, "w": 1440, "h": 3400, "page": "visitor", "title": "Create/Edit testimonial" },
+    { "file": "SubmissionConfirmation.dc.html", "x": 3740, "y": 1900, "w": 1000, "h": 800, "page": "visitor", "title": "Submission confirmation" },
+
+    { "file": "AdminLogin.dc.html", "x": 0, "y": 0, "w": 1000, "h": 900, "page": "admin", "title": "Admin login" },
+    { "file": "ModerationQueue.dc.html", "x": 1100, "y": 0, "w": 1440, "h": 2200, "page": "admin", "title": "Pending queue" },
+    { "file": "ModerationQueueEmpty.dc.html", "x": 2640, "y": 0, "w": 1440, "h": 900, "page": "admin", "title": "Pending queue — empty state" },
+    { "file": "CatalogTopics.dc.html", "x": 4180, "y": 0, "w": 1440, "h": 1600, "page": "admin", "title": "Catalog admin — topics" },
+    { "file": "CatalogAchievements.dc.html", "x": 5720, "y": 0, "w": 1440, "h": 1000, "page": "admin", "title": "Catalog admin — achievements" }
+  ],
+  "launch": { "view": "canvas", "page": "visitor" }
+}

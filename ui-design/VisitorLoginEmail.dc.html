@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+  <style>
+    :root {
+      --maroon: #AE152D; --maroon-dark: #8C001E; --ink: #17161C; --ink-soft: #5B534C;
+      --paper: #FFFFFF; --sand: #F7F4EF; --line: #E6DFD3;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: var(--maroon); text-decoration: none; }
+    a:hover { color: var(--maroon-dark); text-decoration: underline; }
+    :focus-visible { outline: 2px solid var(--maroon); outline-offset: 2px; }
+    .page { font-family: 'Roboto', system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--sand); min-height: 100%; display: flex; flex-direction: column; }
+    .header-bar { display: flex; align-items: center; gap: 14px; padding: 14px 40px; background: var(--paper); border-bottom: 1px solid var(--line); }
+    .header-logo { height: 30px; width: auto; }
+    .header-name { font-size: 15px; font-weight: 700; }
+    .body { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px; }
+    .wrap { width: 100%; max-width: 420px; }
+    .title { font-size: 24px; font-weight: 700; margin: 0 0 6px 0; text-align: center; }
+    .subtitle { font-size: 14px; line-height: 1.6; color: var(--ink-soft); margin: 0 0 24px 0; text-align: center; }
+    .card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 28px; display: flex; flex-direction: column; gap: 18px; box-shadow: 0 8px 24px rgba(148, 156, 168, 0.2); }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field-label { font-size: 14px; font-weight: 600; }
+    .field-input { height: 44px; border: 1.5px solid var(--line); border-radius: 6px; padding: 0 14px; font-size: 15px; font-family: inherit; color: var(--ink); background: var(--paper); }
+    .field-help { font-size: 13px; color: var(--ink-soft); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; height: 44px; padding: 0 20px; border-radius: 6px; font-size: 15px; font-weight: 600; border: none; cursor: pointer; font-family: inherit; }
+    .btn-primary { background: var(--maroon); color: #fff; }
+    .below-note { font-size: 13px; color: var(--ink-soft); text-align: center; margin-top: 16px; line-height: 1.5; }
+  </style>
+</helmet>
+
+<div class="page">
+  <div class="header-bar">
+    <img src="oge-logo.svg" alt="OGE logo" class="header-logo">
+    <span class="header-name">IITM Beacon</span>
+  </div>
+  <div class="body">
+    <div class="wrap">
+      <h1 class="title">Write or edit your testimonial</h1>
+      <p class="subtitle">Enter your email and we'll send you a one-time code — no password to remember, and browsing the gallery never needs this.</p>
+      <div class="card">
+        <div class="field">
+          <label class="field-label" for="email">Email address</label>
+          <input class="field-input" id="email" type="email" placeholder="you@example.com">
+          <span class="field-help">We'll use this to find your testimonial if you've submitted one before.</span>
+        </div>
+        <button class="btn btn-primary">Send code</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

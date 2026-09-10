@@ -1,0 +1,172 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+  <style>
+    :root {
+      --maroon: #AE152D; --maroon-dark: #8C001E; --gold-dark: #BDA345; --gold-soft: #FBF3E3;
+      --red: #D9261C; --ink: #17161C; --ink-soft: #5B534C; --paper: #FFFFFF; --sand: #F7F4EF; --line: #E6DFD3;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: var(--maroon); text-decoration: none; }
+    :focus-visible { outline: 2px solid var(--maroon); outline-offset: 2px; }
+    .page { font-family: 'Roboto', system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--sand); min-height: 100%; display: flex; flex-direction: column; }
+    .header-bar { display: flex; align-items: center; justify-content: space-between; padding: 14px 40px; background: var(--paper); border-bottom: 1px solid var(--line); }
+    .header-left { display: flex; align-items: center; gap: 14px; }
+    .header-logo { height: 30px; width: auto; }
+    .admin-badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--maroon); border: 1px solid var(--maroon); border-radius: 6px; padding: 2px 8px; }
+    .header-nav { display: flex; gap: 20px; }
+    .header-nav a { font-size: 14px; font-weight: 600; color: var(--ink-soft); }
+    .header-nav a:hover, .header-nav a.active { color: var(--maroon); }
+
+    .body { padding: 40px; }
+    .title { font-size: 24px; font-weight: 700; margin: 0 0 6px 0; }
+    .subtitle { font-size: 14px; color: var(--ink-soft); margin: 0 0 24px 0; }
+
+    .section { margin-bottom: 40px; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .section-title { font-size: 18px; font-weight: 700; margin: 0; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 16px; border-radius: 6px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; font-family: inherit; }
+    .btn-primary { background: var(--maroon); color: #fff; }
+
+    table { width: 100%; border-collapse: collapse; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 8px 24px rgba(148, 156, 168, 0.2); }
+    th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--sand); }
+    td { padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 14px; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    .slug { font-family: ui-monospace, monospace; font-size: 12px; color: var(--ink-soft); }
+    .field-select-sm { height: 32px; border: 1.5px solid var(--line); border-radius: 6px; padding: 0 26px 0 10px; font-size: 12px; font-family: inherit; color: var(--ink); background: var(--paper) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%235B534C' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat right 6px center / 14px; appearance: none; -webkit-appearance: none; }
+    .toggle-pill { display: inline-flex; align-items: center; gap: 8px; height: 26px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1.5px solid var(--line); background: var(--paper); color: var(--ink-soft); cursor: pointer; }
+    .toggle-pill.is-active { border-color: var(--gold-dark); color: var(--gold-dark); background: var(--gold-soft); }
+    .toggle-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+    .row-actions { display: flex; gap: 8px; }
+    .btn-xs { height: 28px; padding: 0 10px; font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer; font-family: inherit; }
+    .btn-xs-ghost { background: transparent; border: 1.5px solid var(--line); color: var(--ink-soft); }
+    .btn-xs-danger { background: transparent; border: 1.5px solid var(--red); color: var(--red); }
+  </style>
+</helmet>
+
+<div class="page">
+  <div class="header-bar">
+    <div class="header-left">
+      <img src="oge-logo.svg" alt="OGE logo" class="header-logo">
+      <span class="admin-badge">Moderator</span>
+    </div>
+    <div class="header-nav">
+      <a href="#">Queue</a>
+      <a href="#" class="active">Catalog</a>
+    </div>
+  </div>
+
+  <div class="body">
+    <h1 class="title">Topic catalog</h1>
+    <p class="subtitle">Changes here take effect immediately on the submission form and gallery filter — nothing needs a redeploy.</p>
+
+    <div class="section">
+      <div class="section-head">
+        <h2 class="section-title">Topic groups</h2>
+        <button class="btn btn-primary">+ Add topic group</button>
+      </div>
+      <table>
+        <tr><th>Label</th><th>Order</th><th>Active</th><th></th></tr>
+        <tr>
+          <td>Academics</td><td>1</td>
+          <td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td>
+          <td class="row-actions"><button class="btn-xs btn-xs-ghost">Rename</button><button class="btn-xs btn-xs-ghost">Reorder</button></td>
+        </tr>
+        <tr>
+          <td>Housing &amp; Food</td><td>2</td>
+          <td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td>
+          <td class="row-actions"><button class="btn-xs btn-xs-ghost">Rename</button><button class="btn-xs btn-xs-ghost">Reorder</button></td>
+        </tr>
+        <tr>
+          <td>Travel</td><td>3</td>
+          <td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td>
+          <td class="row-actions"><button class="btn-xs btn-xs-ghost">Rename</button><button class="btn-xs btn-xs-ghost">Reorder</button></td>
+        </tr>
+        <tr>
+          <td>Campus Life</td><td>4</td>
+          <td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td>
+          <td class="row-actions"><button class="btn-xs btn-xs-ghost">Rename</button><button class="btn-xs btn-xs-ghost">Reorder</button></td>
+        </tr>
+        <tr>
+          <td>OGE / International Office</td><td>5</td>
+          <td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td>
+          <td class="row-actions"><button class="btn-xs btn-xs-ghost">Rename</button><button class="btn-xs btn-xs-ghost">Reorder</button></td>
+        </tr>
+        <tr>
+          <td>Reflection (old wording)</td><td>9</td>
+          <td><button class="toggle-pill"><span class="toggle-dot"></span>Inactive</button></td>
+          <td class="row-actions"><button class="btn-xs btn-xs-ghost">Rename</button><button class="btn-xs btn-xs-ghost">Reorder</button></td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <h2 class="section-title">Topics</h2>
+        <button class="btn btn-primary">+ Add topic</button>
+      </div>
+      <table>
+        <tr><th>Label</th><th>Slug</th><th>Group</th><th>Order</th><th>Active</th><th></th></tr>
+        <tr>
+          <td>How would you describe the teaching quality?</td>
+          <td class="slug">academics_teaching</td>
+          <td><select class="field-select-sm"><option>Academics</option></select></td>
+          <td>1</td>
+          <td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td>
+          <td class="row-actions"><button class="btn-xs btn-xs-ghost">Edit</button></td>
+        </tr>
+        <tr>
+          <td>Any standout course or professor?</td>
+          <td class="slug">academics_standout</td>
+          <td><select class="field-select-sm"><option>Academics</option></select></td>
+          <td>4</td>
+          <td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td>
+          <td class="row-actions"><button class="btn-xs btn-xs-ghost">Edit</button></td>
+        </tr>
+        <tr>
+          <td>What was your accommodation like?</td>
+          <td class="slug">housing_accommodation</td>
+          <td><select class="field-select-sm"><option>Housing &amp; Food</option></select></td>
+          <td>1</td>
+          <td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td>
+          <td class="row-actions"><button class="btn-xs btn-xs-ghost">Edit</button></td>
+        </tr>
+        <tr>
+          <td>What's one trip you'd recommend?</td>
+          <td class="slug">travel_recommend</td>
+          <td><select class="field-select-sm"><option>Standalone</option><option selected>Travel</option></select></td>
+          <td>2</td>
+          <td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td>
+          <td class="row-actions"><button class="btn-xs btn-xs-ghost">Edit</button></td>
+        </tr>
+        <tr>
+          <td>Did you make new friends here?</td>
+          <td class="slug">new_friendships</td>
+          <td><select class="field-select-sm"><option selected>Standalone</option></select></td>
+          <td>1</td>
+          <td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td>
+          <td class="row-actions"><button class="btn-xs btn-xs-ghost">Edit</button></td>
+        </tr>
+        <tr>
+          <td>Anything else you'd like to add.</td>
+          <td class="slug">general</td>
+          <td><select class="field-select-sm"><option selected>Standalone</option></select></td>
+          <td>99</td>
+          <td><button class="toggle-pill is-active"><span class="toggle-dot"></span>Active</button></td>
+          <td class="row-actions"><button class="btn-xs btn-xs-ghost">Edit</button></td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

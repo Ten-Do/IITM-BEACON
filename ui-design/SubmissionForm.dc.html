@@ -1,0 +1,281 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+  <style>
+    :root {
+      --maroon: #AE152D; --maroon-dark: #8C001E; --gold: #D6A64F; --gold-dark: #BDA345; --gold-soft: #FBF3E3;
+      --red: #D9261C; --red-soft: #FBEAE8; --olive: #4B7043; --olive-soft: #EDF2EA;
+      --ink: #17161C; --ink-soft: #5B534C; --paper: #FFFFFF; --sand: #F7F4EF; --line: #E6DFD3;
+      --score-0: #69221C; --score-1: #832E21; --score-2: #994729; --score-3: #AF6831; --score-4: #BD8838;
+      --score-5: #C2A33D; --score-6: #8AAA41; --score-7: #6E9442; --score-8: #5B8344; --score-9: #527944; --score-10: #4B7043;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: var(--maroon); text-decoration: none; }
+    :focus-visible { outline: 2px solid var(--maroon); outline-offset: 2px; }
+    .page { font-family: 'Roboto', system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--sand); min-height: 100%; display: flex; flex-direction: column; }
+    .header-bar { display: flex; align-items: center; gap: 14px; padding: 14px 40px; background: var(--paper); border-bottom: 1px solid var(--line); }
+    .header-logo { height: 30px; width: auto; }
+    .header-name { font-size: 15px; font-weight: 700; }
+
+    .body { padding: 40px; max-width: 720px; margin: 0 auto; width: 100%; }
+    .form-title { font-size: 26px; font-weight: 700; margin: 0 0 6px 0; }
+    .form-sub { font-size: 14px; color: var(--ink-soft); margin: 0 0 32px 0; line-height: 1.5; }
+
+    .section { margin-bottom: 36px; }
+    .section-heading { font-size: 18px; font-weight: 700; margin: 0 0 4px 0; }
+    .section-hint { font-size: 13px; color: var(--ink-soft); margin: 0 0 18px 0; }
+
+    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+    .field-label { font-size: 14px; font-weight: 600; }
+    .field-row { display: flex; gap: 14px; }
+    .field-row > .field { flex: 1; }
+    .field-input, .field-select { height: 44px; border: 1.5px solid var(--line); border-radius: 6px; padding: 0 14px; font-size: 15px; font-family: inherit; color: var(--ink); background: var(--paper); }
+    .field-input:disabled { background: var(--sand); color: var(--ink-soft); }
+    .field-select { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%235B534C' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 18px; padding-right: 38px; }
+    .field-textarea { border: 1.5px solid var(--line); border-radius: 6px; padding: 10px 14px; font-size: 15px; font-family: inherit; color: var(--ink); background: var(--paper); min-height: 100px; line-height: 1.6; resize: vertical; width: 100%; }
+    .field-help { font-size: 13px; color: var(--ink-soft); }
+
+    .score-slider-wrap { display: flex; flex-direction: column; gap: 14px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); box-shadow: 0 8px 24px rgba(148, 156, 168, 0.2); }
+    .score-value-row { display: flex; align-items: baseline; gap: 12px; }
+    .score-number { font-size: 32px; font-weight: 700; }
+    .score-label { font-size: 15px; font-weight: 600; }
+    .score-track-wrap { position: relative; height: 22px; display: flex; align-items: center; }
+    .score-track { position: absolute; left: 0; right: 0; height: 8px; border-radius: 999px; background: linear-gradient(to right, var(--score-0), var(--score-1), var(--score-2), var(--score-3), var(--score-4), var(--score-5), var(--score-6), var(--score-7), var(--score-8), var(--score-9), var(--score-10)); }
+    .score-thumb { position: absolute; top: 50%; width: 22px; height: 22px; border-radius: 999px; background: var(--paper); border: 2.5px solid var(--maroon); transform: translate(-50%, -50%); }
+    .score-ticks { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-soft); }
+
+    .chip-toggle-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    .chip-toggle { display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 600; border: 1.5px solid var(--line); background: var(--paper); color: var(--ink-soft); cursor: pointer; font-family: inherit; }
+    .chip-toggle.selected { border-color: var(--gold-dark); background: var(--gold-soft); color: var(--maroon-dark); }
+    .chip-toggle.required { border-style: dashed; }
+
+    .group-block { border: 1px solid var(--line); border-radius: 12px; background: var(--paper); padding: 20px; margin-bottom: 16px; box-shadow: 0 8px 24px rgba(148, 156, 168, 0.2); }
+    .group-block-title { font-size: 15px; font-weight: 700; margin: 0 0 16px 0; }
+    .topic-block { padding-top: 16px; border-top: 1px solid var(--line); margin-top: 16px; }
+    .topic-block:first-of-type { padding-top: 0; border-top: none; margin-top: 0; }
+    .photo-row { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+    .photo-placeholder { background: var(--sand); border: 1px solid var(--line); border-radius: 6px; width: 96px; height: 74px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .photo-placeholder svg { width: 22px; height: 22px; stroke: var(--ink-soft); stroke-width: 1.5; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: 0.5; }
+    .upload-tile { width: 96px; height: 74px; border: 1.5px dashed var(--line); border-radius: 6px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 11px; color: var(--ink-soft); flex-shrink: 0; cursor: pointer; }
+    .chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .chip { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--gold-soft); color: var(--maroon-dark); }
+    .chip-add { border: 1px dashed var(--line); background: none; color: var(--ink-soft); cursor: pointer; font-family: inherit; }
+
+    .contact-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .contact-row .field-select { width: 150px; flex-shrink: 0; }
+    .contact-row .field-input { flex: 1; }
+    .segmented { display: inline-flex; border: 1.5px solid var(--line); border-radius: 999px; padding: 2px; gap: 2px; flex-shrink: 0; }
+    .segmented button { height: 26px; padding: 0 12px; border-radius: 999px; border: none; background: transparent; font-size: 12px; font-weight: 700; color: var(--ink-soft); cursor: pointer; font-family: inherit; }
+    .segmented button.active { background: var(--gold-soft); color: var(--gold-dark); }
+    .icon-remove { width: 36px; height: 36px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--paper); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+    .icon-remove svg { width: 14px; height: 14px; stroke: var(--ink-soft); stroke-width: 2; }
+    .add-link-btn { border: 1px dashed var(--line); background: none; color: var(--ink-soft); cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; height: 36px; padding: 0 14px; border-radius: 6px; }
+
+    .checkbox { display: inline-flex; align-items: flex-start; gap: 10px; font-size: 14px; color: var(--ink); cursor: pointer; position: relative; line-height: 1.4; }
+    .checkbox input { position: absolute; opacity: 0; width: 20px; height: 20px; margin: 0; cursor: pointer; }
+    .checkbox-box { width: 20px; height: 20px; border: 1.5px solid var(--line); border-radius: 6px; background: var(--paper); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+    .checkbox-box svg { width: 14px; height: 14px; stroke: #fff; stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+    .checkbox input:checked + .checkbox-box { background: var(--maroon); border-color: var(--maroon); }
+    .checkbox input:checked + .checkbox-box svg { opacity: 1; }
+    .achv-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 16px; }
+
+    .consent-block { padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); margin-bottom: 28px; box-shadow: 0 8px 24px rgba(148, 156, 168, 0.2); }
+    .btn-row { display: flex; gap: 12px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; height: 44px; padding: 0 22px; border-radius: 6px; font-size: 15px; font-weight: 600; border: none; cursor: pointer; font-family: inherit; }
+    .btn-primary { background: var(--maroon); color: #fff; }
+    .btn-ghost { background: transparent; color: var(--ink-soft); border: 1.5px solid var(--line); }
+  </style>
+</helmet>
+
+<div class="page">
+  <div class="header-bar">
+    <img src="oge-logo.svg" alt="OGE logo" class="header-logo">
+    <span class="header-name">IITM Beacon</span>
+  </div>
+
+  <div class="body">
+    <h1 class="form-title">Write your testimonial</h1>
+    <p class="form-sub">Everything below goes to OGE for review before it's published. You can come back and edit it any time — just log in again with this email.</p>
+
+    <div class="section">
+      <h2 class="section-heading">About you</h2>
+      <div class="field-row">
+        <div class="field"><label class="field-label">First name</label><input class="field-input" value="David"></div>
+        <div class="field"><label class="field-label">Last name</label><input class="field-input" value="Jansen"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label class="field-label">Roll number</label><input class="field-input" value="EE23X1042"></div>
+        <div class="field"><label class="field-label">Admission year</label><input class="field-input" value="2023"></div>
+      </div>
+      <div class="field">
+        <label class="field-label">Email</label>
+        <input class="field-input" value="david.jansen@example.com" disabled>
+        <span class="field-help">From your login — this is how we'll find your testimonial next time.</span>
+      </div>
+      <div class="field">
+        <label class="field-label">Country</label>
+        <select class="field-select"><option>Germany</option></select>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-heading">Your recommendation</h2>
+      <p class="section-hint">How would you rate your overall exchange experience?</p>
+      <div class="score-slider-wrap">
+        <div class="score-value-row">
+          <span class="score-number" style="color: var(--score-9);">9</span>
+          <span class="score-label" style="color: var(--score-9);">Excellent! I'm taking a wealth of memories with me!</span>
+        </div>
+        <div class="score-track-wrap">
+          <div class="score-track"></div>
+          <div class="score-thumb" style="left: 90%;"></div>
+        </div>
+        <div class="score-ticks"><span>0 — Terrible</span><span>5 — Mixed</span><span>10 — Unforgettable</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-heading">What do you want to share?</h2>
+      <p class="section-hint">Pick at least one topic below — picking a group reveals all of its subtopics, each still optional to fill in.</p>
+      <div class="chip-toggle-row">
+        <button class="chip-toggle selected">Academics</button>
+        <button class="chip-toggle">Housing &amp; Food</button>
+        <button class="chip-toggle selected">Travel</button>
+        <button class="chip-toggle">Campus Life</button>
+        <button class="chip-toggle">OGE / International Office</button>
+        <button class="chip-toggle">Cultural Adaptation</button>
+        <button class="chip-toggle">Practicalities</button>
+        <button class="chip-toggle">Health &amp; Wellbeing</button>
+        <button class="chip-toggle">Reflection</button>
+      </div>
+      <div class="chip-toggle-row">
+        <button class="chip-toggle">New friendships</button>
+        <button class="chip-toggle">Romance</button>
+        <button class="chip-toggle selected">Networking</button>
+        <button class="chip-toggle">Career</button>
+        <button class="chip-toggle">Contacts</button>
+        <button class="chip-toggle">Opportunities</button>
+        <button class="chip-toggle">Finding compatriots</button>
+        <button class="chip-toggle required">General *</button>
+      </div>
+
+      <div class="group-block">
+        <p class="group-block-title">Academics</p>
+
+        <div class="topic-block">
+          <label class="field-label">Any standout course or professor you'd recommend?</label>
+          <textarea class="field-textarea">My machine learning professor completely changed how I think about research — office hours turned into two-hour conversations more than once.</textarea>
+          <div class="photo-row">
+            <div class="photo-placeholder"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></div>
+            <div class="photo-placeholder"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></div>
+            <div class="upload-tile">+ Add photo</div>
+          </div>
+          <div class="chip-row">
+            <span class="chip">machine-learning</span>
+            <span class="chip">office-hours</span>
+            <button class="chip chip-add">+ Add tag</button>
+          </div>
+        </div>
+
+        <div class="topic-block">
+          <label class="field-label">Were the courses challenging, easy, or about what you expected?</label>
+          <textarea class="field-textarea">Harder than expected in the first month, mostly because of the exam-heavy grading. Once I adjusted my study rhythm it felt manageable — more rigorous than my home university's equivalent courses.</textarea>
+        </div>
+
+        <div class="topic-block">
+          <label class="field-label">Any bureaucratic hurdles getting course credits recognized back home?</label>
+          <textarea class="field-textarea" placeholder="Optional — leave blank if this doesn't apply to you."></textarea>
+        </div>
+      </div>
+
+      <div class="group-block">
+        <p class="group-block-title">Travel</p>
+        <div class="topic-block">
+          <label class="field-label">What's one trip you'd recommend to a future exchange student?</label>
+          <textarea class="field-textarea">Pondicherry, hands down — a manageable weekend trip, and Auroville is worth the detour even if you're skeptical going in.</textarea>
+          <div class="photo-row">
+            <div class="photo-placeholder"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></div>
+            <div class="upload-tile">+ Add photo</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="group-block">
+        <p class="group-block-title">Networking</p>
+        <div class="topic-block">
+          <label class="field-label">Did you build valuable professional connections or a network?</label>
+          <textarea class="field-textarea">Yes — I'm still in a group chat with three lab-mates from my research project, and one of them connected me to an internship lead the following spring.</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-heading">Contact methods</h2>
+      <p class="section-hint">Optional. Each entry can be public (shown to visitors who ask to connect) or kept private.</p>
+      <div class="contact-row">
+        <select class="field-select"><option>Email</option></select>
+        <input class="field-input" value="david.jansen@example.com" disabled>
+        <div class="segmented"><button class="active">Private</button><button>Public</button></div>
+        <button class="icon-remove"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+      </div>
+      <div class="contact-row">
+        <select class="field-select"><option>Telegram</option></select>
+        <input class="field-input" value="@davidj_exchange">
+        <div class="segmented"><button>Private</button><button class="active">Public</button></div>
+        <button class="icon-remove"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+      </div>
+      <button class="add-link-btn">+ Add another contact method</button>
+    </div>
+
+    <div class="section">
+      <h2 class="section-heading">Achievements</h2>
+      <p class="section-hint">Check anything that applies to your exchange.</p>
+      <div class="achv-grid">
+        <label class="checkbox"><input type="checkbox" checked><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Made new friends here</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Found love / started a relationship</label>
+        <label class="checkbox"><input type="checkbox" checked><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Built professional connections or a network</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Got a job/internship opportunity through the exchange</label>
+        <label class="checkbox"><input type="checkbox" checked><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Traveled to nearby countries</label>
+        <label class="checkbox"><input type="checkbox" checked><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Traveled within India</label>
+        <label class="checkbox"><input type="checkbox" checked><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Tried and enjoyed spicy Indian food</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Learned to cook a local dish</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Picked up words/phrases of a local language</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Joined a campus club or sports team</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Attended a campus festival or major event</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Volunteered or did community work</label>
+        <label class="checkbox"><input type="checkbox" checked><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Improved my communication/English skills</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Became more independent / self-reliant</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Adjusted well to the heat/climate</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Missed home a lot at some point</label>
+        <label class="checkbox"><input type="checkbox" checked><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Would keep in touch with people I met here</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Changed my mind about my career path</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Left with contact info I plan to use</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Faced a real culture-shock moment</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Learned to manage a tight budget</label>
+        <label class="checkbox"><input type="checkbox" checked><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Explored the city beyond campus</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Took part in an academic project/research beyond coursework</label>
+        <label class="checkbox"><input type="checkbox"><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Overcame a health challenge while here</label>
+      </div>
+    </div>
+
+    <div class="consent-block">
+      <label class="checkbox"><input type="checkbox" checked><span class="checkbox-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></span>I consent to IITM Beacon storing and displaying my testimonial as described in the privacy notice.</label>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary">Submit testimonial</button>
+      <button class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

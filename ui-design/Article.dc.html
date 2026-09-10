@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+  <style>
+    :root {
+      --maroon: #AE152D; --maroon-dark: #8C001E; --gold-dark: #BDA345; --gold-soft: #FBF3E3;
+      --ink: #17161C; --ink-soft: #5B534C; --paper: #FFFFFF; --sand: #F7F4EF; --line: #E6DFD3;
+      --score-0: #69221C; --score-1: #832E21; --score-2: #994729; --score-3: #AF6831; --score-4: #BD8838;
+      --score-5: #C2A33D; --score-6: #8AAA41; --score-7: #6E9442; --score-8: #5B8344; --score-9: #527944; --score-10: #4B7043;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: var(--maroon); text-decoration: none; }
+    a:hover { color: var(--maroon-dark); text-decoration: underline; }
+    :focus-visible { outline: 2px solid var(--maroon); outline-offset: 2px; }
+    .page { font-family: 'Roboto', system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--sand); min-height: 100%; display: flex; flex-direction: column; }
+    .header-bar { display: flex; align-items: center; justify-content: space-between; padding: 14px 40px; background: var(--paper); border-bottom: 1px solid var(--line); }
+    .header-left { display: flex; align-items: center; gap: 14px; }
+    .header-logo { height: 30px; width: auto; }
+    .header-name { font-size: 15px; font-weight: 700; }
+    .header-nav { display: flex; align-items: center; gap: 24px; }
+    .header-nav a { font-size: 14px; font-weight: 600; color: var(--ink-soft); }
+    .header-nav a:hover { color: var(--maroon); text-decoration: none; }
+    .icon { width: 18px; height: 18px; stroke: var(--ink-soft); stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; height: 44px; padding: 0 20px; border-radius: 6px; font-size: 15px; font-weight: 600; border: none; cursor: pointer; font-family: inherit; }
+    .btn-secondary { background: transparent; color: var(--maroon); border: 1.5px solid var(--maroon); }
+
+    .body { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 40px; padding: 40px; }
+    .title-row { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+    .country-name { font-size: 14px; font-weight: 600; color: var(--ink-soft); }
+    .score-badge { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 700; background: var(--paper); border: 1.5px solid currentColor; }
+    .score-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+    .article-title { font-size: 28px; font-weight: 700; margin: 0 0 4px 0; }
+    .score-label-line { font-size: 14px; color: var(--ink-soft); margin: 0 0 28px 0; }
+
+    .topic-card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 24px 28px; margin-bottom: 24px; box-shadow: 0 8px 24px rgba(148, 156, 168, 0.2); }
+    .topic-card:last-child { margin-bottom: 0; }
+    .group-heading { font-size: 20px; font-weight: 700; margin: 0 0 4px 0; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+    .subtopic-heading { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; margin: 22px 0 8px 0; }
+    .updated-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: var(--gold-soft); color: var(--gold-dark); text-transform: uppercase; letter-spacing: 0.03em; }
+    .answer-text { font-size: 16px; line-height: 1.7; margin: 0 0 14px 0; }
+    .photo-row { display: flex; gap: 10px; margin-bottom: 8px; }
+    .photo-placeholder { background: var(--sand); border: 1px solid var(--line); border-radius: 6px; width: 110px; height: 84px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .photo-placeholder svg { width: 24px; height: 24px; stroke: var(--ink-soft); stroke-width: 1.5; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: 0.5; }
+
+    .sidebar { display: flex; flex-direction: column; gap: 20px; }
+    .side-card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 18px; box-shadow: 0 8px 24px rgba(148, 156, 168, 0.2); }
+    .side-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); margin: 0 0 10px 0; }
+    .reveal-btn { display: flex; align-items: center; gap: 8px; width: 100%; }
+    .achievements-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .achievement-chip { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--sand); border: 1px solid var(--line); color: var(--ink-soft); }
+  </style>
+</helmet>
+
+<div class="page">
+  <div class="header-bar">
+    <div class="header-left">
+      <img src="oge-logo.svg" alt="OGE logo" class="header-logo">
+      <span class="header-name">IITM Beacon</span>
+    </div>
+    <div class="header-nav">
+      <a href="#">Homepage</a>
+      <a href="#">Browse testimonials</a>
+      <a href="#">Write or edit your testimonial</a>
+    </div>
+  </div>
+
+  <div class="body">
+    <div>
+      <div class="title-row">
+        <span class="country-name">Germany</span>
+        <span class="score-badge" style="color: var(--score-9);"><span class="score-dot"></span>9</span>
+      </div>
+      <h1 class="article-title">David J.</h1>
+      <p class="score-label-line">"Excellent! I'm taking a wealth of memories with me!"</p>
+
+      <div class="topic-card">
+        <h2 class="group-heading">Academics</h2>
+
+        <div class="subtopic-heading">Any standout course or professor you'd recommend?</div>
+        <p class="answer-text">My machine learning professor completely changed how I think about research — office hours turned into two-hour conversations more than once. He pushed me to submit a short paper to a student workshop, which I never would have attempted back home.</p>
+
+        <div class="subtopic-heading">Were the courses challenging, easy, or about what you expected? <span class="updated-badge">Updated</span></div>
+        <p class="answer-text">Harder than I expected in the first month, mostly because the assessment style (heavy weight on a single end-of-term exam) was unfamiliar. Once I adjusted my study rhythm it felt manageable, and honestly more rigorous than my home university's equivalent courses.</p>
+        <div class="photo-row">
+          <div class="photo-placeholder"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></div>
+          <div class="photo-placeholder"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></div>
+        </div>
+      </div>
+
+      <div class="topic-card">
+        <h2 class="group-heading">Travel</h2>
+
+        <div class="subtopic-heading">What's one trip you'd recommend to a future exchange student?</div>
+        <p class="answer-text">Pondicherry, hands down. It's a manageable weekend trip from campus, the French Quarter is completely different from anything else I saw in Tamil Nadu, and Auroville is worth the detour even if you're skeptical going in.</p>
+        <div class="photo-row">
+          <div class="photo-placeholder"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></div>
+        </div>
+      </div>
+
+      <div class="topic-card">
+        <h2 class="group-heading">Networking</h2>
+
+        <div class="subtopic-heading">Did you build valuable professional connections or a network?</div>
+        <p class="answer-text">Yes — I'm still in a group chat with three lab-mates from my research project, and one of them connected me to an internship lead the following spring.</p>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="side-card">
+        <button class="btn btn-secondary reveal-btn">
+          <svg class="icon" style="stroke: var(--maroon);" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
+          Reveal contact info
+        </button>
+      </div>
+      <div class="side-card">
+        <p class="side-title">Achievements</p>
+        <div class="achievements-list">
+          <span class="achievement-chip">Made new friends here</span>
+          <span class="achievement-chip">Traveled to nearby countries</span>
+          <span class="achievement-chip">Built professional connections or a network</span>
+          <span class="achievement-chip">Improved my communication/English skills</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

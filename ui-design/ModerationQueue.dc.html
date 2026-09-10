@@ -1,0 +1,176 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+  <style>
+    :root {
+      --maroon: #AE152D; --maroon-dark: #8C001E; --gold-dark: #BDA345; --gold-soft: #FBF3E3;
+      --red: #D9261C; --red-soft: #FBEAE8; --olive: #4B7043; --olive-soft: #EDF2EA;
+      --ink: #17161C; --ink-soft: #5B534C; --paper: #FFFFFF; --sand: #F7F4EF; --line: #E6DFD3;
+      --score-0: #69221C; --score-1: #832E21; --score-2: #994729; --score-3: #AF6831; --score-4: #BD8838;
+      --score-5: #C2A33D; --score-6: #8AAA41; --score-7: #6E9442; --score-8: #5B8344; --score-9: #527944; --score-10: #4B7043;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: var(--maroon); text-decoration: none; }
+    :focus-visible { outline: 2px solid var(--maroon); outline-offset: 2px; }
+    .page { font-family: 'Roboto', system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--sand); min-height: 100%; display: flex; flex-direction: column; }
+    .header-bar { display: flex; align-items: center; justify-content: space-between; padding: 14px 40px; background: var(--paper); border-bottom: 1px solid var(--line); }
+    .header-left { display: flex; align-items: center; gap: 14px; }
+    .header-logo { height: 30px; width: auto; }
+    .admin-badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--maroon); border: 1px solid var(--maroon); border-radius: 6px; padding: 2px 8px; }
+    .header-nav { display: flex; gap: 20px; }
+    .header-nav a { font-size: 14px; font-weight: 600; color: var(--ink-soft); }
+    .header-nav a:hover, .header-nav a.active { color: var(--maroon); }
+
+    .body { padding: 40px; }
+    .title { font-size: 24px; font-weight: 700; margin: 0 0 4px 0; }
+    .subtitle { font-size: 14px; color: var(--ink-soft); margin: 0 0 24px 0; }
+
+    .queue-item { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 8px 24px rgba(148, 156, 168, 0.2); }
+    .item-header { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 16px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+    .item-header-left { display: flex; flex-direction: column; gap: 6px; }
+    .type-chip { display: inline-flex; width: fit-content; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: var(--gold-soft); color: var(--maroon-dark); text-transform: uppercase; letter-spacing: 0.03em; }
+    .identity-line { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .meta-line { font-size: 13px; color: var(--ink-soft); }
+    .num { font-family: ui-monospace, monospace; }
+    .item-header-right { text-align: right; font-size: 13px; color: var(--ink-soft); }
+    .changed-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: var(--red-soft); color: var(--red); text-transform: uppercase; letter-spacing: 0.03em; }
+
+    .score-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+    .score-badge { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--paper); border: 1.5px solid currentColor; }
+    .score-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+    .score-text { font-size: 13px; color: var(--ink-soft); }
+
+    .section-row { padding: 12px 0 12px 12px; border-bottom: 1px solid var(--line); border-left: 3px solid transparent; }
+    .section-row:last-of-type { border-bottom: none; }
+    .section-row-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .section-row-head strong { font-size: 14px; }
+    .section-row-body { font-size: 14px; color: var(--ink-soft); line-height: 1.5; margin: 0; }
+    .section-row.changed { border-left-color: var(--red); }
+
+    .contacts-row, .achievements-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .contact-chip { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--sand); border: 1px solid var(--line); color: var(--ink-soft); }
+    .contact-chip.public { border-color: var(--olive); color: var(--olive); background: var(--olive-soft); }
+    .achievement-chip { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--sand); border: 1px solid var(--line); color: var(--ink-soft); }
+
+    .item-actions { display: flex; align-items: flex-start; gap: 12px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; height: 40px; padding: 0 18px; border-radius: 6px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; font-family: inherit; }
+    .btn-approve { background: var(--olive); color: #fff; }
+    .btn-reject { background: transparent; color: var(--red); border: 1.5px solid var(--red); }
+    .reject-reason { flex: 1; }
+    .reject-reason textarea { width: 100%; border: 1.5px solid var(--line); border-radius: 6px; padding: 8px 12px; font-size: 13px; font-family: inherit; min-height: 40px; resize: vertical; }
+    .reject-reason label { font-size: 12px; font-weight: 600; color: var(--ink-soft); display: block; margin-bottom: 4px; }
+  </style>
+</helmet>
+
+<div class="page">
+  <div class="header-bar">
+    <div class="header-left">
+      <img src="oge-logo.svg" alt="OGE logo" class="header-logo">
+      <span class="admin-badge">Moderator</span>
+    </div>
+    <div class="header-nav">
+      <a href="#" class="active">Queue</a>
+      <a href="#">Catalog</a>
+    </div>
+  </div>
+
+  <div class="body">
+    <h1 class="title">Pending queue</h1>
+    <p class="subtitle">2 testimonials waiting for review</p>
+
+    <div class="queue-item">
+      <div class="item-header">
+        <div class="item-header-left">
+          <span class="type-chip">New submission</span>
+          <div class="identity-line">Aisha Mwangi</div>
+          <div class="meta-line">Roll EE24X0871 · aisha.mwangi@example.com · Kenya</div>
+        </div>
+        <div class="item-header-right">Submitted 6 hours ago<br><span class="num">#00187</span></div>
+      </div>
+
+      <div class="score-row">
+        <span class="score-badge" style="color: var(--score-9);"><span class="score-dot"></span>9</span>
+        <span class="score-text">"Excellent! I'm taking a wealth of memories with me!"</span>
+      </div>
+
+      <div class="section-row">
+        <div class="section-row-head"><strong>OGE / International Office — How was your experience with the International Relations office?</strong></div>
+        <p class="section-row-body">The International Office helped me sort my visa extension within days when I panicked about the paperwork. Genuinely the most reassuring part of the whole first month.</p>
+      </div>
+      <div class="section-row">
+        <div class="section-row-head"><strong>Cultural Adaptation — What was the biggest culture shock or adjustment?</strong></div>
+        <p class="section-row-body">The pace of small talk — people here ask "have you eaten?" the way we'd say hello, and it took me weeks to realize it wasn't a real invitation to lunch.</p>
+      </div>
+
+      <div class="contacts-row">
+        <span class="contact-chip">Email: aisha.mwangi@example.com (private)</span>
+        <span class="contact-chip public">Instagram: @aisha.abroad (public)</span>
+      </div>
+      <div class="achievements-row">
+        <span class="achievement-chip">Made new friends here</span>
+        <span class="achievement-chip">Tried and enjoyed spicy Indian food</span>
+        <span class="achievement-chip">Faced a real culture-shock moment</span>
+      </div>
+
+      <div class="item-actions">
+        <button class="btn btn-approve">Approve &amp; publish</button>
+        <button class="btn btn-reject">Reject</button>
+      </div>
+    </div>
+
+    <div class="queue-item">
+      <div class="item-header">
+        <div class="item-header-left">
+          <span class="type-chip">Resubmitted edit</span>
+          <div class="identity-line">Lucas Perrin <span class="changed-badge">Identity changed</span></div>
+          <div class="meta-line">Roll ME22X0459 · lucas.perrin@example.com · France</div>
+        </div>
+        <div class="item-header-right">Submitted 1 day ago<br><span class="num">#00142</span> · previously approved</div>
+      </div>
+
+      <div class="score-row">
+        <span class="score-badge" style="color: var(--score-5);"><span class="score-dot"></span>5</span>
+        <span class="score-text">"Mixed — real upsides, but real downsides too" <span class="changed-badge" style="margin-left: 6px;">Score changed</span></span>
+      </div>
+
+      <div class="section-row changed">
+        <div class="section-row-head"><strong>Housing &amp; Food — What was your accommodation like?</strong> <span class="changed-badge">Changed</span></div>
+        <p class="section-row-body">Updated after switching hostels mid-semester — the new block had much better water pressure and a functioning laundry room, which changed my whole opinion of campus housing.</p>
+      </div>
+      <div class="section-row">
+        <div class="section-row-head"><strong>Travel — Did you manage to travel within India or to neighboring countries?</strong></div>
+        <p class="section-row-body">Made it to Kerala over term break and to Sri Lanka for a long weekend — both easier to arrange than I expected.</p>
+      </div>
+
+      <div class="contacts-row">
+        <span class="contact-chip public">WhatsApp: +33 6 12 34 56 78 (public)</span>
+      </div>
+      <div class="achievements-row">
+        <span class="achievement-chip">Traveled to nearby countries</span>
+        <span class="achievement-chip">Traveled within India</span>
+        <span class="achievement-chip">Learned to manage a tight budget</span>
+      </div>
+
+      <div class="item-actions">
+        <button class="btn btn-approve">Approve &amp; publish</button>
+        <button class="btn btn-reject">Reject</button>
+        <div class="reject-reason">
+          <label>Rejection reason (optional, emailed to the submitter)</label>
+          <textarea placeholder="e.g. Please double-check the accommodation section — it now conflicts with your travel section."></textarea>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

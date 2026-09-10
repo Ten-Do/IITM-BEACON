@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+  <style>
+    :root {
+      --maroon: #AE152D; --maroon-dark: #8C001E; --olive: #4B7043; --olive-soft: #EDF2EA;
+      --ink: #17161C; --ink-soft: #5B534C; --paper: #FFFFFF; --sand: #F7F4EF; --line: #E6DFD3;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: var(--maroon); text-decoration: none; }
+    a:hover { color: var(--maroon-dark); text-decoration: underline; }
+    :focus-visible { outline: 2px solid var(--maroon); outline-offset: 2px; }
+    .page { font-family: 'Roboto', system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--sand); min-height: 100%; display: flex; flex-direction: column; }
+    .header-bar { display: flex; align-items: center; gap: 14px; padding: 14px 40px; background: var(--paper); border-bottom: 1px solid var(--line); }
+    .header-logo { height: 30px; width: auto; }
+    .header-name { font-size: 15px; font-weight: 700; }
+    .body { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px; }
+    .wrap { width: 100%; max-width: 460px; text-align: center; }
+    .icon-circle { width: 56px; height: 56px; border-radius: 999px; background: var(--olive-soft); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; }
+    .icon-circle svg { width: 28px; height: 28px; stroke: var(--olive); stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .title { font-size: 22px; font-weight: 700; margin: 0 0 10px 0; }
+    .card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 24px; margin-top: 20px; text-align: left; box-shadow: 0 8px 24px rgba(148, 156, 168, 0.2); }
+    .pill { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--sand); color: var(--ink-soft); margin-bottom: 12px; }
+    .pill-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+    .note { font-size: 14px; color: var(--ink-soft); line-height: 1.6; margin: 0 0 10px 0; }
+    .note strong { color: var(--ink); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; height: 40px; padding: 0 20px; border-radius: 6px; font-size: 14px; font-weight: 600; border: 1.5px solid var(--line); background: transparent; color: var(--ink-soft); cursor: pointer; font-family: inherit; margin-top: 20px; }
+  </style>
+</helmet>
+
+<div class="page">
+  <div class="header-bar">
+    <img src="oge-logo.svg" alt="OGE logo" class="header-logo">
+    <span class="header-name">IITM Beacon</span>
+  </div>
+  <div class="body">
+    <div class="wrap">
+      <div class="icon-circle"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></div>
+      <h1 class="title">Thanks — your testimonial is in review</h1>
+      <div class="card">
+        <span class="pill"><span class="pill-dot"></span>Pending review</span>
+        <p class="note">An OGE moderator will check it over before it goes live in the gallery — this usually takes a few days.</p>
+        <p class="note">You can log back in with <strong>david.jansen@example.com</strong> any time to see its status or make changes.</p>
+      </div>
+      <button class="btn">Back to homepage</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

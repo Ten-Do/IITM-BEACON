@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+  <style>
+    :root {
+      --maroon: #AE152D; --maroon-dark: #8C001E; --gold-dark: #BDA345; --gold-soft: #FBF3E3;
+      --ink: #17161C; --ink-soft: #5B534C; --paper: #FFFFFF; --sand: #F7F4EF; --line: #E6DFD3;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: var(--maroon); text-decoration: none; }
+    a:hover { color: var(--maroon-dark); text-decoration: underline; }
+    :focus-visible { outline: 2px solid var(--maroon); outline-offset: 2px; }
+    .page { font-family: 'Roboto', system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--sand); min-height: 100%; display: flex; flex-direction: column; }
+    .header-bar { display: flex; align-items: center; justify-content: space-between; padding: 14px 40px; background: var(--paper); border-bottom: 1px solid var(--line); }
+    .header-left { display: flex; align-items: center; gap: 14px; }
+    .header-logo { height: 30px; width: auto; }
+    .header-name { font-size: 15px; font-weight: 700; }
+    .header-nav { display: flex; align-items: center; gap: 24px; }
+    .header-nav a { font-size: 14px; font-weight: 600; color: var(--ink-soft); }
+    .header-nav a:hover, .header-nav a.active { color: var(--maroon); text-decoration: none; }
+    .icon { width: 18px; height: 18px; stroke: var(--ink-soft); stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+    .filter-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 18px 40px; background: var(--paper); border-bottom: 1px solid var(--line); }
+    .search-box { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 8px; background: var(--sand); border: 1px solid var(--line); width: 280px; }
+    .search-box input { border: none; outline: none; background: transparent; flex: 1; font-size: 14px; font-family: inherit; color: var(--ink); }
+    .search-box .icon { width: 16px; height: 16px; }
+    .field-select { height: 40px; border: 1.5px solid var(--line); border-radius: 6px; padding: 0 34px 0 14px; font-size: 14px; font-family: inherit; color: var(--ink); background: var(--paper) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%235B534C' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat right 10px center / 16px; appearance: none; -webkit-appearance: none; }
+    .chip-toggle { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 600; border: 1.5px solid var(--gold-dark); background: var(--gold-soft); color: var(--maroon-dark); cursor: pointer; font-family: inherit; }
+
+    .gallery-body { flex: 1; padding: 48px 40px; display: flex; justify-content: center; }
+    .empty-state { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 72px 20px; border: 1.5px dashed var(--line); border-radius: 8px; background: var(--paper); width: 100%; max-width: 560px; }
+    .empty-icon { width: 40px; height: 40px; stroke: var(--ink-soft); stroke-width: 1.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .empty-title { font-size: 17px; font-weight: 700; margin: 0; }
+    .empty-hint { font-size: 14px; color: var(--ink-soft); margin: 0; max-width: 400px; line-height: 1.5; }
+  </style>
+</helmet>
+
+<div class="page">
+
+  <div class="header-bar">
+    <div class="header-left">
+      <img src="oge-logo.svg" alt="OGE logo" class="header-logo">
+      <span class="header-name">IITM Beacon</span>
+    </div>
+    <div class="header-nav">
+      <a href="#">Homepage</a>
+      <a href="#" class="active">Browse testimonials</a>
+      <a href="#">Write or edit your testimonial</a>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <div class="search-box">
+      <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <input value="hovercraft festival">
+    </div>
+    <select class="field-select"><option>Sweden</option></select>
+    <button class="chip-toggle">Travel ✕</button>
+  </div>
+
+  <div class="gallery-body">
+    <div class="empty-state">
+      <svg class="empty-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <h3 class="empty-title">No testimonials matched</h3>
+      <p class="empty-hint">Nobody from Sweden has mentioned that yet. Try clearing a filter, or search a different keyword.</p>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
