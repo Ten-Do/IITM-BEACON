@@ -1,0 +1,981 @@
+openapi: 3.0.3
+info:
+  title: IITM Beacon API
+  description: >
+    Exchange Student Testimonial & Review Gallery. Covers the six feature slices: gallery
+    (public browse/filter/search/reveal-contact), submission (visitor OTP login,
+    create/edit-testimonial), moderation (admin queue/approve/reject, one at a time),
+    catalogadmin (admin CRUD for topic groups/topics/achievements), adminauth (passwordless
+    OTP login), analytics (homepage dashboard). See ../use-cases.md for the scenarios behind
+    each endpoint, ../decisions.md for the design decisions behind each schema shape, and
+    ../nfr.md for the quality attributes they must meet.
+  version: "0.3.0"
+
+servers:
+  - url: /api
+
+tags:
+  - name: gallery
+  - name: submission
+  - name: moderation
+  - name: catalogadmin
+  - name: adminauth
+  - name: analytics
+
+paths:
+  /gallery/testimonials:
+    get:
+      tags: [gallery]
+      summary: List approved testimonials (UC-BROWSE-APPROVED, UC-FILTER-COUNTRY, UC-SEARCH-KEYWORD, UC-FILTER-TOPIC)
+      parameters:
+        - name: country
+          in: query
+          description: Filter by country code (ISO 3166-1 alpha-2, decision 1).
+          schema: { type: string, minLength: 2, maxLength: 2 }
+        - name: topicIds
+          in: query
+          description: >
+            Filter by one or more top-level topic-catalog entries — a topic-group id or a
+            standalone topic id (decision 11, UC-FILTER-TOPIC). A group id expands
+            server-side to all of its member topic ids.
+          schema:
+            type: array
+            items: { type: integer }
+        - name: q
+          in: query
+          description: >
+            Free-text search over section answer text and the submitter's first/last name
+            (decision 8, decision 10).
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Paginated list of approved testimonials.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  content:
+                    type: array
+                    items: { $ref: "#/components/schemas/TestimonialCard" }
+                  page: { type: integer }
+                  size: { type: integer }
+                  totalElements: { type: integer }
+
+  /gallery/testimonials/{id}:
+    get:
+      tags: [gallery]
+      summary: Get full testimonial detail (UC-EXPAND-TESTIMONIAL)
+      description: >
+        Never includes contact-method values or the submitter's email (decision 6) — only
+        `hasRevealableContact`, telling the client whether GET .../contact is worth calling.
+        `displayName` (decision 10) appears only here, never on `TestimonialCard`.
+      parameters:
+        - $ref: "#/components/parameters/TestimonialId"
+      responses:
+        "200":
+          description: Testimonial detail, rendered as an article of its filled sections.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TestimonialDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /gallery/testimonials/{id}/contact:
+    get:
+      tags: [gallery]
+      summary: Reveal a testimonial's public contact methods on demand (UC-REVEAL-CONTACT)
+      description: >
+        Separate from the detail endpoint by design (decisions 5, 6): contact-method values
+        are encrypted at rest and only decrypted here, never bundled into list/detail
+        responses. Returns only entries with `is_public = true`.
+      parameters:
+        - $ref: "#/components/parameters/TestimonialId"
+      responses:
+        "200":
+          description: The testimonial's public contact methods.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ContactMethodView" }
+        "404":
+          description: >
+            Testimonial not found, not approved, or has no contact method marked public
+            (these are indistinguishable to the caller).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /gallery/countries:
+    get:
+      tags: [gallery]
+      summary: List countries with at least one approved testimonial
+      responses:
+        "200":
+          description: Countries usable in the filter dropdown.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Country" }
+
+  /gallery/topics:
+    get:
+      tags: [gallery]
+      summary: List active top-level topic-catalog entries with at least one approved section (UC-FILTER-TOPIC)
+      description: >
+        Returns only top-level picks — topic groups (with their subtopics nested) and
+        standalone topics (decision 11) — never the full flat leaf list at once.
+      responses:
+        "200":
+          description: Entries usable in the gallery's topic filter.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TopicCatalogEntry" }
+
+  /submissions/contact-types:
+    get:
+      tags: [submission]
+      summary: List active contact types for the submission form's contacts block
+      description: >
+        `ContactType` is seed-only reference data with no admin-catalog UI (decision 5) — this
+        read-only listing is still served dynamically, the same way `/gallery/countries` is,
+        rather than hardcoded on the client.
+      responses:
+        "200":
+          description: Contact types usable when adding a contact method.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ContactType" }
+
+  /submissions/otp/request:
+    post:
+      tags: [submission]
+      summary: Request a visitor login OTP (UC-VISITOR-LOGIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "202":
+          description: >
+            Accepted regardless of whether a testimonial already exists for this email —
+            identical response either way, so requesting one never reveals that on its own
+            (decision 17, NFR-VISITOR-OTP-BRUTEFORCE).
+        "429":
+          description: Too many OTP requests in a short window, for this email or this IP.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /submissions/otp/verify:
+    post:
+      tags: [submission]
+      summary: Verify a visitor login OTP and establish a session (UC-VISITOR-LOGIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email: { type: string, format: email }
+                code: { type: string, minLength: 6, maxLength: 6 }
+      responses:
+        "200":
+          description: >
+            OTP correct — session cookie set. `mode` tells the client whether to render a
+            blank form (`CREATE`) or load the existing testimonial via `GET /submissions/mine`
+            (`EDIT`), per `email_lookup_hash` (decision 6).
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode: { type: string, enum: [CREATE, EDIT] }
+                  testimonialId: { type: integer, nullable: true }
+        "401":
+          description: Wrong or expired code; attempts counter decremented (decision 17, NFR-VISITOR-OTP-BRUTEFORCE).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /submissions:
+    post:
+      tags: [submission]
+      summary: Create a new testimonial (UC-CREATE-TESTIMONIAL)
+      security: [{ visitorSession: [] }]
+      description: >
+        Topics are database-driven (decision 11), so the request cannot have one named field
+        per topic. `payload` is a JSON part; photo files are separate multipart parts,
+        cross-referenced from `payload.sections[].photos[].fileRef` by index. The exact
+        multipart framing is an implementation detail; this schema fixes the logical shape
+        only.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/TestimonialSubmission" }
+      responses:
+        "201":
+          description: Saved with status PENDING.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  status: { type: string, enum: [PENDING] }
+        "400":
+          description: >
+            Validation failure — no section filled in, missing recommendation score, a
+            mandatory identity field missing, data-processing consent unchecked (decision 7),
+            a non-image file, more photos or a larger file than the configured limits
+            (decision 2), or more than 10 custom tags on one photo.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: A testimonial already exists for this visitor — use PUT /submissions/mine instead.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /submissions/mine:
+    get:
+      tags: [submission]
+      summary: Load the authenticated visitor's own testimonial for editing (UC-EDIT-TESTIMONIAL)
+      security: [{ visitorSession: [] }]
+      responses:
+        "200":
+          description: The visitor's existing testimonial, pre-filled into the same shape used to submit it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TestimonialSubmission" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No testimonial exists yet for this visitor — use POST /submissions instead.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    put:
+      tags: [submission]
+      summary: Edit the authenticated visitor's existing testimonial (UC-EDIT-TESTIMONIAL)
+      security: [{ visitorSession: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/TestimonialSubmission" }
+      responses:
+        "200":
+          description: >
+            `status` reflects whether the moderation short-circuit applied (decision 18):
+            `APPROVED` means the edit changed only exempt fields (country, score, achievements,
+            contact methods) on a testimonial that was already `APPROVED`, and is live
+            immediately; `PENDING` means it re-entered moderation.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  status: { type: string, enum: [PENDING, APPROVED] }
+        "400":
+          description: Same validation failures as POST /submissions.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No testimonial exists yet for this visitor — use POST /submissions instead.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /admin/auth/otp/request:
+    post:
+      tags: [adminauth]
+      summary: Request an admin login OTP (UC-ADMIN-OTP-REQUEST)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "202":
+          description: >
+            Accepted regardless of whether the email matched, to avoid revealing which part
+            of login failed (decision 4).
+        "429":
+          description: Too many OTP requests in a short window.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /admin/auth/otp/verify:
+    post:
+      tags: [adminauth]
+      summary: Verify an admin login OTP and establish a session (UC-ADMIN-OTP-VERIFY)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email: { type: string, format: email }
+                code: { type: string, minLength: 6, maxLength: 6 }
+      responses:
+        "200":
+          description: OTP correct — session cookie set.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+        "401":
+          description: Wrong or expired code; attempts counter decremented (decision 4).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /moderation/testimonials/pending:
+    get:
+      tags: [moderation]
+      summary: List pending testimonials (UC-VIEW-PENDING-QUEUE)
+      security: [{ adminSession: [] }]
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: >
+            Paginated list of PENDING testimonials, full detail including decrypted contact
+            methods and email, plus the admin-only diff flags (decision 18).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  content:
+                    type: array
+                    items: { $ref: "#/components/schemas/ModerationTestimonialDetail" }
+                  page: { type: integer }
+                  size: { type: integer }
+                  totalElements: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /moderation/testimonials/{id}/approve:
+    post:
+      tags: [moderation]
+      summary: Approve one pending testimonial (UC-APPROVE-TESTIMONIAL)
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/TestimonialId"
+      responses:
+        "204": { description: Status set to APPROVED; every modified flag cleared. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /moderation/testimonials/{id}/reject:
+    post:
+      tags: [moderation]
+      summary: Reject one pending testimonial (UC-REJECT-TESTIMONIAL)
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/TestimonialId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, nullable: true }
+      responses:
+        "204":
+          description: >
+            Status set to REJECTED, `rejectedAt` stamped. The submitter is always emailed to
+            let them know to log in and fix it; the reason is included in that email when one
+            was given.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /catalog/topic-groups:
+    get:
+      tags: [catalogadmin]
+      summary: List all topic groups, including inactive ones (UC-MANAGE-TOPIC-GROUPS)
+      security: [{ adminSession: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TopicGroup" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [catalogadmin]
+      summary: Create a topic group (UC-MANAGE-TOPIC-GROUPS)
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TopicGroupCreateRequest" }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TopicGroup" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /catalog/topic-groups/{id}:
+    patch:
+      tags: [catalogadmin]
+      summary: Rename, reorder, or deactivate a topic group (UC-MANAGE-TOPIC-GROUPS)
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/TopicGroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TopicGroupPatchRequest" }
+      responses:
+        "200":
+          description: >
+            Deactivating a group with active topics under it is non-destructive — the group
+            and its topics stop being offered as new picks, existing content is unaffected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TopicGroup" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /catalog/topics:
+    get:
+      tags: [catalogadmin]
+      summary: List all topics, including inactive ones (UC-MANAGE-TOPICS)
+      security: [{ adminSession: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Topic" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [catalogadmin]
+      summary: Create a topic (UC-MANAGE-TOPICS)
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TopicCreateRequest" }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Topic" }
+        "400":
+          description: Slug not unique.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /catalog/topics/{id}:
+    patch:
+      tags: [catalogadmin]
+      summary: Rename, reorder, deactivate, or re-parent a topic (UC-MANAGE-TOPICS)
+      security: [{ adminSession: [] }]
+      description: >
+        Setting `topicGroupId` to `null` promotes the topic to standalone; setting it to
+        another group's id re-parents it (decision 11) — non-destructive either way, existing
+        `TestimonialSection` rows keep their `topicId` regardless.
+      parameters:
+        - $ref: "#/components/parameters/TopicId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TopicPatchRequest" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Topic" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /catalog/achievements:
+    get:
+      tags: [catalogadmin]
+      summary: List all achievements, including inactive ones (UC-MANAGE-ACHIEVEMENTS)
+      security: [{ adminSession: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Achievement" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [catalogadmin]
+      summary: Create an achievement (UC-MANAGE-ACHIEVEMENTS)
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AchievementCreateRequest" }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Achievement" }
+        "400":
+          description: Slug not unique.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /catalog/achievements/{id}:
+    patch:
+      tags: [catalogadmin]
+      summary: Rename, reorder, or deactivate an achievement (UC-MANAGE-ACHIEVEMENTS)
+      security: [{ adminSession: [] }]
+      parameters:
+        - $ref: "#/components/parameters/AchievementId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AchievementPatchRequest" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Achievement" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /analytics/summary:
+    get:
+      tags: [analytics]
+      summary: Homepage dashboard data (UC-VIEW-DASHBOARD)
+      description: >
+        Read-only aggregate query against domain repositories (decision 14) — no separate
+        analytics data store.
+      responses:
+        "200":
+          description: Aggregate stats over approved testimonials.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnalyticsSummary" }
+
+components:
+  securitySchemes:
+    adminSession:
+      type: apiKey
+      in: cookie
+      name: JSESSIONID
+      description: Established via /admin/auth/otp/verify; principal holds the admin role.
+    visitorSession:
+      type: apiKey
+      in: cookie
+      name: JSESSIONID
+      description: >
+        Established via /submissions/otp/verify; principal holds the visitor role, scoped to
+        the one email that was verified (decision 17).
+
+  parameters:
+    TestimonialId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+    TopicGroupId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+    TopicId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+    AchievementId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+
+  responses:
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Unauthorized:
+      description: No valid session for the required role.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  schemas:
+    Country:
+      type: object
+      properties:
+        code: { type: string, minLength: 2, maxLength: 2, description: "ISO 3166-1 alpha-2" }
+        name: { type: string }
+
+    ContactType:
+      type: object
+      properties:
+        slug: { type: string }
+        label: { type: string, description: "Placeholder/help text shown on the form" }
+
+    TopicGroup:
+      type: object
+      properties:
+        id: { type: integer }
+        label: { type: string }
+        displayOrder: { type: integer }
+        active: { type: boolean }
+
+    Topic:
+      type: object
+      properties:
+        id: { type: integer }
+        topicGroupId: { type: integer, nullable: true, description: "null = standalone (decision 11)" }
+        slug: { type: string }
+        label: { type: string }
+        guidingPrompt: { type: string }
+        displayOrder: { type: integer }
+        active: { type: boolean }
+
+    TopicGroupCreateRequest:
+      type: object
+      required: [label, displayOrder]
+      properties:
+        label: { type: string }
+        displayOrder: { type: integer }
+
+    TopicGroupPatchRequest:
+      type: object
+      properties:
+        label: { type: string }
+        displayOrder: { type: integer }
+        active: { type: boolean }
+
+    TopicCreateRequest:
+      type: object
+      required: [slug, label, guidingPrompt, displayOrder]
+      properties:
+        slug: { type: string }
+        label: { type: string }
+        guidingPrompt: { type: string }
+        displayOrder: { type: integer }
+        topicGroupId: { type: integer, nullable: true, description: "omit or null for a standalone topic" }
+
+    TopicPatchRequest:
+      type: object
+      properties:
+        label: { type: string }
+        guidingPrompt: { type: string }
+        displayOrder: { type: integer }
+        active: { type: boolean }
+        topicGroupId: { type: integer, nullable: true, description: "set to null to promote to standalone" }
+
+    Achievement:
+      type: object
+      properties:
+        id: { type: integer }
+        slug: { type: string }
+        label: { type: string }
+        displayOrder: { type: integer }
+        active: { type: boolean }
+
+    AchievementCreateRequest:
+      type: object
+      required: [slug, label, displayOrder]
+      properties:
+        slug: { type: string }
+        label: { type: string }
+        displayOrder: { type: integer }
+
+    AchievementPatchRequest:
+      type: object
+      properties:
+        label: { type: string }
+        displayOrder: { type: integer }
+        active: { type: boolean }
+
+    TopicCatalogEntry:
+      description: One top-level pick offered on the submission form / gallery filter / dashboard (decision 11).
+      type: object
+      properties:
+        kind: { type: string, enum: [GROUP, STANDALONE] }
+        label: { type: string }
+        groupId:
+          type: integer
+          nullable: true
+          description: Present when kind = GROUP.
+        subtopics:
+          type: array
+          nullable: true
+          description: Present when kind = GROUP — all of this group's active topics.
+          items: { $ref: "#/components/schemas/TopicPick" }
+        topicId:
+          type: integer
+          nullable: true
+          description: Present when kind = STANDALONE.
+        slug: { type: string, nullable: true, description: "Present when kind = STANDALONE." }
+        guidingPrompt: { type: string, nullable: true, description: "Present when kind = STANDALONE." }
+
+    TopicPick:
+      type: object
+      properties:
+        id: { type: integer }
+        slug: { type: string }
+        label: { type: string }
+        guidingPrompt: { type: string }
+
+    PhotoRef:
+      type: object
+      properties:
+        url: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+          maxItems: 10
+          description: Free-form custom tags, in addition to the section's topic tag (decision 2).
+
+    TestimonialSectionView:
+      type: object
+      properties:
+        topicSlug: { type: string }
+        topicLabel: { type: string }
+        answer: { type: string }
+        photos:
+          type: array
+          items: { $ref: "#/components/schemas/PhotoRef" }
+        updated:
+          type: boolean
+          description: >
+            True if this section's text or photos changed since the last approval
+            (`TestimonialSection.modified`, decision 18) — drives the public "updated" badge
+            (UC-EXPAND-TESTIMONIAL) and, for the admin, the moderation-queue diff.
+
+    TestimonialCard:
+      description: >
+        Shape returned by the gallery list endpoint (UC-BROWSE-APPROVED). Deliberately carries
+        no name-derived field at all (decision 10).
+      type: object
+      properties:
+        id: { type: integer }
+        country: { $ref: "#/components/schemas/Country" }
+        recommendationScore: { type: integer, minimum: 0, maximum: 10 }
+        previewText:
+          type: string
+          description: Drawn from the first filled section, for the card preview.
+        thumbnailUrl: { type: string }
+
+    TestimonialDetail:
+      description: >
+        Full public testimonial detail, rendered as an article of its filled sections. Never
+        includes contact-method values or the email (decision 6) — only
+        `hasRevealableContact`. `displayName` appears only here, never on `TestimonialCard`
+        (decision 10).
+      type: object
+      properties:
+        id: { type: integer }
+        displayName:
+          type: string
+          description: "First name + last-initial, e.g. \"David J.\" (decision 10)."
+        country: { $ref: "#/components/schemas/Country" }
+        recommendationScore: { type: integer, minimum: 0, maximum: 10 }
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED] }
+        sections:
+          type: array
+          items: { $ref: "#/components/schemas/TestimonialSectionView" }
+        achievements:
+          type: array
+          items: { type: string }
+          description: Achievement slugs the submitter checked.
+        hasRevealableContact:
+          type: boolean
+          description: Whether GET .../contact would return at least one entry (UC-REVEAL-CONTACT).
+
+    ContactMethodView:
+      description: Shape returned by the public contact-reveal endpoint — only entries marked public.
+      type: object
+      properties:
+        type: { type: string, description: "ContactType slug, e.g. \"whatsapp\"" }
+        value: { type: string }
+
+    ModerationContactMethodView:
+      description: Shape used in moderation views — includes every entry, public or private.
+      type: object
+      properties:
+        type: { type: string }
+        value: { type: string }
+        isPublic: { type: boolean }
+
+    ModerationTestimonialDetail:
+      description: >
+        Full detail as seen by the admin (UC-VIEW-PENDING-QUEUE) — includes identity fields,
+        the decrypted email, every contact method (decisions 6, 10), and the admin-only diff
+        flags (decision 18).
+      type: object
+      properties:
+        id: { type: integer }
+        firstName: { type: string }
+        lastName: { type: string }
+        rollNumber: { type: string }
+        admissionYear: { type: integer }
+        email: { type: string }
+        country: { $ref: "#/components/schemas/Country" }
+        recommendationScore: { type: integer, minimum: 0, maximum: 10 }
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED] }
+        sections:
+          type: array
+          items: { $ref: "#/components/schemas/TestimonialSectionView" }
+        achievements:
+          type: array
+          items: { type: string }
+        contactMethods:
+          type: array
+          items: { $ref: "#/components/schemas/ModerationContactMethodView" }
+        identityModified:
+          type: boolean
+          description: True if any identity field changed since the last approval — always forced this item into the queue (decision 18).
+        scoreModified:
+          type: boolean
+          description: True if recommendationScore changed since the last approval — shown as context only, never why this item is here (decision 18).
+
+    TestimonialSubmission:
+      description: >
+        Logical shape of the multipart submission body for POST /submissions and
+        PUT /submissions/mine, and the response body of GET /submissions/mine.
+      type: object
+      required:
+        [firstName, lastName, rollNumber, admissionYear, countryCode, recommendationScore,
+         sections, dataProcessingConsent]
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        rollNumber: { type: string }
+        admissionYear: { type: integer }
+        countryCode: { type: string, minLength: 2, maxLength: 2 }
+        recommendationScore: { type: integer, minimum: 0, maximum: 10 }
+        sections:
+          type: array
+          minItems: 1
+          description: At least one filled section required (decision 12). Each references a live Topic by slug.
+          items:
+            type: object
+            required: [topicSlug, answer]
+            properties:
+              topicSlug: { type: string }
+              answer: { type: string }
+              photos:
+                type: array
+                description: Indexes into the multipart file parts carrying this section's photos.
+                items:
+                  type: object
+                  properties:
+                    fileRef: { type: string, description: "References a multipart file part" }
+                    tags:
+                      type: array
+                      items: { type: string }
+                      maxItems: 10
+        achievementSlugs:
+          type: array
+          items: { type: string }
+          description: Achievement checkboxes ticked, from the current active Achievement list.
+        contactMethods:
+          type: array
+          description: 0-N contact methods (decision 5), each independently marked public/private.
+          items:
+            type: object
+            required: [typeSlug, value, isPublic]
+            properties:
+              typeSlug: { type: string, description: "ContactType slug, e.g. \"telegram\"" }
+              value: { type: string }
+              isPublic: { type: boolean, default: false }
+        dataProcessingConsent:
+          type: boolean
+          description: Must be true, per decision 7 — request is rejected otherwise.
+
+    AnalyticsSummary:
+      type: object
+      properties:
+        testimonialsByCountry:
+          type: array
+          items:
+            type: object
+            properties:
+              country: { $ref: "#/components/schemas/Country" }
+              count: { type: integer }
+        achievementCounts:
+          type: array
+          items:
+            type: object
+            properties:
+              achievement: { $ref: "#/components/schemas/Achievement" }
+              count: { type: integer }
+        testimonialCountsByTopic:
+          type: array
+          description: Counts per top-level topic-catalog entry — a group or a standalone topic (decision 11).
+          items:
+            type: object
+            properties:
+              label: { type: string }
+              count: { type: integer }
+        totalApprovedTestimonials: { type: integer }
+        averageRecommendationScore: { type: number }
+
+    ErrorResponse:
+      description: Uniform error shape returned by @RestControllerAdvice (per CLAUDE.md baseline).
+      type: object
+      properties:
+        timestamp: { type: string, format: date-time }
+        status: { type: integer }
+        error: { type: string }
+        message: { type: string }
+        path: { type: string }
