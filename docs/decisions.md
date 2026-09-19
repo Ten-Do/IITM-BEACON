@@ -13,6 +13,7 @@ decision — it is not kept as history.
 ---
 
 ## 1. Country reference data
+
 **Decision:** `Country` is a reference table keyed by its ISO 3166-1 alpha-2 code (e.g. `IN`,
 `US`, `DE`), with a `name` column holding the canonical English short name. The table is
 seeded once, in full, via a migration — it is not grown dynamically from submissions.
@@ -22,6 +23,7 @@ avoids free-text typos/casing drift, and the alpha-2 code is directly usable by 
 visualization libraries for the analytics dashboard's country map.
 
 ## 2. Photo model
+
 **Decision:** Uploaded photos are stored on the filesystem, on a directory mounted as a Docker
 volume — the DB stores the relative file path, not the image bytes. A `Photo` belongs to a
 `TestimonialSection`, not directly to a `Testimonial`; deletion cascades transitively (deleting
@@ -43,6 +45,7 @@ detail (e.g. a specific dish, a specific event) that no fixed topic list could a
 Count/size limits live in env vars, not code, so they can change without a redeploy.
 
 ## 3. Rejected-testimonial retention
+
 **Decision:** Rejecting a testimonial is a soft delete: status becomes `REJECTED`, immediately
 hidden from the public gallery and the admin pending queue. A scheduled job, running weekly,
 hard-deletes `REJECTED` testimonials (row, sections, and photo files) 30 days after rejection.
@@ -52,6 +55,7 @@ converging on permanent removal, without manual cleanup. Weekly is frequent enou
 the 30-day window and keeps the job's DB load low.
 
 ## 4. Admin authentication
+
 **Decision:** Exactly one admin account exists. Its email lives in config (`ADMIN_EMAIL` env
 var) — no password, no `User` table. Login is passwordless via a 6-character alphanumeric OTP:
 emailed to `ADMIN_EMAIL` in real environments (logged instead of sent in dev/test); held
@@ -66,6 +70,7 @@ the same in-memory idea has to be keyed and concurrent-safe because many visitor
 live OTP at once.
 
 ## 5. Contact method model
+
 **Decision:** Contact info is modeled as two tables, not a single field on `Testimonial`.
 `ContactType` is a seed-only reference table (`slug`, `label`/placeholder, `display_order`,
 `active`) following the same pattern as `Topic` (decision 11) but with no admin-catalog UI — a
@@ -79,11 +84,12 @@ independently marked public or private via its own `is_public` boolean. An entry
 ...), each independently revealable — a single field can't represent that. Exposure should be
 the submitter's explicit choice made per contact method (they may want their email public but
 their Instagram private), not one all-or-nothing flag, and not an automatic consequence of
-admin approval either way. No admin use case manages contact *types*, unlike topics/
+admin approval either way. No admin use case manages contact _types_, unlike topics/
 achievements, so it doesn't need the heavier catalog-admin treatment (decision 9) —
 seed-and-edit-directly is enough, matching `Country`.
 
 ## 6. Encryption and equality lookup
+
 **Decision:** `Testimonial.email` and every `ContactMethod.value` are encrypted at rest via a
 shared application-level `AttributeConverter` (AES, key from an env var) — the only fields
 treated this way. Neither is included in a normal browse/detail response: contact-method values
@@ -104,6 +110,7 @@ a deterministic HMAC-based lookup hash solves that without weakening the encrypt
 at-rest storage/display.
 
 ## 7. Mandatory data-processing consent
+
 **Decision:** Submission requires a mandatory checkbox — "I agree to the personal data
 processing policy." If unchecked, the form does not submit and nothing is persisted. This is a
 separate consent from a submitter's per-entry choice to mark a contact method public (decision
@@ -114,6 +121,7 @@ processed at all; that's distinct from whether any particular contact method is 
 later.
 
 ## 8. Search and filtering
+
 **Decision:** The public gallery supports a country filter, free-text search (over section
 answer text and the submitter's first/last name — decision 10), and a topic filter, all
 combinable.
@@ -122,6 +130,7 @@ combinable.
 follows directly from testimonials now being organized into tagged topic sections.
 
 ## 9. Vertical slice boundaries
+
 **Decision:** Feature slices are `gallery`, `submission` (including visitor login/session —
 decision 17), `moderation`, `catalogadmin`, `adminauth`, and `analytics`, all depending only on
 a shared `domain` package (entities/repositories) and `common` (cross-cutting infra). No slice
@@ -139,6 +148,7 @@ reference-data curation and testimonial-workflow moderation are different concer
 both are admin-only.
 
 ## 10. Identity fields and public display
+
 **Decision:** A testimonial's identification fields are `first_name`, `last_name`,
 `roll_number`, and `admission_year`, plus `email` (sourced from the visitor's login, decision
 17, never typed on the form). All stay plain text — not specially encrypted, per `scope.md` —
@@ -156,6 +166,7 @@ from a quick scroll through the gallery; showing it only once a visitor has deli
 one article is a smaller exposure.
 
 ## 11. Topic and topic-group catalog model
+
 **Decision:** `Topic` is a database-driven reference table (`slug`, `label`, `guiding_prompt`,
 `display_order`, `active`), not a Java enum or hardcoded list, optionally grouped: a nullable
 `topic_group_id` FK to a `TopicGroup` table (`id`, `label`, `display_order`, `active`) — `null`
@@ -177,6 +188,7 @@ this safe for the admin to do day-to-day. Grouping keeps a flat list of ~46 leaf
 letting a testimonial fill in as many subtopics as it wants once a group is picked.
 
 ## 12. Testimonial content model
+
 **Decision:** A testimonial's content is not a single free-text field. It is a set of
 `TestimonialSection` rows (`testimonial_id`, `topic_id`, `answer_text`), each optional, with at
 least one required to submit. A testimonial matches a topic filter on the public gallery if it
@@ -187,6 +199,7 @@ make the form easier to start, and double as a natural browsing/filtering dimens
 visitors.
 
 ## 13. Achievement checklist
+
 **Decision:** Separate from topic sections: `Achievement` is a database-driven reference table
 following the same pattern as `Topic` (`slug`, `label`, `display_order`, `active`), joined to a
 testimonial via `TestimonialAchievement`. Rendered as checkboxes at the very end of the
@@ -197,6 +210,7 @@ signals (e.g. "made new friends here") that are cheap for the submitter to tick 
 usable as aggregate stats.
 
 ## 14. Analytics slice
+
 **Decision:** A dedicated `analytics` slice serves the homepage dashboard (a map of countries
 with testimonials, plus numeric stat cards over achievements, recommendation scores, and
 testimonial counts per top-level topic group/standalone topic) via direct, read-only queries
@@ -209,6 +223,7 @@ this project doesn't need yet, given `analytics` already depends on nothing but 
 decision 9.
 
 ## 15. Recommendation score
+
 **Decision:** Every testimonial includes a required 0–10 recommendation score (one per
 testimonial, not per section), shown as a slider with a fixed label and colour per point
 (see `use-cases.md`), running from red (0) to green (10).
@@ -219,6 +234,7 @@ review-hub framing. Labels are deliberately worded so a merely lukewarm experien
 6–10, the way NPS-style scales do.
 
 ## 16. Future integration
+
 **Decision:** A future merge with a separate, independently-developed sibling service (same
 tech stack) is anticipated, targeting a single unified Spring Boot application.
 `adminauth` is therefore designed as a self-contained, reusable module — the same admin
@@ -230,17 +246,18 @@ need rework later — without taking on any dependency on, or responsibility for
 service's own scope.
 
 ## 17. Visitor authentication
+
 **Decision:** A Visitor becomes an Authenticated Visitor via a passwordless, 6-character
 alphanumeric email OTP (UC-VISITOR-LOGIN) — the same style of code as the admin's (decision 4),
 but held differently: OTP state (`{code, expiresAt, attemptsRemaining}`) lives in an in-memory,
 concurrent-safe store (e.g. a Caffeine cache) keyed by the plaintext email, with each entry's
 TTL matching the OTP's own expiry — rather than the admin's single mutable field. The OTP
-*request* endpoint is additionally rate-limited per email and per IP (also in-memory, e.g. via
+_request_ endpoint is additionally rate-limited per email and per IP (also in-memory, e.g. via
 Bucket4j), and responds identically whether or not the email has an existing testimonial. On
 successful verify, the system establishes a visitor-scoped session (a distinct principal/role
 from the admin's) and looks up whether a testimonial already exists for that email (via
 `email_lookup_hash` — decision 6) to route to create vs. edit. Submission doesn't separately
-need a *dedicated* anti-spam/email-verification step: this OTP requirement — every submitter
+need a _dedicated_ anti-spam/email-verification step: this OTP requirement — every submitter
 must verify their email before they can even open the create/edit form — serves that purpose
 for free.
 
@@ -259,12 +276,13 @@ its one testimonial, per `scope.md` — but it happens to satisfy that original 
 no separate mechanism is needed.
 
 ## 18. Moderation workflow shape
+
 **Decision:** Moderation is approve/reject one testimonial at a time (UC-APPROVE-TESTIMONIAL,
 UC-REJECT-TESTIMONIAL) — there is no bulk-approve/bulk-reject action.
 
 Separately, "what changed since the last approval" is tracked via explicit `modified` boolean
 flags, not a stored snapshot diffed on read: `TestimonialSection.modified` is set true when an
-edit changes that section's `answer_text` *or its photos* (or adds a new section) — the flag
+edit changes that section's `answer_text` _or its photos_ (or adds a new section) — the flag
 only matters, and is only ever read, once the testimonial has been approved at least once;
 `Testimonial.identity_modified` is set true when any of
 `first_name`/`last_name`/`roll_number`/`admission_year` changes. Both always drive full
@@ -300,10 +318,11 @@ checkboxes, or a contact method's visibility/value carry no such judgment call, 
 edits behind a human review was pure overhead. Country/achievements/contacts get no tracking at
 all; `score_modified` is kept as a tracked, admin-visible flag regardless — a deliberate choice,
 not derived from the no-tracking-for-non-gating-fields reasoning above. Restricting the
-short-circuit to already-`APPROVED` testimonials keeps it from ever skipping the *first* real
+short-circuit to already-`APPROVED` testimonials keeps it from ever skipping the _first_ real
 review a testimonial gets.
 
 ## 19. Static analysis & architecture linting tooling
+
 **Decision:** Four static-analysis tools, all invoked only through dockerized `make` targets
 (`make fix`, `make checkstyle`, `make spotbugs`, `make archunit`, `make static-analysis`) via the
 existing `maven` tooling service in `docker-compose.yml` — never on the host, never bound into the
@@ -335,7 +354,6 @@ tests, so it runs as part of the normal test suite too).
   `spotless:apply` to mechanically correct import order and remove unused imports (the Java
   analogue of `eslint --fix`/`prettier --write`), configured with only the `importOrder`/
   `removeUnusedImports` steps so it can't introduce unrelated formatting diffs.
-- **PMD and OWASP Dependency-Check were deliberately not adopted** — see `BACKLOG.md` BL-005.
 
 The one ArchUnit rule that was already violated when these tools were introduced
 (`VisitorAuthController` calling `TestimonialRepository` directly, instead of through a not-yet-
