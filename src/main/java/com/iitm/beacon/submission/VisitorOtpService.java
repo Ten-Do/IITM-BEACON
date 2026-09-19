@@ -48,7 +48,9 @@ public class VisitorOtpService {
         String normalized = EmailNormalizer.normalize(rawEmail);
         String code = codeGenerator.generate();
         String hash = sha256Hex(code);
-        cache.put(normalized, new VisitorOtpState(hash, clock.instant().plus(otpProperties.ttl()), otpProperties.maxAttempts()));
+        cache.put(
+                normalized,
+                new VisitorOtpState(hash, clock.instant().plus(otpProperties.ttl()), otpProperties.maxAttempts()));
         otpMailer.sendOtp(normalized, code);
     }
 

@@ -29,7 +29,11 @@ import lombok.Setter;
 @Entity
 @Table(
         name = "photo_tag",
-        uniqueConstraints = {@UniqueConstraint(name = "uk_photo_tag_photo_id_tag_text", columnNames = {"photo_id", "tag_text"})})
+        uniqueConstraints = {
+            @UniqueConstraint(
+                    name = "uk_photo_tag_photo_id_tag_text",
+                    columnNames = {"photo_id", "tag_text"})
+        })
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

@@ -71,8 +71,8 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void constraintViolationException_mapsTo400() {
-        ConstraintViolationException ex =
-                new ConstraintViolationException("recommendationScore: must be between 0 and 10", Collections.emptySet());
+        ConstraintViolationException ex = new ConstraintViolationException(
+                "recommendationScore: must be between 0 and 10", Collections.emptySet());
 
         ResponseEntity<ErrorResponse> response = handler.handleConstraintViolation(ex, requestFor("/api/testimonials"));
 

@@ -43,7 +43,8 @@ class OtpServiceTest {
     void requestOtpWithMatchingEmailGeneratesStateAndSendsMail() {
         otpService.requestOtp(ADMIN_EMAIL);
 
-        verify(otpMailer, times(1)).sendOtp(org.mockito.ArgumentMatchers.eq(ADMIN_EMAIL), org.mockito.ArgumentMatchers.anyString());
+        verify(otpMailer, times(1))
+                .sendOtp(org.mockito.ArgumentMatchers.eq(ADMIN_EMAIL), org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test
@@ -62,7 +63,8 @@ class OtpServiceTest {
     void requestOtpWithNonMatchingEmail_isANoOp_andDoesNotSendMail() {
         otpService.requestOtp("someone-else@example.com");
 
-        verify(otpMailer, never()).sendOtp(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+        verify(otpMailer, never())
+                .sendOtp(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test

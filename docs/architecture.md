@@ -103,11 +103,11 @@ com.iitm.beacon
 │                      error-response DTO, base exceptions, EncryptedValueConverter (AES,
 │                      decision 6, shared by Testimonial.email and ContactMethod.value),
 │                      EmailLookupHashService (HMAC-SHA256, decision 6).
-├── config/            Spring Security config (separate admin and visitor principals/roles),
-│                      mail (JavaMailSender) config, @EnableScheduling setup, multipart/upload
-│                      size config, env-driven @ConfigurationProperties (admin OTP ttl/max
-│                      attempts, visitor OTP ttl/max-attempts/request-rate, photo count/size
-│                      limits, cleanup cron, encryption key, HMAC pepper).
+├── config/            Spring Security config (SecurityConfig; separate admin and visitor
+│                      principals/roles), mail (JavaMailSender) config, @EnableScheduling setup,
+│                      multipart/upload size config, env-driven @ConfigurationProperties (admin
+│                      OTP ttl/max attempts, visitor OTP ttl/max-attempts/request-rate, photo
+│                      count/size limits, cleanup cron, encryption key, HMAC pepper).
 ├── domain/
 │   ├── testimonial/   Testimonial, TestimonialSection, Photo, PhotoTag, ContactMethod
 │   │                  entities, TestimonialStatus enum, their repositories.
@@ -137,7 +137,7 @@ com.iitm.beacon
 │                      CatalogAdminController, CatalogAdminService, TopicGroupDto, TopicDto,
 │                      AchievementDto.
 ├── adminauth/         Admin OTP request/verify, session establishment (decision 4).
-│                      AdminAuthController, OtpService (in-memory, single admin), SecurityConfig.
+│                      AdminAuthController, OtpService (in-memory, single admin).
 └── analytics/         Homepage dashboard: country map + achievement/score/topic-group stat
                        cards.
                        AnalyticsController, AnalyticsService (read-only aggregate queries).

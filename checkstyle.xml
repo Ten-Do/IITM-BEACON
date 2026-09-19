@@ -1,0 +1,88 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+    "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+    "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<!--
+  Trimmed ruleset: catches real issues (unused/star imports, import order,
+  whitespace, naming, modifier order, block hygiene) without demanding
+  Javadoc coverage — the stock sun_checks/google_checks rulesets bundle a
+  JavadocMethod/JavadocType/MissingJavadocMethod family that would bury real
+  findings under Javadoc-missing noise on this codebase.
+-->
+<module name="Checker">
+  <property name="charset" value="UTF-8"/>
+  <property name="severity" value="warning"/>
+  <property name="fileExtensions" value="java"/>
+
+  <module name="LineLength">
+    <property name="max" value="120"/>
+    <property name="ignorePattern" value="^import .*$"/>
+  </module>
+  <module name="FileTabCharacter"/>
+
+  <!-- ArchUnit's own idiom names @ArchTest fields in lower_snake_case so the
+       field name reads as a sentence in JUnit test reports (e.g.
+       "no_field_injection"), not as a constant — ConstantName's
+       UPPER_SNAKE_CASE default doesn't apply to that convention. -->
+  <module name="SuppressionSingleFilter">
+    <property name="checks" value="ConstantName"/>
+    <property name="files" value="[\\/]architecture[\\/]"/>
+  </module>
+
+  <module name="TreeWalker">
+    <!-- Imports -->
+    <module name="AvoidStarImport"/>
+    <module name="UnusedImports"/>
+    <module name="RedundantImport"/>
+    <module name="ImportOrder">
+      <!-- Matches the codebase's actual style: static imports first, one
+           blank line, then a single alphabetized block of regular imports
+           (no further blank-line separation within that block). -->
+      <property name="groups" value="*"/>
+      <property name="ordered" value="true"/>
+      <property name="separated" value="true"/>
+      <property name="option" value="top"/>
+      <property name="sortStaticImportsAlphabetically" value="true"/>
+    </module>
+
+    <!-- Whitespace -->
+    <module name="WhitespaceAround"/>
+    <module name="WhitespaceAfter"/>
+    <module name="NoWhitespaceBefore"/>
+    <module name="GenericWhitespace"/>
+
+    <!-- Naming -->
+    <module name="TypeName"/>
+    <module name="MethodName">
+      <!-- Allows the codebase's established test-naming convention,
+           methodUnderTest_condition_expectedResult (e.g.
+           "verifyWithWrongCode_isRejectedAsWrongCode"), alongside plain
+           camelCase for non-test methods. -->
+      <property name="format" value="^[a-z][a-zA-Z0-9_]*$"/>
+    </module>
+    <module name="MemberName"/>
+    <module name="ParameterName"/>
+    <module name="LocalVariableName"/>
+    <module name="ConstantName">
+      <!-- Allows the SLF4J "log" field convention (also what Lombok's
+           @Slf4j generates), alongside standard UPPER_SNAKE_CASE constants. -->
+      <property name="format" value="^log$|^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"/>
+    </module>
+    <module name="PackageName"/>
+
+    <!-- Modifiers -->
+    <module name="ModifierOrder"/>
+    <module name="RedundantModifier"/>
+
+    <!-- Blocks / coding -->
+    <module name="NeedBraces"/>
+    <module name="LeftCurly"/>
+    <module name="RightCurly"/>
+    <module name="EmptyBlock">
+      <property name="option" value="text"/>
+    </module>
+    <module name="EqualsHashCode"/>
+    <module name="SimplifyBooleanExpression"/>
+    <module name="OneStatementPerLine"/>
+  </module>
+</module>

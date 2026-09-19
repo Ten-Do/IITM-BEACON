@@ -20,10 +20,15 @@ import org.springframework.stereotype.Component;
  * storage; {@link #convertToEntityAttribute(String)} reverses that. GCM's
  * authentication tag makes a tampered ciphertext fail to decrypt rather than
  * silently returning garbage.
+ *
+ * <p>Final: the constructor validates {@code cryptoProperties} and can throw
+ * before fully initializing the object; a non-final class would leave that
+ * exposed to the finalizer-attack pattern (a subclass overriding {@code
+ * finalize()} could observe/resurrect a partially-constructed instance).
  */
 @Component
 @Converter
-public class EncryptedValueConverter implements AttributeConverter<String, String> {
+public final class EncryptedValueConverter implements AttributeConverter<String, String> {
 
     private static final String CIPHER_ALGORITHM = "AES/GCM/NoPadding";
     private static final String KEY_ALGORITHM = "AES";

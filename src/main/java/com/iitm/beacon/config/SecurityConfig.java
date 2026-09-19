@@ -1,4 +1,4 @@
-package com.iitm.beacon.adminauth;
+package com.iitm.beacon.config;
 
 import com.iitm.beacon.common.error.RestAccessDeniedHandler;
 import com.iitm.beacon.common.error.RestAuthenticationEntryPoint;
@@ -14,9 +14,8 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.security.web.context.SecurityContextRepository;
 
 /**
- * App-wide Spring Security configuration. Lives in {@code adminauth} per the
- * locked package layout (docs/architecture.md §3), even though it configures
- * security for every slice.
+ * App-wide Spring Security configuration, even though it configures security
+ * for every slice (docs/architecture.md §3).
  */
 @Configuration
 @EnableWebSecurity

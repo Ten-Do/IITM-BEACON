@@ -23,11 +23,11 @@ Full permission/workflow detail: `docs/scope.md` (actors, constraints) and `docs
 
 - A testimonial is never publicly visible until an admin approves it.
 - Architecture, DB schema, API contracts, and design decisions live in `docs/`.
-- Speak with me on Russian, but all text in repository should be on English.
+- Speak with me on Russian (plans and questions should be written on Russian), but all text in repository should be on English.
 
 ## Design principle
 
-- Layered (Controller → Service → Repository) *and* sliced by feature — each layer is split into vertical slices, not one monolithic package per layer. Concrete slice boundaries get defined during architecture design (`docs/architecture.md`), not assumed here.
+- Layered (Controller → Service → Repository) _and_ sliced by feature — each layer is split into vertical slices, not one monolithic package per layer. Concrete slice boundaries get defined during architecture design (`docs/architecture.md`), not assumed here.
 
 ## Docs & backlog
 

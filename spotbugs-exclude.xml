@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+  <!-- Lombok-generated getters/setters/builders on JPA entities intentionally
+       expose/accept internal mutable state (collections, Instant, etc.) —
+       that is simply how JPA entity accessors work. Scoped to domain.. only,
+       so hand-written business logic elsewhere is still fully checked. -->
+  <Match>
+    <Package name="~com\.iitm\.beacon\.domain\..*"/>
+    <Or>
+      <Bug pattern="EI_EXPOSE_REP"/>
+      <Bug pattern="EI_EXPOSE_REP2"/>
+    </Or>
+  </Match>
+
+  <!-- ObjectMapper is a shared, effectively-immutable-in-practice Spring
+       bean (its configuration is fixed once at application startup),
+       constructor-injected exactly as any other collaborator — not
+       attacker-controlled mutable state. Defensively copying it per
+       instance would add real cost (Jackson module/config re-resolution)
+       for no actual safety benefit. Scoped to the two classes that hold it
+       this way, not a package-wide exclusion. -->
+  <Match>
+    <Or>
+      <Class name="com.iitm.beacon.common.error.RestAccessDeniedHandler"/>
+      <Class name="com.iitm.beacon.common.error.RestAuthenticationEntryPoint"/>
+    </Or>
+    <Field name="objectMapper"/>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+  </Match>
+</FindBugsFilter>

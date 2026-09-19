@@ -19,6 +19,8 @@
 
   <properties>
     <java.version>21</java.version>
+    <archunit.version>1.4.2</archunit.version>
+    <checkstyle-core.version>10.26.1</checkstyle-core.version>
   </properties>
 
   <dependencies>
@@ -93,6 +95,12 @@
       <artifactId>spring-security-test</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <version>${archunit.version}</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
@@ -107,6 +115,65 @@
               <artifactId>lombok</artifactId>
             </exclude>
           </excludes>
+        </configuration>
+      </plugin>
+
+      <!-- Static analysis plugins below are deliberately not bound to any
+           lifecycle phase (no <executions>) — invoked only via explicit
+           goals from `make checkstyle` / `make spotbugs`, so `mvn test` /
+           `mvn package` stay exactly as fast as they are today. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+        <version>3.6.0</version>
+        <dependencies>
+          <dependency>
+            <groupId>com.puppycrawl.tools</groupId>
+            <artifactId>checkstyle</artifactId>
+            <version>${checkstyle-core.version}</version>
+          </dependency>
+        </dependencies>
+        <configuration>
+          <configLocation>checkstyle.xml</configLocation>
+          <includeTestSourceDirectory>true</includeTestSourceDirectory>
+          <consoleOutput>true</consoleOutput>
+          <violationSeverity>warning</violationSeverity>
+          <failOnViolation>true</failOnViolation>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>com.github.spotbugs</groupId>
+        <artifactId>spotbugs-maven-plugin</artifactId>
+        <version>4.9.3.0</version>
+        <configuration>
+          <effort>Max</effort>
+          <threshold>Medium</threshold>
+          <excludeFilterFile>spotbugs-exclude.xml</excludeFilterFile>
+        </configuration>
+        <dependencies>
+          <dependency>
+            <groupId>com.h3xstream.findsecbugs</groupId>
+            <artifactId>findsecbugs-plugin</artifactId>
+            <version>1.14.0</version>
+          </dependency>
+        </dependencies>
+      </plugin>
+
+      <!-- Auto-fixer (not just a checker) for the subset of Checkstyle
+           findings that are safely, mechanically fixable: import order and
+           unused imports. Does not reformat anything else (no
+           googleJavaFormat/eclipse step), so it can't introduce unrelated
+           whitespace diffs. Invoked only via `make fix`. -->
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>3.10.2</version>
+        <configuration>
+          <java>
+            <importOrder/>
+            <removeUnusedImports/>
+          </java>
         </configuration>
       </plugin>
     </plugins>

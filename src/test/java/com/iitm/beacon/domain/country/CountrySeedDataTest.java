@@ -23,7 +23,11 @@ class CountrySeedDataTest extends AbstractRepositoryTest {
                 .get()
                 .extracting(Country::getName)
                 .isEqualTo("United States of America");
-        assertThat(countryRepository.findById("DE")).isPresent().get().extracting(Country::getName).isEqualTo("Germany");
+        assertThat(countryRepository.findById("DE"))
+                .isPresent()
+                .get()
+                .extracting(Country::getName)
+                .isEqualTo("Germany");
     }
 
     @Test

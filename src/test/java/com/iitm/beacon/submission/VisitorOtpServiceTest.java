@@ -2,7 +2,6 @@ package com.iitm.beacon.submission;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -183,8 +182,9 @@ class VisitorOtpServiceTest {
 
         assertThat(storedHash).isNotNull();
         assertThat(storedHash).isNotEqualTo(code);
-        String expectedHash = HexFormat.of()
-                .formatHex(MessageDigest.getInstance("SHA-256").digest(code.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        byte[] codeBytes = code.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        String expectedHash =
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(codeBytes));
         assertThat(storedHash).isEqualTo(expectedHash);
     }
 

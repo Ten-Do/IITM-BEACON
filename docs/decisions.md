@@ -302,3 +302,66 @@ all; `score_modified` is kept as a tracked, admin-visible flag regardless — a 
 not derived from the no-tracking-for-non-gating-fields reasoning above. Restricting the
 short-circuit to already-`APPROVED` testimonials keeps it from ever skipping the *first* real
 review a testimonial gets.
+
+## 19. Static analysis & architecture linting tooling
+**Decision:** Four static-analysis tools, all invoked only through dockerized `make` targets
+(`make fix`, `make checkstyle`, `make spotbugs`, `make archunit`, `make static-analysis`) via the
+existing `maven` tooling service in `docker-compose.yml` — never on the host, never bound into the
+default `mvn test`/`mvn package` lifecycle (ArchUnit is the one exception: it's plain JUnit 5
+tests, so it runs as part of the normal test suite too).
+
+- **ArchUnit** (`archunit-junit5` 1.4.2) — the architecture linter. Six rules in
+  `src/test/java/com/iitm/beacon/architecture/`: no feature slice depends on another slice
+  directly (one rule per slice, `SliceIsolationTest`); `domain` holds no `@Service`/`@Controller`
+  classes (`DomainPurityTest`); `*Controller` classes don't depend on `*Repository` classes, are
+  properly annotated, and live in a feature-slice package (`LayeringTest`); no field-level
+  `@Autowired` injection, a regression guard (`InjectionStyleTest`); any `@EnableWebSecurity`
+  class lives in `config..` (`SecurityConfigLocationTest`, added together with moving
+  `SecurityConfig` there — see below).
+- **Checkstyle** (`maven-checkstyle-plugin` 3.6.0, engine overridden to `checkstyle` 10.26.1) — a
+  trimmed custom ruleset (`checkstyle.xml`, repo root) covering imports, whitespace, naming, and
+  block hygiene, deliberately excluding the stock rulesets' Javadoc-coverage checks. Two naming
+  exceptions codify existing, deliberate conventions rather than fighting them: the SLF4J `log`
+  field name, and ArchUnit's `lower_snake_case` `@ArchTest` field idiom (the latter scoped to the
+  `architecture` package only).
+- **SpotBugs** (`spotbugs-maven-plugin` 4.9.3.0) with **FindSecBugs** (`findsecbugs-plugin`
+  1.14.0) for security-focused bug patterns — relevant given this app's hand-rolled AES/HMAC
+  crypto and OTP generation. Two narrow, justified exclusions (`spotbugs-exclude.xml`):
+  `EI_EXPOSE_REP`/`EI_EXPOSE_REP2` scoped to `domain..` only, for Lombok-generated JPA entity
+  accessors; `EI_EXPOSE_REP2` on the `objectMapper` field of `RestAccessDeniedHandler`/
+  `RestAuthenticationEntryPoint` specifically, a constructor-injected shared Spring bean, not
+  attacker-controlled mutable state.
+- **Spotless** (`spotless-maven-plugin` 3.10.2) — not a checker, a fixer: `make fix` runs
+  `spotless:apply` to mechanically correct import order and remove unused imports (the Java
+  analogue of `eslint --fix`/`prettier --write`), configured with only the `importOrder`/
+  `removeUnusedImports` steps so it can't introduce unrelated formatting diffs.
+- **PMD and OWASP Dependency-Check were deliberately not adopted** — see `BACKLOG.md` BL-005.
+
+The one ArchUnit rule that was already violated when these tools were introduced
+(`VisitorAuthController` calling `TestimonialRepository` directly, instead of through a not-yet-
+built `SubmissionService`) is **left failing, not frozen** — `mvn test`/`make archunit` stay red
+until `SubmissionService` exists; this is the only red check in the whole suite as of this
+decision. Separately, introducing the `SecurityConfigLocationTest` rule surfaced a real
+contradiction in this file's sibling `architecture.md` §3 (the `config/` bullet said Spring
+Security config belongs there; the `adminauth/` bullet listed `SecurityConfig` as one of its own
+files) — resolved by moving `SecurityConfig` (and its `H2ConsoleSecurityTest`) from `adminauth` to
+`config`, matching `architecture.md`'s `config/` description, and correcting the `adminauth/`
+bullet. All findings from Checkstyle/SpotBugs' first real run were fixed immediately rather than
+left as debt: `make fix` handled the mechanical import issues; 7 over-length lines were rewrapped
+by hand; `EncryptedValueConverter` was made `final` (the standard remedy for SpotBugs'
+`CT_CONSTRUCTOR_THROW` — its constructor can throw, and a non-final class would leave that exposed
+to a finalizer-attack subclass).
+
+**Rationale:** ArchUnit is the standard, actively-maintained way to turn documented architecture
+rules (decision 9's slice isolation, CLAUDE.md's layering/injection rules) into an executable,
+continuously-enforced regression guard instead of a convention that only lives in a doc someone
+has to remember to re-read. Checkstyle and SpotBugs were chosen over PMD as a second style/bug
+linter because their coverage already overlaps enough at this codebase's size that a third tool
+would mostly add noise and another config file to maintain, not new findings (BL-005 revisits
+this once the codebase is bigger). Keeping every tool Docker/`make`-gated and out of the default
+Maven lifecycle preserves this project's fast TDD loop (`mvn test`/`./mvnw test` unaffected by
+Checkstyle/SpotBugs); ArchUnit is the deliberate exception because it's not an external tool, just
+ordinary fast JUnit tests, so gating it separately would only add friction without protecting
+anything. Leaving the one known violation failing (instead of using ArchUnit's `freeze()`) was a
+deliberate choice for honesty over a clean build: a frozen violation is easy to forget, and this
+one is already scheduled to be resolved by `SubmissionService` (M3).
