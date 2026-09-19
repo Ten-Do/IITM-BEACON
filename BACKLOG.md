@@ -2,6 +2,15 @@
 
 ## TODO
 
+- **BL-004**: Wire up real CSRF protection once a frontend exists — M2 disabled CSRF
+  (`SecurityConfig`, `.csrf(AbstractHttpConfigurer::disable)`) for the cookie-session JSON API
+  (`JSESSIONID`, per `api-spec.yaml`'s `adminSession`/`visitorSession` schemes) ahead of any wired
+  frontend. Interim mitigation is only `Content-Type: application/json` + `SameSite` cookie
+  attributes, not a real CSRF token exchange. Once a frontend is being integrated, add Spring
+  Security's CSRF token support (e.g. cookie-to-header token pattern) and have the frontend
+  read/send the token on all state-changing requests. Decided with the user during M2 planning
+  (2026-09-19).
+
 - **BL-003**: Testcontainers-Postgres migration-parity integration test — M1's automated tests
   run only against H2 (`NON_KEYWORDS=VALUE;MODE=PostgreSQL`); nothing proves the same Flyway
   migration set applies cleanly against a real Postgres instance. Add the

@@ -107,6 +107,57 @@ class GlobalExceptionHandlerTest {
         assertThat(body.message()).isEqualTo("An unexpected error occurred");
     }
 
+    @Test
+    void tooManyRequestsException_mapsTo429WithGivenMessage() {
+        TooManyRequestsException ex = new TooManyRequestsException("Too many OTP requests in a short window.");
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleTooManyRequests(ex, requestFor("/api/admin/auth/otp/request"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        ErrorResponse body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.status()).isEqualTo(429);
+        assertThat(body.message()).isEqualTo("Too many OTP requests in a short window.");
+        assertThat(body.path()).isEqualTo("/api/admin/auth/otp/request");
+    }
+
+    @Test
+    void tooManyRequestsException_blankMessage_fallsBackToDefaultMessage() {
+        TooManyRequestsException ex = new TooManyRequestsException("");
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleTooManyRequests(ex, requestFor("/api/admin/auth/otp/request"));
+
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message()).isEqualTo("Too many OTP requests in a short window.");
+    }
+
+    @Test
+    void otpVerificationFailedException_mapsTo401WithGivenMessage() {
+        OtpVerificationFailedException ex = new OtpVerificationFailedException("Wrong or expired code.");
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleOtpVerificationFailed(ex, requestFor("/api/admin/auth/otp/verify"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        ErrorResponse body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.status()).isEqualTo(401);
+        assertThat(body.message()).isEqualTo("Wrong or expired code.");
+    }
+
+    @Test
+    void otpVerificationFailedException_blankMessage_fallsBackToDefaultMessage() {
+        OtpVerificationFailedException ex = new OtpVerificationFailedException(null);
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleOtpVerificationFailed(ex, requestFor("/api/admin/auth/otp/verify"));
+
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message()).isEqualTo("Wrong or expired code.");
+    }
+
     private static class DummyTarget {
         @SuppressWarnings("unused")
         void dummyMethod(String arg) {

@@ -27,6 +27,8 @@ public class GlobalExceptionHandler {
     private static final String GENERIC_ERROR_MESSAGE = "An unexpected error occurred";
     private static final String NOT_FOUND_FALLBACK_MESSAGE = "Resource not found";
     private static final String VALIDATION_FALLBACK_MESSAGE = "Validation failed";
+    private static final String TOO_MANY_REQUESTS_FALLBACK_MESSAGE = "Too many OTP requests in a short window.";
+    private static final String OTP_VERIFICATION_FAILED_FALLBACK_MESSAGE = "Wrong or expired code.";
 
     private final Clock clock;
 
@@ -52,6 +54,24 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleConstraintViolation(
             ConstraintViolationException ex, HttpServletRequest request) {
         return build(HttpStatus.BAD_REQUEST, safeMessage(ex.getMessage(), VALIDATION_FALLBACK_MESSAGE), request);
+    }
+
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<ErrorResponse> handleTooManyRequests(
+            TooManyRequestsException ex, HttpServletRequest request) {
+        return build(
+                HttpStatus.TOO_MANY_REQUESTS,
+                safeMessage(ex.getMessage(), TOO_MANY_REQUESTS_FALLBACK_MESSAGE),
+                request);
+    }
+
+    @ExceptionHandler(OtpVerificationFailedException.class)
+    public ResponseEntity<ErrorResponse> handleOtpVerificationFailed(
+            OtpVerificationFailedException ex, HttpServletRequest request) {
+        return build(
+                HttpStatus.UNAUTHORIZED,
+                safeMessage(ex.getMessage(), OTP_VERIFICATION_FAILED_FALLBACK_MESSAGE),
+                request);
     }
 
     @ExceptionHandler(Exception.class)

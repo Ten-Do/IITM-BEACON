@@ -7,8 +7,16 @@ spring:
   h2:
     console:
       enabled: true
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:dev}
+    password: ${MAIL_PASSWORD:dev}
 
 beacon:
   crypto:
     encryption-key: ${BEACON_ENCRYPTION_KEY:aunkIRNayPvNjoN2fPob8307AX7znDryq0XhVWMZoaM=}
     hmac-pepper: ${BEACON_EMAIL_HASH_PEPPER:dev-only-insecure-pepper-do-not-use-in-prod}
+
+admin:
+  email: ${ADMIN_EMAIL:admin@example.com}

@@ -11,3 +11,21 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
+
+admin:
+  otp:
+    ttl: ${ADMIN_OTP_TTL:PT5M}
+    max-attempts: ${ADMIN_OTP_MAX_ATTEMPTS:5}
+    request-limit-per-email: ${ADMIN_OTP_REQUEST_LIMIT_PER_EMAIL:1}
+    request-window-per-email: ${ADMIN_OTP_REQUEST_WINDOW_PER_EMAIL:PT1M}
+    request-limit-per-ip: ${ADMIN_OTP_REQUEST_LIMIT_PER_IP:5}
+    request-window-per-ip: ${ADMIN_OTP_REQUEST_WINDOW_PER_IP:PT1M}
+
+visitor:
+  otp:
+    ttl: ${VISITOR_OTP_TTL:PT5M}
+    max-attempts: ${VISITOR_OTP_MAX_ATTEMPTS:5}
+    request-limit-per-email: ${VISITOR_OTP_REQUEST_LIMIT_PER_EMAIL:1}
+    request-window-per-email: ${VISITOR_OTP_REQUEST_WINDOW_PER_EMAIL:PT1M}
+    request-limit-per-ip: ${VISITOR_OTP_REQUEST_LIMIT_PER_IP:5}
+    request-window-per-ip: ${VISITOR_OTP_REQUEST_WINDOW_PER_IP:PT1M}

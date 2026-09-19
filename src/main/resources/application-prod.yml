@@ -4,8 +4,16 @@ spring:
     driver-class-name: org.postgresql.Driver
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+  mail:
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
 
 beacon:
   crypto:
     encryption-key: ${BEACON_ENCRYPTION_KEY}
     hmac-pepper: ${BEACON_EMAIL_HASH_PEPPER}
+
+admin:
+  email: ${ADMIN_EMAIL}

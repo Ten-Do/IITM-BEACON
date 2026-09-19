@@ -4,8 +4,34 @@ spring:
     driver-class-name: org.h2.Driver
     username: sa
     password: ""
+  mail:
+    host: localhost
+    port: 1025
+    username: test
+    password: test
 
 beacon:
   crypto:
     encryption-key: aunkIRNayPvNjoN2fPob8307AX7znDryq0XhVWMZoaM=
     hmac-pepper: dev-only-insecure-pepper-do-not-use-in-prod
+
+admin:
+  email: admin@example.com
+  otp:
+    ttl: PT5M
+    max-attempts: 5
+    request-limit-per-email: 1000   # deliberately generous — RateLimiterService/OtpService are
+    request-window-per-email: PT1M  # Spring singletons whose state persists across @Test methods
+    request-limit-per-ip: 1000      # within a class; the admin case is especially sensitive since
+    request-window-per-ip: PT1M     # every admin test necessarily uses the SAME fixed admin email.
+                                     # Actual rate-limit-boundary testing happens in separate,
+                                     # narrowly @TestPropertySource-scoped test classes.
+
+visitor:
+  otp:
+    ttl: PT5M
+    max-attempts: 5
+    request-limit-per-email: 1000
+    request-window-per-email: PT1M
+    request-limit-per-ip: 1000
+    request-window-per-ip: PT1M
