@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:h2:file:./data/beacon-dev;MODE=PostgreSQL;NON_KEYWORDS=VALUE;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  h2:
+    console:
+      enabled: true
+
+beacon:
+  crypto:
+    encryption-key: ${BEACON_ENCRYPTION_KEY:aunkIRNayPvNjoN2fPob8307AX7znDryq0XhVWMZoaM=}
+    hmac-pepper: ${BEACON_EMAIL_HASH_PEPPER:dev-only-insecure-pepper-do-not-use-in-prod}

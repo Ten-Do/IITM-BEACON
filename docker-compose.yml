@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:?DB_NAME is required}
+      POSTGRES_USER: ${DB_USERNAME:?DB_USERNAME is required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:?DB_NAME is required}
+      DB_USERNAME: ${DB_USERNAME:?DB_USERNAME is required}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      BEACON_ENCRYPTION_KEY: ${BEACON_ENCRYPTION_KEY:?BEACON_ENCRYPTION_KEY is required}
+      BEACON_EMAIL_HASH_PEPPER: ${BEACON_EMAIL_HASH_PEPPER:?BEACON_EMAIL_HASH_PEPPER is required}
+    ports:
+      - "8080:8080"
+    volumes:
+      - uploads:/data/uploads
+
+  maven:
+    image: maven:3.9.9-eclipse-temurin-21
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - maven-repo:/root/.m2
+    entrypoint: ["mvn"]
+    profiles: ["tools"]
+
+volumes:
+  postgres-data:
+  uploads:
+  maven-repo:

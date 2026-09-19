@@ -1,0 +1,17 @@
+# Build output
+target/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Local H2 database files
+data/
+
+# Environment / secrets
+.env
+
+# OS
+.DS_Store

@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+beacon:
+  crypto:
+    encryption-key: ${BEACON_ENCRYPTION_KEY}
+    hmac-pepper: ${BEACON_EMAIL_HASH_PEPPER}
