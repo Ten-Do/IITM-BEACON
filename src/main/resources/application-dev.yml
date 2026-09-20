@@ -17,6 +17,8 @@ beacon:
   crypto:
     encryption-key: ${BEACON_ENCRYPTION_KEY:aunkIRNayPvNjoN2fPob8307AX7znDryq0XhVWMZoaM=}
     hmac-pepper: ${BEACON_EMAIL_HASH_PEPPER:dev-only-insecure-pepper-do-not-use-in-prod}
+  storage:
+    root-path: ${BEACON_UPLOADS_ROOT:./data/uploads-dev}
 
 admin:
   email: ${ADMIN_EMAIL:admin@example.com}

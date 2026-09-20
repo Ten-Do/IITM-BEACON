@@ -4,6 +4,7 @@ import com.iitm.beacon.common.error.RestAccessDeniedHandler;
 import com.iitm.beacon.common.error.RestAuthenticationEntryPoint;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -43,6 +44,17 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/h2-console/**")
                         .permitAll()
+                        .requestMatchers("/uploads/**")
+                        .permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET, "/api/submissions/contact-types", "/api/submissions/achievements")
+                        .permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/submissions")
+                        .hasRole("VISITOR")
+                        .requestMatchers(HttpMethod.GET, "/api/submissions/mine")
+                        .hasRole("VISITOR")
+                        .requestMatchers(HttpMethod.PUT, "/api/submissions/mine")
+                        .hasRole("VISITOR")
                         .anyRequest()
                         .authenticated())
                 .headers(headers -> headers.frameOptions(FrameOptionsConfig::sameOrigin))

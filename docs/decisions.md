@@ -36,13 +36,30 @@ maximum number of photos per testimonial and the maximum size of a single photo 
 enforced server-side and set via environment variables — no specific number is fixed in this
 documentation.
 
+Stored filenames are a randomly generated UUID plus an extension derived from the file's
+*detected* format, never the client's original filename or declared `Content-Type` — so a path
+under the public `/uploads/**` prefix isn't sequential or otherwise guessable from a testimonial
+or photo id. Files are served back to any client through a plain Spring static resource handler
+(a `WebMvcConfigurer` bean in `config`, mapping `/uploads/**` to the mounted directory) — not a
+dedicated per-photo endpoint, and not owned by any one feature slice. Upload validation
+(`PhotoStorageService`) inspects the file's actual bytes to confirm it's a real image
+(NFR-UPLOAD-SPOOFING) via `ImageIO`'s own format-detection (`ImageIO.getImageReaders` against an
+`ImageInputStream`) — a file no registered `ImageReader` recognizes is rejected, regardless of
+its declared `Content-Type` or filename extension.
+
 **Rationale:** Filesystem storage matches a lightweight, containerized deployment target and
 avoids bloating Postgres/H2 with binary data — simpler than external object storage for MVP
 scope. Attaching photos to the specific section they illustrate (rather than to one
 undifferentiated pile per testimonial) is both a better authoring experience and gives every
 photo a meaningful topic tag for free; the free-form tag then lets the submitter add finer
-detail (e.g. a specific dish, a specific event) that no fixed topic list could anticipate.
-Count/size limits live in env vars, not code, so they can change without a redeploy.
+custom details a fixed topic list could never anticipate. A plain static resource handler keeps
+photo-serving as simple as the filesystem storage it's built on — no new endpoint, no slice
+ownership question; UUID filenames are a low-cost mitigation against enumerating photos of a
+testimonial that isn't (or never will be) publicly approved, since the handler itself carries no
+per-request authorization. `ImageIO`'s built-in format-detection avoids pulling in a new
+dependency (e.g. Apache Tika) while still validating real file content instead of trusting
+client-supplied metadata. Count/size limits live in env vars, not code, so they can change
+without a redeploy.
 
 ## 3. Rejected-testimonial retention
 
@@ -296,6 +313,21 @@ score also changed. Changes to `country_code`, `TestimonialAchievement` rows, or
 `contacts_modified` columns exist: since none of them ever gates moderation and nothing else in
 the system reads their change state, a dedicated flag for them would serve no purpose.
 
+"Or its photos" specifically means: a photo added to a section, a photo removed from it, or a
+change to an existing photo's free-form `PhotoTag` set (even with the underlying file
+untouched) — tags are submitter-entered free text, the same kind of content `answer_text` is,
+so retagging a kept photo sets `modified` exactly like editing the text would. On the write
+side, an edit request identifies a kept photo by sending back its own current URL as that
+photo's `fileRef` (instead of naming a new multipart file part) — this is what lets
+`SubmissionService` tell "kept, maybe retagged" apart from "newly uploaded" without a separate
+photo id in the API. Removing an entire section outright (leaving a topic out of the edit
+request that had a filled section before) is different: the row is deleted via
+`orphanRemoval` and does **not** set `modified` on anything — there's nothing left to carry the
+flag, and removal itself needs no content-appropriateness review. The one required cross-check
+this still leaves in place: a testimonial resulting from an edit must still have at least one
+section (decision 12), so removing the last one is rejected the same way an empty submission
+would be, independent of the `modified`/short-circuit machinery.
+
 **Short-circuit:** if the testimonial's status was already `APPROVED` before this edit, and
 neither `TestimonialSection.modified` (on any section) nor `identity_modified` is set, the
 testimonial stays `APPROVED` — it never goes to `PENDING`, regardless of what else changed
@@ -345,11 +377,14 @@ tests, so it runs as part of the normal test suite too).
   `architecture` package only).
 - **SpotBugs** (`spotbugs-maven-plugin` 4.9.3.0) with **FindSecBugs** (`findsecbugs-plugin`
   1.14.0) for security-focused bug patterns — relevant given this app's hand-rolled AES/HMAC
-  crypto and OTP generation. Two narrow, justified exclusions (`spotbugs-exclude.xml`):
+  crypto and OTP generation. Three narrow, justified exclusions (`spotbugs-exclude.xml`):
   `EI_EXPOSE_REP`/`EI_EXPOSE_REP2` scoped to `domain..` only, for Lombok-generated JPA entity
   accessors; `EI_EXPOSE_REP2` on the `objectMapper` field of `RestAccessDeniedHandler`/
   `RestAuthenticationEntryPoint` specifically, a constructor-injected shared Spring bean, not
-  attacker-controlled mutable state.
+  attacker-controlled mutable state; the identical `EI_EXPOSE_REP2` false positive on three of
+  M3's `submission`-slice fields (`SubmissionController.submissionService`,
+  `SubmissionService.photoStorageService`, `VisitorAuthController.submissionService`) — same
+  reasoning, each a constructor-injected Spring service bean, not attacker-controlled state.
 - **Spotless** (`spotless-maven-plugin` 3.10.2) — not a checker, a fixer: `make fix` runs
   `spotless:apply` to mechanically correct import order and remove unused imports (the Java
   analogue of `eslint --fix`/`prettier --write`), configured with only the `importOrder`/
@@ -383,3 +418,18 @@ ordinary fast JUnit tests, so gating it separately would only add friction witho
 anything. Leaving the one known violation failing (instead of using ArchUnit's `freeze()`) was a
 deliberate choice for honesty over a clean build: a frozen violation is easy to forget, and this
 one is already scheduled to be resolved by `SubmissionService` (M3).
+
+## 20. Public achievements listing
+
+**Decision:** `GET /submissions/achievements` is a public, unauthenticated endpoint listing
+active `Achievement` entries (`slug`, `label`, ordered by `display_order`) — same pattern as
+`ContactType`'s `GET /submissions/contact-types` (decision 5): seed-only reference data with no
+admin-catalog UI dependency, served dynamically rather than hardcoded on the client, but with no
+write side of its own.
+
+**Rationale:** The submission form's achievement checklist (decision 13) must render in full
+before or without any admin session — `Achievement` management itself stays admin-only
+(`/catalog/achievements`, UC-MANAGE-ACHIEVEMENTS), but reading the current active list for the
+submission form is a visitor-facing concern with no moderation/admin content in it, so it
+belongs next to `ContactType`'s own public listing rather than behind `catalogadmin`'s
+`adminSession` security requirement.

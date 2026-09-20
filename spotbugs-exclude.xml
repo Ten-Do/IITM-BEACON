@@ -27,4 +27,25 @@
     <Field name="objectMapper"/>
     <Bug pattern="EI_EXPOSE_REP2"/>
   </Match>
+
+  <!-- Same false positive, same reasoning, on M3's submission-slice
+       collaborators: each is a constructor-injected, stateless-in-practice
+       Spring service bean, not attacker-controlled mutable state. Scoped to
+       the exact (class, field) pairs SpotBugs flagged, not a package-wide
+       exclusion. -->
+  <Match>
+    <Class name="com.iitm.beacon.submission.SubmissionController"/>
+    <Field name="submissionService"/>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+  </Match>
+  <Match>
+    <Class name="com.iitm.beacon.submission.SubmissionService"/>
+    <Field name="photoStorageService"/>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+  </Match>
+  <Match>
+    <Class name="com.iitm.beacon.submission.VisitorAuthController"/>
+    <Field name="submissionService"/>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+  </Match>
 </FindBugsFilter>

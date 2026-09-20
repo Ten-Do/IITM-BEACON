@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * Centralized error handling: maps known exceptions to a consistent
@@ -29,6 +30,8 @@ public class GlobalExceptionHandler {
     private static final String VALIDATION_FALLBACK_MESSAGE = "Validation failed";
     private static final String TOO_MANY_REQUESTS_FALLBACK_MESSAGE = "Too many OTP requests in a short window.";
     private static final String OTP_VERIFICATION_FAILED_FALLBACK_MESSAGE = "Wrong or expired code.";
+    private static final String TESTIMONIAL_ALREADY_EXISTS_FALLBACK_MESSAGE =
+            "A testimonial already exists for this visitor.";
 
     private final Clock clock;
 
@@ -39,6 +42,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(NotFoundException ex, HttpServletRequest request) {
         return build(HttpStatus.NOT_FOUND, safeMessage(ex.getMessage(), NOT_FOUND_FALLBACK_MESSAGE), request);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResourceFound(
+            NoResourceFoundException ex, HttpServletRequest request) {
+        return build(HttpStatus.NOT_FOUND, NOT_FOUND_FALLBACK_MESSAGE, request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -71,6 +80,21 @@ public class GlobalExceptionHandler {
         return build(
                 HttpStatus.UNAUTHORIZED,
                 safeMessage(ex.getMessage(), OTP_VERIFICATION_FAILED_FALLBACK_MESSAGE),
+                request);
+    }
+
+    @ExceptionHandler(SubmissionValidationException.class)
+    public ResponseEntity<ErrorResponse> handleSubmissionValidation(
+            SubmissionValidationException ex, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, safeMessage(ex.getMessage(), VALIDATION_FALLBACK_MESSAGE), request);
+    }
+
+    @ExceptionHandler(TestimonialAlreadyExistsException.class)
+    public ResponseEntity<ErrorResponse> handleTestimonialAlreadyExists(
+            TestimonialAlreadyExistsException ex, HttpServletRequest request) {
+        return build(
+                HttpStatus.CONFLICT,
+                safeMessage(ex.getMessage(), TESTIMONIAL_ALREADY_EXISTS_FALLBACK_MESSAGE),
                 request);
     }
 

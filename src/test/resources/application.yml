@@ -14,6 +14,10 @@ beacon:
   crypto:
     encryption-key: aunkIRNayPvNjoN2fPob8307AX7znDryq0XhVWMZoaM=
     hmac-pepper: dev-only-insecure-pepper-do-not-use-in-prod
+  storage:
+    root-path: ${java.io.tmpdir:/tmp}/beacon-test-uploads
+    max-photos-per-testimonial: 20
+    max-photo-size-bytes: 5242880
 
 admin:
   email: admin@example.com

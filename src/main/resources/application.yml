@@ -29,3 +29,9 @@ visitor:
     request-window-per-email: ${VISITOR_OTP_REQUEST_WINDOW_PER_EMAIL:PT1M}
     request-limit-per-ip: ${VISITOR_OTP_REQUEST_LIMIT_PER_IP:5}
     request-window-per-ip: ${VISITOR_OTP_REQUEST_WINDOW_PER_IP:PT1M}
+
+beacon:
+  storage:
+    root-path: ${BEACON_UPLOADS_ROOT:/data/uploads}
+    max-photos-per-testimonial: ${BEACON_PHOTO_MAX_COUNT:20}
+    max-photo-size-bytes: ${BEACON_PHOTO_MAX_SIZE_BYTES:5242880}

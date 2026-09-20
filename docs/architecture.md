@@ -107,7 +107,9 @@ com.iitm.beacon
 │                      principals/roles), mail (JavaMailSender) config, @EnableScheduling setup,
 │                      multipart/upload size config, env-driven @ConfigurationProperties (admin
 │                      OTP ttl/max attempts, visitor OTP ttl/max-attempts/request-rate, photo
-│                      count/size limits, cleanup cron, encryption key, HMAC pepper).
+│                      count/size limits via PhotoStorageProperties, cleanup cron, encryption
+│                      key, HMAC pepper), WebMvcConfig (static `/uploads/**` resource handler —
+│                      decision 2, §7).
 ├── domain/
 │   ├── testimonial/   Testimonial, TestimonialSection, Photo, PhotoTag, ContactMethod
 │   │                  entities, TestimonialStatus enum, their repositories.
@@ -427,7 +429,17 @@ Behavior is specified as UC-VISITOR-LOGIN in `use-cases.md`.
   automatic tag, plus up to 10 free-form `PhotoTag` entries.
 - Upload validation (`SubmissionService`/`PhotoStorageService`), all server-side: actual image
   content is checked (not the client-declared `Content-Type` header); count and per-file size
-  are enforced against env-configured limits.
+  are enforced against env-configured limits (`beacon.storage.*`, `config/PhotoStorageProperties`).
+- Content check: `PhotoStorageService` sniffs the real format via `ImageIO`'s own reader
+  detection (`ImageIO.getImageReaders` against an `ImageInputStream`) — no new dependency, and
+  no reliance on the client-declared `Content-Type` or filename extension (NFR-UPLOAD-SPOOFING).
+- Stored filenames are a random UUID plus the *detected* format's extension, not the client's
+  original filename — paths under the public `/uploads/**` prefix stay unguessable from a
+  testimonial or photo id.
+- Files are served back to any client through a plain Spring static resource handler
+  (`config/WebMvcConfig`, a `WebMvcConfigurer` mapping `/uploads/**` to the mounted directory) —
+  not a dedicated per-photo endpoint, and not owned by any one feature slice, matching the rest
+  of `config`'s cross-cutting role (§3).
 
 ## 8. Contact & email encryption, lookup, and reveal (decisions 5, 6)
 

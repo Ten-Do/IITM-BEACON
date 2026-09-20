@@ -158,6 +158,60 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().message()).isEqualTo("Wrong or expired code.");
     }
 
+    @Test
+    void submissionValidationException_mapsTo400WithGivenMessage() {
+        SubmissionValidationException ex = new SubmissionValidationException("At least one section must be filled in.");
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleSubmissionValidation(ex, requestFor("/api/submissions"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        ErrorResponse body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.status()).isEqualTo(400);
+        assertThat(body.message()).isEqualTo("At least one section must be filled in.");
+        assertThat(body.path()).isEqualTo("/api/submissions");
+    }
+
+    @Test
+    void submissionValidationException_blankMessage_fallsBackToDefaultMessage() {
+        SubmissionValidationException ex = new SubmissionValidationException("");
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleSubmissionValidation(ex, requestFor("/api/submissions"));
+
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message()).isEqualTo("Validation failed");
+    }
+
+    @Test
+    void testimonialAlreadyExistsException_mapsTo409WithGivenMessage() {
+        TestimonialAlreadyExistsException ex =
+                new TestimonialAlreadyExistsException("A testimonial already exists for this visitor.");
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleTestimonialAlreadyExists(ex, requestFor("/api/submissions"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        ErrorResponse body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.status()).isEqualTo(409);
+        assertThat(body.message()).isEqualTo("A testimonial already exists for this visitor.");
+        assertThat(body.path()).isEqualTo("/api/submissions");
+    }
+
+    @Test
+    void testimonialAlreadyExistsException_blankMessage_fallsBackToDefaultMessage() {
+        TestimonialAlreadyExistsException ex = new TestimonialAlreadyExistsException(null);
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleTestimonialAlreadyExists(ex, requestFor("/api/submissions"));
+
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message())
+                .isEqualTo("A testimonial already exists for this visitor.");
+    }
+
     private static class DummyTarget {
         @SuppressWarnings("unused")
         void dummyMethod(String arg) {

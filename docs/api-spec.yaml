@@ -158,6 +158,24 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/ContactType" }
 
+  /submissions/achievements:
+    get:
+      tags: [submission]
+      summary: List active achievements for the submission form's checklist (decision 20)
+      description: >
+        `Achievement` management stays admin-only (`/catalog/achievements`,
+        UC-MANAGE-ACHIEVEMENTS), but the submission form's checklist (decision 13) must render
+        the current active list before or without any admin session — served dynamically here,
+        the same pattern as `/submissions/contact-types` (decision 5).
+      responses:
+        "200":
+          description: Achievements usable as checkboxes on the submission form.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AchievementPick" }
+
   /submissions/otp/request:
     post:
       tags: [submission]
@@ -669,6 +687,13 @@ components:
         slug: { type: string }
         label: { type: string, description: "Placeholder/help text shown on the form" }
 
+    AchievementPick:
+      description: Minimal public shape for the submission form's checklist (decision 20) — see also Achievement, the fuller admin-catalog shape.
+      type: object
+      properties:
+        slug: { type: string }
+        label: { type: string }
+
     TopicGroup:
       type: object
       properties:
@@ -919,7 +944,16 @@ components:
                 items:
                   type: object
                   properties:
-                    fileRef: { type: string, description: "References a multipart file part" }
+                    fileRef:
+                      type: string
+                      description: >
+                        On create, always names a multipart file part (a new upload). On edit
+                        (PUT /submissions/mine), it is dual-purpose: if it matches an existing
+                        photo's own `url` (as returned by GET /submissions/mine, in this same
+                        section) that photo is kept unchanged except for `tags`; otherwise it
+                        must name a multipart file part, i.e. a genuinely new upload. Any of the
+                        section's existing photos whose `url` isn't referenced this way are
+                        removed (decision 18).
                     tags:
                       type: array
                       items: { type: string }
