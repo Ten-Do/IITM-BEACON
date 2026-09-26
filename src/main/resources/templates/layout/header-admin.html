@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<header th:fragment="header(activePage)" class="header-bar">
+    <div class="header-left">
+        <!-- Temporary text wordmark; swap for the real OGE logo SVG once available -->
+        <span class="wordmark">IITM Beacon</span>
+        <span class="admin-badge">Moderator</span>
+    </div>
+    <nav class="header-nav">
+        <a href="/moderation/queue" th:classappend="${activePage == 'queue'} ? 'active' : ''">Queue</a>
+    </nav>
+</header>
+</body>
+</html>

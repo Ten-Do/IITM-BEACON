@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout/shell :: head('Enter your code')}"></head>
+<body>
+<div th:replace="~{layout/header-visitor :: header('submit')}"></div>
+
+<main class="auth-body">
+    <div class="auth-wrap">
+        <h1 class="auth-title">Enter your code</h1>
+        <p class="auth-subtitle">We sent a 6-character code to <strong th:text="${email}">you@example.com</strong>.</p>
+        <div class="auth-card">
+            <div class="auth-error-banner" th:if="${error}">
+                <span class="auth-error-mark">!</span>
+                <p class="auth-error-text" th:text="${error}">That code is wrong or has expired.</p>
+            </div>
+            <form method="post" th:action="@{/submissions/login/code}">
+                <input type="hidden" name="email" th:value="${email}"/>
+                <div class="auth-field">
+                    <label class="auth-field-label" for="code">One-time code</label>
+                    <input class="auth-field-input auth-code-input" id="code" name="code" type="text" maxlength="6"
+                           autocomplete="one-time-code" required="required"/>
+                </div>
+                <button type="submit" class="auth-btn auth-btn-primary">Verify</button>
+            </form>
+            <form method="post" th:action="@{/submissions/login}">
+                <input type="hidden" name="email" th:value="${email}"/>
+                <button type="submit" class="auth-btn-ghost">Resend code</button>
+            </form>
+        </div>
+    </div>
+</main>
+</body>
+</html>

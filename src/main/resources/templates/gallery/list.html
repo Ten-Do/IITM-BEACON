@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout/shell :: head('Gallery')}"></head>
+<body>
+<div th:replace="~{layout/header-visitor :: header('gallery')}"></div>
+
+<main class="gallery-body">
+    <form method="get" th:action="@{/gallery}" class="gallery-filter-bar">
+        <div class="gallery-search-box">
+            <input type="text" name="q" th:value="${q}" placeholder="Search testimonials..."
+                   class="gallery-search-input"/>
+        </div>
+        <select name="country" class="gallery-country-select">
+            <option value="" th:selected="${country == null or country == ''}">All countries</option>
+            <option th:each="c : ${countries}" th:value="${c.code()}" th:text="${c.name()}"
+                    th:selected="${c.code() == country}"></option>
+        </select>
+        <div class="gallery-topic-filter-row">
+            <label class="gallery-chip-toggle" th:each="entry : ${topics}"
+                   th:with="entryId=${entry.kind() == 'GROUP' ? entry.groupId() : entry.topicId()}">
+                <input type="checkbox" name="topicIds" th:value="${entryId}"
+                       th:checked="${topicIds.contains(entryId)}" class="gallery-chip-checkbox"/>
+                <span th:text="${entry.label()}">Topic</span>
+            </label>
+        </div>
+        <button type="submit" class="gallery-filter-submit">Apply filters</button>
+    </form>
+
+    <p class="gallery-result-count"
+       th:text="${results.totalElements()} + ' approved testimonial' + (${results.totalElements()} == 1 ? '' : 's')">
+        0 approved testimonials</p>
+
+    <div class="gallery-empty-state" th:if="${results.content().isEmpty()}">
+        <h3 class="gallery-empty-title">No testimonials matched</h3>
+        <p class="gallery-empty-hint">Try clearing a filter, or search a different keyword.</p>
+    </div>
+
+    <div class="gallery-grid" th:if="${!results.content().isEmpty()}">
+        <div class="gallery-card" th:each="card : ${results.content()}">
+            <img class="gallery-card-photo" th:if="${card.thumbnailUrl() != null}" th:src="${card.thumbnailUrl()}"
+                 alt=""/>
+            <div class="gallery-card-photo-placeholder" th:unless="${card.thumbnailUrl() != null}"></div>
+            <div class="gallery-card-body">
+                <div class="gallery-card-top-row">
+                    <span class="gallery-card-country" th:text="${card.country().name()}">Country</span>
+                    <span class="gallery-score-badge" th:style="'color: var(--score-' + ${card.recommendationScore()} + ')'">
+                        <span class="gallery-score-dot"></span><span th:text="${card.recommendationScore()}">8</span>
+                    </span>
+                </div>
+                <p class="gallery-card-excerpt" th:text="${card.previewText()}">Preview text.</p>
+                <a class="gallery-read-more" th:href="@{/gallery/{id}(id=${card.id()})}">Read more &rarr;</a>
+            </div>
+        </div>
+    </div>
+
+    <nav class="gallery-pagination"
+         th:if="${results.size() > 0 and (results.totalElements() > results.size() or results.page() > 0)}"
+         th:with="totalPages=${(results.totalElements() + results.size() - 1) / results.size()}">
+        <a th:if="${results.page() > 0}"
+           th:href="@{/gallery(page=${results.page() - 1}, country=${country}, q=${q}, topicIds=${topicIds})}"
+           class="gallery-pagination-link">Previous</a>
+        <span class="gallery-pagination-status"
+              th:text="'Page ' + (${results.page()} + 1) + ' of ' + ${totalPages}">Page 1 of 1</span>
+        <a th:if="${results.page() + 1 < totalPages}"
+           th:href="@{/gallery(page=${results.page() + 1}, country=${country}, q=${q}, topicIds=${topicIds})}"
+           class="gallery-pagination-link">Next</a>
+    </nav>
+</main>
+</body>
+</html>

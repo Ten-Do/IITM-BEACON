@@ -3,7 +3,9 @@ package com.iitm.beacon.submission;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.iitm.beacon.common.EmailNormalizer;
+import com.iitm.beacon.common.error.TooManyRequestsException;
 import com.iitm.beacon.common.otp.OtpCodeGenerator;
+import com.iitm.beacon.common.ratelimit.RateLimiterService;
 import com.iitm.beacon.config.OtpMailer;
 import com.iitm.beacon.config.VisitorOtpProperties;
 import java.nio.charset.StandardCharsets;
@@ -20,32 +22,63 @@ import org.springframework.stereotype.Service;
  * email (decision 17) — the visitor-scale analogue of {@code
  * adminauth.OtpService}: same OTP style, but keyed and concurrent-safe since
  * many visitors can hold a live OTP at once.
+ *
+ * <p>{@link #requestOtp} also owns the per-email/per-IP rate-limit check
+ * (moved down from {@code VisitorAuthController}) so any caller — the REST
+ * controller today, a Thymeleaf view-controller later — gets the same
+ * throttling without duplicating the logic.
  */
 @Service
 public class VisitorOtpService {
 
     private static final String HASH_ALGORITHM = "SHA-256";
+    private static final String RATE_LIMIT_EMAIL_KEY = "visitor-otp-request:email";
+    private static final String RATE_LIMIT_IP_KEY = "visitor-otp-request:ip";
 
     private final VisitorOtpProperties otpProperties;
     private final OtpCodeGenerator codeGenerator;
     private final OtpMailer otpMailer;
     private final Clock clock;
+    private final RateLimiterService rateLimiterService;
     private final Cache<String, VisitorOtpState> cache;
 
     public VisitorOtpService(
-            VisitorOtpProperties otpProperties, OtpCodeGenerator codeGenerator, OtpMailer otpMailer, Clock clock) {
+            VisitorOtpProperties otpProperties,
+            OtpCodeGenerator codeGenerator,
+            OtpMailer otpMailer,
+            Clock clock,
+            RateLimiterService rateLimiterService) {
         this.otpProperties = otpProperties;
         this.codeGenerator = codeGenerator;
         this.otpMailer = otpMailer;
         this.clock = clock;
+        this.rateLimiterService = rateLimiterService;
         this.cache = Caffeine.newBuilder()
                 .maximumSize(50_000)
                 .expireAfterWrite(otpProperties.ttl().plus(Duration.ofMinutes(5)))
                 .build();
     }
 
-    public void requestOtp(String rawEmail) {
+    /**
+     * Enforces the per-email and per-IP OTP request rate limits, then — if
+     * within budget — generates/stores/sends the OTP exactly as before.
+     *
+     * @param ip caller's remote address, used as the per-IP rate-limit key;
+     *     may be {@code null} (treated as an opaque, shared key).
+     * @throws TooManyRequestsException if either rate limit is exceeded.
+     */
+    public void requestOtp(String rawEmail, String ip) {
         String normalized = EmailNormalizer.normalize(rawEmail);
+        boolean allowed = rateLimiterService.tryConsume(
+                        RATE_LIMIT_EMAIL_KEY,
+                        normalized,
+                        otpProperties.requestLimitPerEmail(),
+                        otpProperties.requestWindowPerEmail())
+                && rateLimiterService.tryConsume(
+                        RATE_LIMIT_IP_KEY, ip, otpProperties.requestLimitPerIp(), otpProperties.requestWindowPerIp());
+        if (!allowed) {
+            throw new TooManyRequestsException("Too many OTP requests in a short window.");
+        }
         String code = codeGenerator.generate();
         String hash = sha256Hex(code);
         cache.put(

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout/shell :: head('Testimonial submitted')}"></head>
+<body>
+<div th:replace="~{layout/header-visitor :: header('submit')}"></div>
+
+<main class="confirmation-body">
+    <div class="confirmation-wrap">
+        <div class="confirmation-icon-circle">&#10003;</div>
+        <h1 class="confirmation-title">Thanks — your testimonial is in review</h1>
+        <div class="confirmation-card">
+            <span class="confirmation-pill">Pending review</span>
+            <p class="confirmation-note">An OGE moderator will check it over before it goes live in the gallery —
+                this usually takes a few days.</p>
+            <p class="confirmation-note">You can log back in with <strong th:text="${email}">you@example.com</strong>
+                any time to see its status or make changes.</p>
+        </div>
+        <a class="confirmation-btn" href="/gallery">Back to homepage</a>
+    </div>
+</main>
+</body>
+</html>

@@ -96,4 +96,38 @@ class TestimonialSectionRepositoryTest extends AbstractRepositoryTest {
         assertThatThrownBy(() -> testimonialSectionRepository.saveAndFlush(section))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
+
+    @Test
+    void findDistinctTopicIdsByTestimonialStatus_pendingTestimonialWithSections_returnsItsTopicIds() {
+        Topic otherTopic = topicRepository.findBySlug("adapt_weather").orElseThrow();
+        testimonialSectionRepository.saveAndFlush(TestimonialSection.builder()
+                .testimonial(testimonial)
+                .topic(topic)
+                .answerText("First section.")
+                .build());
+        testimonialSectionRepository.saveAndFlush(TestimonialSection.builder()
+                .testimonial(testimonial)
+                .topic(otherTopic)
+                .answerText("Second section.")
+                .build());
+
+        var found =
+                testimonialSectionRepository.findDistinctTopicIdsByTestimonialStatus(TestimonialStatus.PENDING);
+
+        assertThat(found).containsExactlyInAnyOrder(topic.getId(), otherTopic.getId());
+    }
+
+    @Test
+    void findDistinctTopicIdsByTestimonialStatus_noMatchingTestimonials_returnsEmptyList() {
+        testimonialSectionRepository.saveAndFlush(TestimonialSection.builder()
+                .testimonial(testimonial)
+                .topic(topic)
+                .answerText("Only a pending section exists.")
+                .build());
+
+        var found =
+                testimonialSectionRepository.findDistinctTopicIdsByTestimonialStatus(TestimonialStatus.APPROVED);
+
+        assertThat(found).isEmpty();
+    }
 }

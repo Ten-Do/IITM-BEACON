@@ -1,11 +1,7 @@
 package com.iitm.beacon.adminauth;
 
-import com.iitm.beacon.common.EmailNormalizer;
 import com.iitm.beacon.common.error.OtpVerificationFailedException;
-import com.iitm.beacon.common.error.TooManyRequestsException;
-import com.iitm.beacon.common.ratelimit.RateLimiterService;
 import com.iitm.beacon.common.security.SessionAuthenticator;
-import com.iitm.beacon.config.AdminOtpProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -24,39 +20,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminAuthController {
 
     private final OtpService otpService;
-    private final RateLimiterService rateLimiterService;
-    private final AdminOtpProperties otpProperties;
     private final SessionAuthenticator sessionAuthenticator;
 
-    public AdminAuthController(
-            OtpService otpService,
-            RateLimiterService rateLimiterService,
-            AdminOtpProperties otpProperties,
-            SessionAuthenticator sessionAuthenticator) {
+    public AdminAuthController(OtpService otpService, SessionAuthenticator sessionAuthenticator) {
         this.otpService = otpService;
-        this.rateLimiterService = rateLimiterService;
-        this.otpProperties = otpProperties;
         this.sessionAuthenticator = sessionAuthenticator;
     }
 
     @PostMapping("/request")
     public ResponseEntity<Void> request(@Valid @RequestBody OtpRequestRequest body, HttpServletRequest req) {
-        String email = EmailNormalizer.normalize(body.email());
-        String ip = req.getRemoteAddr();
-        boolean allowed = rateLimiterService.tryConsume(
-                        "admin-otp-request:email",
-                        email,
-                        otpProperties.requestLimitPerEmail(),
-                        otpProperties.requestWindowPerEmail())
-                && rateLimiterService.tryConsume(
-                        "admin-otp-request:ip",
-                        ip,
-                        otpProperties.requestLimitPerIp(),
-                        otpProperties.requestWindowPerIp());
-        if (!allowed) {
-            throw new TooManyRequestsException("Too many OTP requests in a short window.");
-        }
-        otpService.requestOtp(email);
+        otpService.requestOtp(body.email(), req.getRemoteAddr());
         return ResponseEntity.accepted().build();
     }
 

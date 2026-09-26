@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head(title)">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title th:text="${title}">IITM Beacon</title>
+    <link rel="stylesheet" href="/css/beacon.css" />
+</head>
+<body>
+<!--
+  Inert markup skeleton for the fullscreen photo-viewer overlay.
+  A later batch's photo-viewer.js clones/populates this <template> at
+  runtime and wires prev/next/close behavior; no JS or CSS is attached
+  to it in this batch. Structure based on ui-design/PhotoViewer.dc.html.
+-->
+<template id="photo-viewer-template" th:fragment="photoViewerTemplate">
+    <div class="photo-viewer-overlay" role="dialog" aria-modal="true" aria-label="Photo viewer">
+        <button type="button" class="photo-viewer-close" aria-label="Close">&times;</button>
+        <div class="photo-viewer-row">
+            <button type="button" class="photo-viewer-nav photo-viewer-prev" aria-label="Previous photo">&lsaquo;</button>
+            <img class="photo-viewer-image" src="" alt="" />
+            <button type="button" class="photo-viewer-nav photo-viewer-next" aria-label="Next photo">&rsaquo;</button>
+        </div>
+        <div class="photo-viewer-caption">
+            <span class="photo-viewer-caption-text"></span>
+            <span class="photo-viewer-caption-count"></span>
+        </div>
+    </div>
+</template>
+</body>
+</html>

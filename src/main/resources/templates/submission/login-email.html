@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout/shell :: head('Write or edit your testimonial')}"></head>
+<body>
+<div th:replace="~{layout/header-visitor :: header('submit')}"></div>
+
+<main class="auth-body">
+    <div class="auth-wrap">
+        <h1 class="auth-title">Write or edit your testimonial</h1>
+        <p class="auth-subtitle">Enter your email and we'll send you a one-time code — no password to remember, and
+            browsing the gallery never needs this.</p>
+        <div class="auth-card">
+            <div class="auth-error-banner" th:if="${error}">
+                <span class="auth-error-mark">!</span>
+                <p class="auth-error-text" th:text="${error}">Something went wrong.</p>
+            </div>
+            <form method="post" th:action="@{/submissions/login}">
+                <div class="auth-field">
+                    <label class="auth-field-label" for="email">Email address</label>
+                    <input class="auth-field-input" id="email" name="email" type="email"
+                           placeholder="you@example.com" required="required"/>
+                    <span class="auth-field-help">We'll use this to find your testimonial if you've submitted one
+                        before.</span>
+                </div>
+                <button type="submit" class="auth-btn auth-btn-primary">Send code</button>
+            </form>
+        </div>
+    </div>
+</main>
+</body>
+</html>

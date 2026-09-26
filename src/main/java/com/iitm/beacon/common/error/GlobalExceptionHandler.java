@@ -32,6 +32,8 @@ public class GlobalExceptionHandler {
     private static final String OTP_VERIFICATION_FAILED_FALLBACK_MESSAGE = "Wrong or expired code.";
     private static final String TESTIMONIAL_ALREADY_EXISTS_FALLBACK_MESSAGE =
             "A testimonial already exists for this visitor.";
+    private static final String TESTIMONIAL_NOT_PENDING_FALLBACK_MESSAGE =
+            "This testimonial is no longer pending.";
 
     private final Clock clock;
 
@@ -95,6 +97,15 @@ public class GlobalExceptionHandler {
         return build(
                 HttpStatus.CONFLICT,
                 safeMessage(ex.getMessage(), TESTIMONIAL_ALREADY_EXISTS_FALLBACK_MESSAGE),
+                request);
+    }
+
+    @ExceptionHandler(TestimonialNotPendingException.class)
+    public ResponseEntity<ErrorResponse> handleTestimonialNotPending(
+            TestimonialNotPendingException ex, HttpServletRequest request) {
+        return build(
+                HttpStatus.CONFLICT,
+                safeMessage(ex.getMessage(), TESTIMONIAL_NOT_PENDING_FALLBACK_MESSAGE),
                 request);
     }
 

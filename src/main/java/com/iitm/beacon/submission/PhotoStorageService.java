@@ -2,6 +2,7 @@ package com.iitm.beacon.submission;
 
 import com.iitm.beacon.common.error.SubmissionValidationException;
 import com.iitm.beacon.config.PhotoStorageProperties;
+import com.iitm.beacon.config.PhotoUrlResolver;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -32,9 +33,11 @@ public class PhotoStorageService {
     private static final String NOT_AN_IMAGE_MESSAGE = "Uploaded file is not a valid image.";
 
     private final PhotoStorageProperties photoStorageProperties;
+    private final PhotoUrlResolver photoUrlResolver;
 
-    public PhotoStorageService(PhotoStorageProperties photoStorageProperties) {
+    public PhotoStorageService(PhotoStorageProperties photoStorageProperties, PhotoUrlResolver photoUrlResolver) {
         this.photoStorageProperties = photoStorageProperties;
+        this.photoUrlResolver = photoUrlResolver;
     }
 
     /**
@@ -77,7 +80,7 @@ public class PhotoStorageService {
     }
 
     public String urlFor(String relativePath) {
-        return "/uploads/" + relativePath;
+        return photoUrlResolver.resolve(relativePath);
     }
 
     private String detectImageExtension(MultipartFile file) {

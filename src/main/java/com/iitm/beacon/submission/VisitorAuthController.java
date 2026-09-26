@@ -1,11 +1,7 @@
 package com.iitm.beacon.submission;
 
-import com.iitm.beacon.common.EmailNormalizer;
 import com.iitm.beacon.common.error.OtpVerificationFailedException;
-import com.iitm.beacon.common.error.TooManyRequestsException;
-import com.iitm.beacon.common.ratelimit.RateLimiterService;
 import com.iitm.beacon.common.security.SessionAuthenticator;
-import com.iitm.beacon.config.VisitorOtpProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -25,41 +21,21 @@ import org.springframework.web.bind.annotation.RestController;
 public class VisitorAuthController {
 
     private final VisitorOtpService visitorOtpService;
-    private final RateLimiterService rateLimiterService;
-    private final VisitorOtpProperties otpProperties;
     private final SessionAuthenticator sessionAuthenticator;
     private final SubmissionService submissionService;
 
     public VisitorAuthController(
             VisitorOtpService visitorOtpService,
-            RateLimiterService rateLimiterService,
-            VisitorOtpProperties otpProperties,
             SessionAuthenticator sessionAuthenticator,
             SubmissionService submissionService) {
         this.visitorOtpService = visitorOtpService;
-        this.rateLimiterService = rateLimiterService;
-        this.otpProperties = otpProperties;
         this.sessionAuthenticator = sessionAuthenticator;
         this.submissionService = submissionService;
     }
 
     @PostMapping("/request")
     public ResponseEntity<Void> request(@Valid @RequestBody OtpRequestRequest body, HttpServletRequest req) {
-        String email = EmailNormalizer.normalize(body.email());
-        boolean allowed = rateLimiterService.tryConsume(
-                        "visitor-otp-request:email",
-                        email,
-                        otpProperties.requestLimitPerEmail(),
-                        otpProperties.requestWindowPerEmail())
-                && rateLimiterService.tryConsume(
-                        "visitor-otp-request:ip",
-                        req.getRemoteAddr(),
-                        otpProperties.requestLimitPerIp(),
-                        otpProperties.requestWindowPerIp());
-        if (!allowed) {
-            throw new TooManyRequestsException("Too many OTP requests in a short window.");
-        }
-        visitorOtpService.requestOtp(email);
+        visitorOtpService.requestOtp(body.email(), req.getRemoteAddr());
         return ResponseEntity.accepted().build();
     }
 

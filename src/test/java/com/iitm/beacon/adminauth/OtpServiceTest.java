@@ -2,12 +2,17 @@ package com.iitm.beacon.adminauth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.iitm.beacon.common.otp.OtpCodeGenerator;
+import com.iitm.beacon.common.ratelimit.RateLimiterService;
 import com.iitm.beacon.config.AdminOtpProperties;
 import com.iitm.beacon.config.AdminProperties;
 import com.iitm.beacon.config.OtpMailer;
@@ -21,9 +26,17 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Covers {@code OtpService}'s own OTP request/verify semantics (TTL, max
+ * attempts, one-time-use, email matching). Rate-limiting is a separate
+ * concern the service now also owns — see {@link OtpServiceRateLimitTest} —
+ * so the {@code RateLimiterService} collaborator here is stubbed to always
+ * allow, keeping these tests decoupled from throttling thresholds.
+ */
 class OtpServiceTest {
 
     private static final String ADMIN_EMAIL = "admin@example.com";
+    private static final String IP = "203.0.113.10";
 
     private final MutableClock clock = new MutableClock(Instant.parse("2026-01-01T00:00:00Z"));
     private final AdminProperties adminProperties = new AdminProperties(ADMIN_EMAIL);
@@ -31,17 +44,20 @@ class OtpServiceTest {
             Duration.ofMinutes(5), 5, 1, Duration.ofMinutes(1), 5, Duration.ofMinutes(1));
     private final OtpCodeGenerator codeGenerator = new OtpCodeGenerator();
     private OtpMailer otpMailer;
+    private RateLimiterService rateLimiterService;
     private OtpService otpService;
 
     @BeforeEach
     void setUp() {
         otpMailer = mock(OtpMailer.class);
-        otpService = new OtpService(adminProperties, otpProperties, codeGenerator, otpMailer, clock);
+        rateLimiterService = mock(RateLimiterService.class);
+        when(rateLimiterService.tryConsume(anyString(), any(), anyInt(), any())).thenReturn(true);
+        otpService = new OtpService(adminProperties, otpProperties, codeGenerator, otpMailer, clock, rateLimiterService);
     }
 
     @Test
     void requestOtpWithMatchingEmailGeneratesStateAndSendsMail() {
-        otpService.requestOtp(ADMIN_EMAIL);
+        otpService.requestOtp(ADMIN_EMAIL, IP);
 
         verify(otpMailer, times(1))
                 .sendOtp(org.mockito.ArgumentMatchers.eq(ADMIN_EMAIL), org.mockito.ArgumentMatchers.anyString());
@@ -50,7 +66,7 @@ class OtpServiceTest {
     @Test
     void requestOtpWithMatchingEmail_thenCorrectCodeVerifiesSuccessfully() {
         org.mockito.ArgumentCaptor<String> codeCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
-        otpService.requestOtp(ADMIN_EMAIL);
+        otpService.requestOtp(ADMIN_EMAIL, IP);
         verify(otpMailer).sendOtp(org.mockito.ArgumentMatchers.eq(ADMIN_EMAIL), codeCaptor.capture());
 
         OtpVerifyResult result = otpService.verify(ADMIN_EMAIL, codeCaptor.getValue());
@@ -61,7 +77,7 @@ class OtpServiceTest {
 
     @Test
     void requestOtpWithNonMatchingEmail_isANoOp_andDoesNotSendMail() {
-        otpService.requestOtp("someone-else@example.com");
+        otpService.requestOtp("someone-else@example.com", IP);
 
         verify(otpMailer, never())
                 .sendOtp(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
@@ -70,11 +86,11 @@ class OtpServiceTest {
     @Test
     void requestOtpWithNonMatchingEmail_leavesPendingLegitimateOtpUntouched() {
         org.mockito.ArgumentCaptor<String> codeCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
-        otpService.requestOtp(ADMIN_EMAIL);
+        otpService.requestOtp(ADMIN_EMAIL, IP);
         verify(otpMailer).sendOtp(org.mockito.ArgumentMatchers.eq(ADMIN_EMAIL), codeCaptor.capture());
         String originalCode = codeCaptor.getValue();
 
-        otpService.requestOtp("intruder@example.com");
+        otpService.requestOtp("intruder@example.com", IP);
 
         OtpVerifyResult result = otpService.verify(ADMIN_EMAIL, originalCode);
         assertThat(result).isInstanceOf(OtpVerifyResult.Verified.class);
@@ -90,7 +106,7 @@ class OtpServiceTest {
     @Test
     void verifySameCodeTwice_secondAttemptIsNoPendingOtp_oneTimeUse() {
         org.mockito.ArgumentCaptor<String> codeCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
-        otpService.requestOtp(ADMIN_EMAIL);
+        otpService.requestOtp(ADMIN_EMAIL, IP);
         verify(otpMailer).sendOtp(org.mockito.ArgumentMatchers.eq(ADMIN_EMAIL), codeCaptor.capture());
         String code = codeCaptor.getValue();
 
@@ -102,7 +118,7 @@ class OtpServiceTest {
     @Test
     void verifyWithWrongCode_isRejectedAsWrongCode_andCorrectCodeStillWorksAfter() {
         org.mockito.ArgumentCaptor<String> codeCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
-        otpService.requestOtp(ADMIN_EMAIL);
+        otpService.requestOtp(ADMIN_EMAIL, IP);
         verify(otpMailer).sendOtp(org.mockito.ArgumentMatchers.eq(ADMIN_EMAIL), codeCaptor.capture());
         String code = codeCaptor.getValue();
 
@@ -116,7 +132,7 @@ class OtpServiceTest {
     @Test
     void maxAttemptsBoundary_fourWrongAttemptsStillAllowsFifthCorrectAttempt() {
         org.mockito.ArgumentCaptor<String> codeCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
-        otpService.requestOtp(ADMIN_EMAIL); // maxAttempts = 5
+        otpService.requestOtp(ADMIN_EMAIL, IP); // maxAttempts = 5
         verify(otpMailer).sendOtp(org.mockito.ArgumentMatchers.eq(ADMIN_EMAIL), codeCaptor.capture());
         String code = codeCaptor.getValue();
         String wrongCode = wrongCodeFor(code);
@@ -132,7 +148,7 @@ class OtpServiceTest {
     @Test
     void maxAttemptsBoundary_fifthWrongAttemptExhaustsAndInvalidatesOtp() {
         org.mockito.ArgumentCaptor<String> codeCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
-        otpService.requestOtp(ADMIN_EMAIL); // maxAttempts = 5
+        otpService.requestOtp(ADMIN_EMAIL, IP); // maxAttempts = 5
         verify(otpMailer).sendOtp(org.mockito.ArgumentMatchers.eq(ADMIN_EMAIL), codeCaptor.capture());
         String code = codeCaptor.getValue();
         String wrongCode = wrongCodeFor(code);
@@ -150,7 +166,7 @@ class OtpServiceTest {
     @Test
     void ttlBoundary_exactlyAtExpiresAtStillSucceeds() {
         org.mockito.ArgumentCaptor<String> codeCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
-        otpService.requestOtp(ADMIN_EMAIL);
+        otpService.requestOtp(ADMIN_EMAIL, IP);
         verify(otpMailer).sendOtp(org.mockito.ArgumentMatchers.eq(ADMIN_EMAIL), codeCaptor.capture());
         String code = codeCaptor.getValue();
 
@@ -163,7 +179,7 @@ class OtpServiceTest {
     @Test
     void ttlBoundary_oneInstantAfterExpiresAtIsExpired() {
         org.mockito.ArgumentCaptor<String> codeCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
-        otpService.requestOtp(ADMIN_EMAIL);
+        otpService.requestOtp(ADMIN_EMAIL, IP);
         verify(otpMailer).sendOtp(org.mockito.ArgumentMatchers.eq(ADMIN_EMAIL), codeCaptor.capture());
         String code = codeCaptor.getValue();
 
@@ -175,17 +191,17 @@ class OtpServiceTest {
 
     @Test
     void requestOtpWithNullEmail_throwsIllegalArgumentException() {
-        assertThatThrownBy(() -> otpService.requestOtp(null)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> otpService.requestOtp(null, IP)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void requestOtpWithBlankEmail_throwsIllegalArgumentException() {
-        assertThatThrownBy(() -> otpService.requestOtp("   ")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> otpService.requestOtp("   ", IP)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void verifyWithBlankCode_neverMatches_rejectedAsWrongCode() {
-        otpService.requestOtp(ADMIN_EMAIL);
+        otpService.requestOtp(ADMIN_EMAIL, IP);
 
         OtpVerifyResult result = otpService.verify(ADMIN_EMAIL, "");
         assertThat(result).isEqualTo(new OtpVerifyResult.Rejected(RejectionReason.WRONG_CODE));
@@ -193,7 +209,7 @@ class OtpServiceTest {
 
     @Test
     void verifyWithNullCode_neverMatches_rejectedAsWrongCode() {
-        otpService.requestOtp(ADMIN_EMAIL);
+        otpService.requestOtp(ADMIN_EMAIL, IP);
 
         OtpVerifyResult result = otpService.verify(ADMIN_EMAIL, null);
         assertThat(result).isEqualTo(new OtpVerifyResult.Rejected(RejectionReason.WRONG_CODE));
@@ -201,7 +217,7 @@ class OtpServiceTest {
 
     @Test
     void verifyWithNullEmail_throwsIllegalArgumentException() {
-        otpService.requestOtp(ADMIN_EMAIL);
+        otpService.requestOtp(ADMIN_EMAIL, IP);
 
         assertThatThrownBy(() -> otpService.verify(null, "ABC234")).isInstanceOf(IllegalArgumentException.class);
     }
@@ -209,7 +225,7 @@ class OtpServiceTest {
     @Test
     void concurrentWrongVerifyAttempts_bothDecrementsAreApplied_noLostUpdate() throws InterruptedException {
         org.mockito.ArgumentCaptor<String> codeCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
-        otpService.requestOtp(ADMIN_EMAIL); // maxAttempts = 5
+        otpService.requestOtp(ADMIN_EMAIL, IP); // maxAttempts = 5
         verify(otpMailer).sendOtp(org.mockito.ArgumentMatchers.eq(ADMIN_EMAIL), codeCaptor.capture());
         String code = codeCaptor.getValue();
         String wrongCode = wrongCodeFor(code);

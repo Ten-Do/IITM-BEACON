@@ -2,12 +2,17 @@ package com.iitm.beacon.submission;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.iitm.beacon.common.otp.OtpCodeGenerator;
+import com.iitm.beacon.common.ratelimit.RateLimiterService;
 import com.iitm.beacon.config.OtpMailer;
 import com.iitm.beacon.config.VisitorOtpProperties;
 import com.iitm.beacon.testsupport.MutableClock;
@@ -24,29 +29,40 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+/**
+ * Covers {@code VisitorOtpService}'s own OTP request/verify semantics (TTL,
+ * max attempts, one-time-use, per-email keying). Rate-limiting is a separate
+ * concern the service now also owns — see {@link VisitorOtpServiceRateLimitTest}
+ * — so the {@code RateLimiterService} collaborator here is stubbed to always
+ * allow, keeping these tests decoupled from throttling thresholds.
+ */
 class VisitorOtpServiceTest {
 
     private static final String EMAIL = "visitor@example.com";
+    private static final String IP = "203.0.113.10";
 
     private final MutableClock clock = new MutableClock(Instant.parse("2026-01-01T00:00:00Z"));
     private final VisitorOtpProperties otpProperties = new VisitorOtpProperties(
             Duration.ofMinutes(5), 5, 1, Duration.ofMinutes(1), 5, Duration.ofMinutes(1));
     private final OtpCodeGenerator codeGenerator = new OtpCodeGenerator();
     private OtpMailer otpMailer;
+    private RateLimiterService rateLimiterService;
     private VisitorOtpService visitorOtpService;
     private final java.util.Map<String, Integer> requestCounts = new java.util.HashMap<>();
 
     @BeforeEach
     void setUp() {
         otpMailer = mock(OtpMailer.class);
-        visitorOtpService = new VisitorOtpService(otpProperties, codeGenerator, otpMailer, clock);
+        rateLimiterService = mock(RateLimiterService.class);
+        when(rateLimiterService.tryConsume(anyString(), any(), anyInt(), any())).thenReturn(true);
+        visitorOtpService = new VisitorOtpService(otpProperties, codeGenerator, otpMailer, clock, rateLimiterService);
     }
 
     private String requestAndCaptureCode(String email) {
         String normalized = com.iitm.beacon.common.EmailNormalizer.normalize(email);
         int expectedInvocations = requestCounts.merge(normalized, 1, Integer::sum);
         ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
-        visitorOtpService.requestOtp(email);
+        visitorOtpService.requestOtp(email, IP);
         verify(otpMailer, times(expectedInvocations)).sendOtp(eq(normalized), captor.capture());
         return captor.getValue();
     }
@@ -143,12 +159,12 @@ class VisitorOtpServiceTest {
 
     @Test
     void requestOtpWithNullEmail_throwsIllegalArgumentException() {
-        assertThatThrownBy(() -> visitorOtpService.requestOtp(null)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> visitorOtpService.requestOtp(null, IP)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void requestOtpWithBlankEmail_throwsIllegalArgumentException() {
-        assertThatThrownBy(() -> visitorOtpService.requestOtp("   ")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> visitorOtpService.requestOtp("   ", IP)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

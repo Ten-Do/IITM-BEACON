@@ -20,13 +20,18 @@ import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.domain.topic.Topic;
+import com.iitm.beacon.domain.topic.TopicGroup;
+import com.iitm.beacon.domain.topic.TopicGroupRepository;
 import com.iitm.beacon.domain.topic.TopicRepository;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.ContactMethodInput;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.PhotoInput;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.SectionInput;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validator;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -51,6 +56,7 @@ public class SubmissionService {
 
     private final TestimonialRepository testimonialRepository;
     private final TopicRepository topicRepository;
+    private final TopicGroupRepository topicGroupRepository;
     private final AchievementRepository achievementRepository;
     private final ContactTypeRepository contactTypeRepository;
     private final CountryRepository countryRepository;
@@ -58,6 +64,7 @@ public class SubmissionService {
     private final PhotoStorageService photoStorageService;
     private final PhotoStorageProperties photoStorageProperties;
     private final Clock clock;
+    private final Validator validator;
 
     public SubmissionService(
             TestimonialRepository testimonialRepository,
@@ -68,7 +75,9 @@ public class SubmissionService {
             EmailLookupHashService emailLookupHashService,
             PhotoStorageService photoStorageService,
             PhotoStorageProperties photoStorageProperties,
-            Clock clock) {
+            Clock clock,
+            TopicGroupRepository topicGroupRepository,
+            Validator validator) {
         this.testimonialRepository = testimonialRepository;
         this.topicRepository = topicRepository;
         this.achievementRepository = achievementRepository;
@@ -78,6 +87,8 @@ public class SubmissionService {
         this.photoStorageService = photoStorageService;
         this.photoStorageProperties = photoStorageProperties;
         this.clock = clock;
+        this.topicGroupRepository = topicGroupRepository;
+        this.validator = validator;
     }
 
     /**
@@ -109,6 +120,72 @@ public class SubmissionService {
                 .sorted(Comparator.comparing(Achievement::getDisplayOrder))
                 .map(a -> new AchievementView(a.getSlug(), a.getLabel()))
                 .toList();
+    }
+
+    /**
+     * Every country (decision 1), for the submission form's country {@code
+     * <select>} — deliberately unfiltered by approved-testimonial existence,
+     * unlike {@code gallery.GalleryService#listCountriesWithApproved}: a
+     * visitor must be able to pick their own country even if nobody from it
+     * has an approved testimonial yet.
+     */
+    @Transactional(readOnly = true)
+    public List<CountryDto> listAllCountries() {
+        return countryRepository.findAll().stream()
+                .sorted(Comparator.comparing(Country::getName))
+                .map(c -> new CountryDto(c.getCode(), c.getName()))
+                .toList();
+    }
+
+    /**
+     * Every active top-level topic-catalog entry (decision 11) for the
+     * submission form's topic picker — deliberately unfiltered by
+     * approved-testimonial existence, unlike {@code
+     * GalleryService#listTopicCatalogWithApproved}: a visitor must be able to
+     * write about any active topic, not just ones already covered by an
+     * approved testimonial. An active group left with zero active subtopics
+     * is still dropped (nothing to fill in), same reasoning as the gallery
+     * side just substituting "active" for "has an approved testimonial".
+     */
+    @Transactional(readOnly = true)
+    public List<TopicCatalogEntryDto> listTopicCatalog() {
+        List<Topic> allTopics = topicRepository.findAll();
+        Map<Long, List<Topic>> topicsByGroupId = allTopics.stream()
+                .filter(t -> t.getTopicGroup() != null)
+                .collect(Collectors.groupingBy(t -> t.getTopicGroup().getId()));
+
+        List<OrderedCatalogEntry> entries = new ArrayList<>();
+
+        for (TopicGroup group : topicGroupRepository.findAll()) {
+            if (!group.isActive()) {
+                continue;
+            }
+            List<TopicPickDto> subtopics = topicsByGroupId.getOrDefault(group.getId(), List.of()).stream()
+                    .filter(Topic::isActive)
+                    .sorted(Comparator.comparing(Topic::getDisplayOrder))
+                    .map(t -> new TopicPickDto(t.getId(), t.getSlug(), t.getLabel(), t.getGuidingPrompt()))
+                    .toList();
+            if (!subtopics.isEmpty()) {
+                entries.add(
+                        new OrderedCatalogEntry(group.getDisplayOrder(), TopicCatalogEntryDto.group(group, subtopics)));
+            }
+        }
+
+        for (Topic topic : allTopics) {
+            if (topic.getTopicGroup() != null || !topic.isActive()) {
+                continue;
+            }
+            entries.add(new OrderedCatalogEntry(topic.getDisplayOrder(), TopicCatalogEntryDto.standalone(topic)));
+        }
+
+        return entries.stream()
+                .sorted(Comparator.comparingInt(OrderedCatalogEntry::topLevelDisplayOrder))
+                .map(OrderedCatalogEntry::dto)
+                .toList();
+    }
+
+    /** Pairs a catalog entry with its top-level sort key ahead of the final combined sort. */
+    private record OrderedCatalogEntry(int topLevelDisplayOrder, TopicCatalogEntryDto dto) {
     }
 
     /**
@@ -397,6 +474,140 @@ public class SubmissionService {
 
         Testimonial saved = testimonialRepository.save(testimonial);
         return new SubmissionResultResponse(saved.getId(), saved.getStatus());
+    }
+
+    /**
+     * Fixed number of new-photo upload slots the (JS-free) submission form
+     * offers per section — a static HTML form can't grow "add another photo"
+     * tiles dynamically. This is a form-rendering limitation only: the real
+     * per-testimonial photo cap is still enforced by {@link
+     * #photoStorageProperties} inside {@link #create}/{@link #edit}.
+     */
+    static final int NEW_PHOTO_SLOTS_PER_SECTION = 3;
+
+    /**
+     * Translates a {@link SubmissionFormCommand} from the plain multipart
+     * HTML submission form into the exact same {@code
+     * TestimonialSubmissionRequest} + file-map shape {@link #create} already
+     * expects, then delegates to it unchanged (no business rule is
+     * duplicated here). Bean Validation on the built request is applied
+     * explicitly with {@link #validator}, since {@code @ModelAttribute}
+     * binding doesn't get the {@code @Valid} treatment the JSON path relies
+     * on for the same DTO.
+     */
+    @Transactional
+    public SubmissionResultResponse createFromForm(String email, SubmissionFormCommand command) {
+        Map<String, MultipartFile> fileMap = new LinkedHashMap<>();
+        TestimonialSubmissionRequest request = toSubmissionRequest(command, fileMap);
+        validateFormRequest(request);
+        return create(email, request, fileMap);
+    }
+
+    /**
+     * Same translation as {@link #createFromForm}, delegating to {@link
+     * #edit} instead. A kept existing photo is represented by resending its
+     * own url as {@code fileRef} (decision 18) — exactly what {@link #edit}
+     * already expects from the JSON path.
+     */
+    @Transactional
+    public SubmissionResultResponse editFromForm(String email, SubmissionFormCommand command) {
+        Map<String, MultipartFile> fileMap = new LinkedHashMap<>();
+        TestimonialSubmissionRequest request = toSubmissionRequest(command, fileMap);
+        validateFormRequest(request);
+        return edit(email, request, fileMap);
+    }
+
+    private void validateFormRequest(TestimonialSubmissionRequest request) {
+        Set<ConstraintViolation<TestimonialSubmissionRequest>> violations = validator.validate(request);
+        if (!violations.isEmpty()) {
+            String message = violations.stream()
+                    .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                    .collect(Collectors.joining(", "));
+            throw new SubmissionValidationException(message);
+        }
+    }
+
+    private TestimonialSubmissionRequest toSubmissionRequest(
+            SubmissionFormCommand command, Map<String, MultipartFile> fileMap) {
+        List<SectionFormEntry> commandSections = nullSafeList(command.getSections());
+        List<SectionInput> sections = new ArrayList<>();
+        for (int i = 0; i < commandSections.size(); i++) {
+            SectionFormEntry entry = commandSections.get(i);
+            if (entry == null || entry.getTopicSlug() == null || entry.getTopicSlug().isBlank()) {
+                continue;
+            }
+            sections.add(toSectionInput(i, entry, fileMap));
+        }
+
+        // The form renders one contact row per active contact type so the
+        // visitor never has to "add" one — an unused row (blank value, or no
+        // type picked at all) is dropped here rather than passed through as
+        // an invalid ContactMethodInput.
+        List<ContactMethodInput> contactMethods = nullSafeList(command.getContactMethods()).stream()
+                .filter(Objects::nonNull)
+                .filter(c -> c.getTypeSlug() != null && !c.getTypeSlug().isBlank())
+                .filter(c -> c.getValue() != null && !c.getValue().isBlank())
+                .map(c -> new ContactMethodInput(c.getTypeSlug(), c.getValue(), c.isPublicContact()))
+                .toList();
+
+        List<String> achievementSlugs = nullSafeList(command.getAchievementSlugs());
+
+        return new TestimonialSubmissionRequest(
+                command.getFirstName(),
+                command.getLastName(),
+                command.getRollNumber(),
+                command.getAdmissionYear(),
+                command.getCountryCode(),
+                command.getRecommendationScore(),
+                sections,
+                achievementSlugs,
+                contactMethods,
+                command.isDataProcessingConsent());
+    }
+
+    private SectionInput toSectionInput(int sectionIndex, SectionFormEntry entry, Map<String, MultipartFile> fileMap) {
+        List<PhotoInput> photos = new ArrayList<>();
+
+        List<String> existingUrls = nullSafeList(entry.getExistingPhotoUrls());
+        List<String> existingTags = nullSafeList(entry.getExistingPhotoTags());
+        Set<String> removedUrls = new HashSet<>(nullSafeList(entry.getRemovedPhotoUrls()));
+        for (int u = 0; u < existingUrls.size(); u++) {
+            String url = existingUrls.get(u);
+            if (url == null || url.isBlank() || removedUrls.contains(url)) {
+                continue;
+            }
+            String rawTags = u < existingTags.size() ? existingTags.get(u) : null;
+            photos.add(new PhotoInput(url, parseCommaSeparatedTags(rawTags)));
+        }
+
+        List<MultipartFile> newFiles = nullSafeList(entry.getPhotos());
+        List<String> newTags = nullSafeList(entry.getPhotoTags());
+        for (int p = 0; p < newFiles.size(); p++) {
+            MultipartFile file = newFiles.get(p);
+            if (file == null || file.isEmpty()) {
+                continue;
+            }
+            String fileRef = "section-" + sectionIndex + "-photo-" + p;
+            fileMap.put(fileRef, file);
+            String rawTags = p < newTags.size() ? newTags.get(p) : null;
+            photos.add(new PhotoInput(fileRef, parseCommaSeparatedTags(rawTags)));
+        }
+
+        return new SectionInput(entry.getTopicSlug(), entry.getAnswerText(), photos);
+    }
+
+    private static <T> List<T> nullSafeList(List<T> list) {
+        return list == null ? List.of() : list;
+    }
+
+    private static List<String> parseCommaSeparatedTags(String rawCommaSeparated) {
+        if (rawCommaSeparated == null || rawCommaSeparated.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(rawCommaSeparated.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
     }
 
     private TestimonialSection buildNewSection(

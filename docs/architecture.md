@@ -109,7 +109,10 @@ com.iitm.beacon
 │                      OTP ttl/max attempts, visitor OTP ttl/max-attempts/request-rate, photo
 │                      count/size limits via PhotoStorageProperties, cleanup cron, encryption
 │                      key, HMAC pepper), WebMvcConfig (static `/uploads/**` resource handler —
-│                      decision 2, §7).
+│                      decision 2, §7). OtpMailer and NotificationMailer (each a Smtp*/Logging*,
+│                      prod/non-prod profile pair — decision 21), PhotoUrlResolver (shared
+│                      `/uploads/`-URL builder used by submission/gallery/moderation —
+│                      decision 21).
 ├── domain/
 │   ├── testimonial/   Testimonial, TestimonialSection, Photo, PhotoTag, ContactMethod
 │   │                  entities, TestimonialStatus enum, their repositories.
@@ -120,26 +123,37 @@ com.iitm.beacon
 │   │                  ContactTypeRepository.
 │   └── achievement/   Achievement entity, TestimonialAchievement join entity, repositories.
 ├── gallery/           Public browse/filter/search/paginate + testimonial detail + photo list
-│                      + on-demand contact reveal.
-│                      GalleryController, GalleryService, TestimonialCardDto,
-│                      TestimonialDetailDto.
+│                      + on-demand contact reveal, as REST (`api-spec.yaml`) and as pages
+│                      (decision 21).
+│                      GalleryController, GalleryService, TestimonialSpecifications,
+│                      TestimonialCardDto, TestimonialDetailDto; GalleryViewController.
 ├── submission/        Visitor login (email OTP request/verify/session — decision 17),
 │                      create/edit-testimonial flow including file upload validation and the
 │                      "updated since last approval" flag computation, including the
-│                      moderation short-circuit for non-text edits (decision 18).
+│                      moderation short-circuit for non-text edits (decision 18); the same flow
+│                      as REST (`api-spec.yaml`) and as pages (decision 21).
 │                      VisitorAuthController, VisitorOtpService (in-memory, concurrent-safe,
-│                      keyed by email — decision 17), SubmissionController, SubmissionService,
-│                      TestimonialSubmissionRequest (DTO), PhotoStorageService.
+│                      keyed by email — decision 17; owns its own request-rate check, called by
+│                      both controllers below), SubmissionController, SubmissionService
+│                      (`create`/`edit` plus the form-only `createFromForm`/`editFromForm`
+│                      adapters and `listAllCountries`/`listTopicCatalog` — decision 21),
+│                      TestimonialSubmissionRequest (DTO), PhotoStorageService;
+│                      SubmissionViewController.
 ├── moderation/        Admin pending queue, approve/reject one at a time — no bulk actions
-│                      (decision 18) — and the rejected-testimonial retention job.
-│                      ModerationController, ModerationService, PendingTestimonialDto,
-│                      RejectedTestimonialCleanupJob (@Scheduled).
+│                      (decision 18) — as REST (`api-spec.yaml`) and as a page (decision 21); and
+│                      the rejected-testimonial retention job (not yet built — M7).
+│                      ModerationController, ModerationService, ModerationTestimonialDetailDto,
+│                      ModerationQueueCardDto; ModerationViewController;
+│                      RejectedTestimonialCleanupJob (@Scheduled, planned for M7).
 ├── catalogadmin/      Admin CRUD for topic groups, topics (incl. re-parenting), and
-│                      achievements (decision 9).
+│                      achievements (decision 9). Not yet built.
 │                      CatalogAdminController, CatalogAdminService, TopicGroupDto, TopicDto,
 │                      AchievementDto.
-├── adminauth/         Admin OTP request/verify, session establishment (decision 4).
-│                      AdminAuthController, OtpService (in-memory, single admin).
+├── adminauth/         Admin OTP request/verify, session establishment (decision 4), as REST
+│                      (`api-spec.yaml`) and as a page (decision 21).
+│                      AdminAuthController, OtpService (in-memory, single admin; owns its own
+│                      request-rate check, called by both controllers below);
+│                      AdminAuthViewController.
 └── analytics/         Homepage dashboard: country map + achievement/score/topic-group stat
                        cards.
                        AnalyticsController, AnalyticsService (read-only aggregate queries).
@@ -575,3 +589,72 @@ architecture level because they're time-based or easy to get subtly wrong withou
   subtly wrong; worth testing each explicitly, especially that the short-circuit never fires
   for a testimonial that wasn't already `APPROVED`, and that a flag left set (or wrongly
   cleared) is easy to miss by inspection alone.
+
+## 17. View layer: Thymeleaf pages alongside the REST API (decision 21)
+
+`gallery`, `submission`, `moderation`, and `adminauth` each expose their functionality twice:
+once as the JSON REST API `api-spec.yaml` already specifies, and once as server-rendered HTML
+pages. Both are built on the same `Service` class per slice — the page-rendering
+`XxxViewController` (`@Controller`) calls the exact same `GalleryService`/`SubmissionService`/
+`ModerationService`/`OtpService` methods the REST `XxxController` (`@RestController`) does, as a
+plain in-process Java call. Neither controller depends on the other, and the REST contract is
+unchanged. `catalogadmin` and `analytics` have no page yet, since neither slice is built yet.
+
+**Routing.** View routes are plain paths, not `/api/**`:
+
+| Route | Slice | Access |
+|---|---|---|
+| `/`, `/gallery/**` | gallery | public |
+| `/submissions/login`, `/submissions/login/**` | submission | public |
+| `/submissions/form`, `/submissions/confirmation` | submission | `VISITOR` session |
+| `/admin/login`, `/admin/login/**` | adminauth | public |
+| `/moderation/**` | moderation | `ADMIN` session |
+
+`SecurityConfig` enumerates every one of these (and every `/api/**` route) as its own explicit
+matcher; the catch-all tail is `.anyRequest().denyAll()`, not `.authenticated()` — a route this
+list doesn't name is refused outright, not merely gated behind "some role or other."
+
+**Templates and shared chrome.** `src/main/resources/templates/<slice>/*.html`, one subdirectory
+per slice. Shared chrome is factored into `templates/layout/` fragments: `shell.html` (`head(title)`
+for the `<head>`, plus an inert fullscreen-photo-viewer markup skeleton gallery's detail page
+populates at runtime), `header-visitor.html` and `header-admin.html` (each a `header(activePage)`
+fragment for the two nav-bar variants). One global stylesheet, `static/css/beacon.css`, holds
+every design token (colors, spacing, radius, shadow, the 0–10 recommendation-score gradient) and
+component class, grown by each page that needs new ones rather than pre-built up front. Static
+assets are served under `/css/**`, `/js/**`, `/images/**`, all `permitAll`, through Spring Boot's
+default static-resource handling (not `WebMvcConfig`'s `/uploads/**` mapping, which is unrelated).
+
+**No SPA.** Pages are ordinary server-rendered HTML: filtering/pagination/navigation are plain
+`<a>`/`<form method="get">` links that reload the page with query parameters; state-changing
+actions (submit, approve, reject, reveal-contact) are plain `<form method="post">`s or a
+query-parameter GET (`?reveal=true`), never an XHR/`fetch` call against the slice's own REST API.
+The one exception is `static/js/photo-viewer.js`, a small vanilla-JS, dependency-free script:
+every clickable photo on the gallery detail page carries `data-photo-viewer-item`/`data-url`/
+`data-caption` attributes; on click, the script reads all such elements from the already-server-
+rendered DOM (in article order, so no separate endpoint is needed), clones the shared overlay
+skeleton from `shell.html`, and wires prev/next/close/`Escape`.
+
+**Error handling.** A `Service` call from a View-Controller can throw the exact same exceptions
+it throws for its REST caller (`NotFoundException`, `TestimonialNotPendingException`,
+`SubmissionValidationException`, `TooManyRequestsException`, an OTP-verification failure). Left
+alone, `GlobalExceptionHandler`'s `@RestControllerAdvice` (which applies to every controller, not
+only `@RestController`s) would turn one of these into a JSON error body for what's supposed to be
+a page load or a form-POST redirect. Each `XxxViewController` therefore catches these locally and
+responds the way a browser navigation needs: redirect back to the same page (approve/reject on a
+now-stale item, per decision 18's own note that the admin's queue can go stale under concurrent
+review), re-render the current form with an inline error (a wrong OTP code, a rate-limited
+request, a failed validation), or render a small in-slice not-found page (an unknown or
+not-yet/no-longer-approved testimonial id — the gallery detail page's 404 is deliberately
+identical for "doesn't exist" and "exists but isn't approved," the same privacy property the REST
+`GET /gallery/testimonials/{id}` already has). `GlobalExceptionHandler` itself is untouched and
+still owns every actual REST response.
+
+**Submission form.** The REST `POST /api/submissions` contract takes one multipart `payload` part
+(a JSON `TestimonialSubmissionRequest`) plus photo files keyed by `fileRef` — not something a
+plain HTML `<form>` produces. Rather than change that shipped contract, `submission/form.html`
+posts flat, `@ModelAttribute`-bound multipart fields, and `SubmissionService.createFromForm`/
+`editFromForm` translate that command object into the same `TestimonialSubmissionRequest` +
+file-map shape before calling the unmodified `create`/`edit`. The form itself always renders
+every active topic/subtopic and one row per active contact type (an unused row is simply dropped
+by the adapter) rather than a JS-driven add/remove picker, consistent with the "no SPA" rule
+above; the recommendation-score slider is a native `<input type="range">`.

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.iitm.beacon.common.error.SubmissionValidationException;
 import com.iitm.beacon.config.PhotoStorageProperties;
+import com.iitm.beacon.config.PhotoUrlResolver;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -29,7 +30,8 @@ class PhotoStorageServiceTest {
     Path root;
 
     private PhotoStorageService serviceWithLimit(long maxBytes) {
-        return new PhotoStorageService(new PhotoStorageProperties(root.toString(), 20, maxBytes));
+        return new PhotoStorageService(
+                new PhotoStorageProperties(root.toString(), 20, maxBytes), new PhotoUrlResolver());
     }
 
     private PhotoStorageService service() {

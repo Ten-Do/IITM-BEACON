@@ -212,6 +212,33 @@ class GlobalExceptionHandlerTest {
                 .isEqualTo("A testimonial already exists for this visitor.");
     }
 
+    @Test
+    void testimonialNotPendingException_mapsTo409WithGivenMessage() {
+        TestimonialNotPendingException ex =
+                new TestimonialNotPendingException("Testimonial 42 is not pending and cannot be moderated again.");
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleTestimonialNotPending(ex, requestFor("/api/moderation/testimonials/42/approve"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        ErrorResponse body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.status()).isEqualTo(409);
+        assertThat(body.message()).isEqualTo("Testimonial 42 is not pending and cannot be moderated again.");
+        assertThat(body.path()).isEqualTo("/api/moderation/testimonials/42/approve");
+    }
+
+    @Test
+    void testimonialNotPendingException_blankMessage_fallsBackToDefaultMessage() {
+        TestimonialNotPendingException ex = new TestimonialNotPendingException(null);
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleTestimonialNotPending(ex, requestFor("/api/moderation/testimonials/42/approve"));
+
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message()).isEqualTo("This testimonial is no longer pending.");
+    }
+
     private static class DummyTarget {
         @SuppressWarnings("unused")
         void dummyMethod(String arg) {

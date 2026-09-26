@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout/shell :: head(${editing} ? 'Edit your testimonial' : 'Write your testimonial')}"></head>
+<body>
+<div th:replace="~{layout/header-visitor :: header('submit')}"></div>
+
+<main class="submission-form-body">
+    <h1 class="submission-form-title" th:text="${editing} ? 'Edit your testimonial' : 'Write your testimonial'">
+        Write your testimonial</h1>
+    <p class="submission-form-sub">Everything below goes to OGE for review before it's published. You can come back
+        and edit it any time — just log in again with this email.</p>
+
+    <div class="submission-error-banner" th:if="${error}">
+        <span class="submission-error-mark">!</span>
+        <p class="submission-error-text" th:text="${error}">Something went wrong.</p>
+    </div>
+
+    <form method="post" th:action="@{/submissions/form}" th:object="${command}" enctype="multipart/form-data">
+
+        <section class="submission-section">
+            <h2 class="submission-section-heading">About you</h2>
+            <div class="submission-field-row">
+                <div class="submission-field">
+                    <label class="submission-field-label" for="firstName">First name</label>
+                    <input class="submission-field-input" id="firstName" th:field="*{firstName}"/>
+                </div>
+                <div class="submission-field">
+                    <label class="submission-field-label" for="lastName">Last name</label>
+                    <input class="submission-field-input" id="lastName" th:field="*{lastName}"/>
+                </div>
+            </div>
+            <div class="submission-field-row">
+                <div class="submission-field">
+                    <label class="submission-field-label" for="rollNumber">Roll number</label>
+                    <input class="submission-field-input" id="rollNumber" th:field="*{rollNumber}"/>
+                </div>
+                <div class="submission-field">
+                    <label class="submission-field-label" for="admissionYear">Admission year</label>
+                    <input class="submission-field-input" id="admissionYear" type="number"
+                           th:field="*{admissionYear}"/>
+                </div>
+            </div>
+            <div class="submission-field">
+                <label class="submission-field-label" for="emailDisplay">Email</label>
+                <input class="submission-field-input" id="emailDisplay" th:value="${email}" disabled="disabled"/>
+                <span class="submission-field-help">From your login — this is how we'll find your testimonial next
+                    time.</span>
+            </div>
+            <div class="submission-field">
+                <label class="submission-field-label" for="countryCode">Country</label>
+                <select class="submission-field-select" id="countryCode" th:field="*{countryCode}">
+                    <option th:each="c : ${countries}" th:value="${c.code}" th:text="${c.name}">Country</option>
+                </select>
+            </div>
+        </section>
+
+        <section class="submission-section">
+            <h2 class="submission-section-heading">Your recommendation</h2>
+            <p class="submission-section-hint">How would you rate your overall exchange experience?</p>
+            <div class="submission-score-wrap">
+                <input type="range" class="submission-score-input" min="0" max="10" th:field="*{recommendationScore}"
+                       oninput="this.nextElementSibling.value = this.value"/>
+                <output class="submission-score-output" th:text="${command.recommendationScore}">8</output>
+            </div>
+        </section>
+
+        <section class="submission-section">
+            <h2 class="submission-section-heading">What do you want to share?</h2>
+            <p class="submission-section-hint">Any topic may be left blank — fill in whichever ones apply to your
+                exchange.</p>
+
+            <div th:each="row, rowStat : ${topicFormRows}">
+                <h3 class="submission-topic-group-heading" th:if="${row.groupLabel != null and row.groupStart}"
+                    th:text="${row.groupLabel}">Group label</h3>
+                <div class="submission-topic-row">
+                    <label class="submission-field-label" th:for="'answer-' + ${rowStat.index}"
+                           th:text="${row.topicLabel}">Topic label</label>
+                    <p class="submission-topic-prompt" th:text="${row.guidingPrompt}">Guiding prompt.</p>
+                    <input type="hidden" th:field="*{sections[__${rowStat.index}__].topicSlug}"/>
+                    <textarea class="submission-field-textarea" th:id="'answer-' + ${rowStat.index}"
+                              th:field="*{sections[__${rowStat.index}__].answerText}"
+                              placeholder="Optional — leave blank if this doesn't apply to you."></textarea>
+
+                    <div class="submission-photo-tile-row"
+                         th:if="${not #lists.isEmpty(command.sections[rowStat.index].existingPhotoUrls)}">
+                        <div class="submission-photo-tile"
+                             th:each="url, photoStat : ${command.sections[rowStat.index].existingPhotoUrls}">
+                            <img class="submission-photo-tile-image" th:src="${url}" alt="Submitted photo"/>
+                            <input type="hidden"
+                                   th:field="*{sections[__${rowStat.index}__].existingPhotoUrls[__${photoStat.index}__]}"/>
+                            <label class="submission-photo-remove">
+                                <input type="checkbox" th:name="|sections[${rowStat.index}].removedPhotoUrls|"
+                                       th:value="${url}"/>
+                                Remove
+                            </label>
+                            <input type="text" class="submission-photo-tag-input" placeholder="tags, comma-separated"
+                                   th:field="*{sections[__${rowStat.index}__].existingPhotoTags[__${photoStat.index}__]}"/>
+                        </div>
+                    </div>
+
+                    <div class="submission-photo-upload-row">
+                        <div class="submission-photo-upload-tile" th:each="slot : ${#numbers.sequence(1, newPhotoSlots)}">
+                            <input type="file" class="submission-photo-upload-input" accept="image/*"
+                                   th:name="|sections[${rowStat.index}].photos|"/>
+                            <input type="text" class="submission-photo-tag-input" placeholder="tags, comma-separated"
+                                   th:name="|sections[${rowStat.index}].photoTags|"/>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="submission-section">
+            <h2 class="submission-section-heading">Contact methods</h2>
+            <p class="submission-section-hint">Optional. Each entry can be public (shown to visitors who ask to
+                connect) or kept private.</p>
+            <div class="submission-contact-row" th:each="ct, ctStat : ${contactTypes}">
+                <label class="submission-contact-label" th:text="${ct.label}">email address</label>
+                <input type="hidden" th:field="*{contactMethods[__${ctStat.index}__].typeSlug}"/>
+                <input type="text" class="submission-field-input"
+                       th:field="*{contactMethods[__${ctStat.index}__].value}"
+                       th:placeholder="'e.g. your ' + ${ct.label}"/>
+                <label class="submission-contact-visibility">
+                    <input type="checkbox" th:field="*{contactMethods[__${ctStat.index}__].publicContact}"/>
+                    Show publicly
+                </label>
+            </div>
+        </section>
+
+        <section class="submission-section">
+            <h2 class="submission-section-heading">Achievements</h2>
+            <p class="submission-section-hint">Check anything that applies to your exchange.</p>
+            <div class="submission-achievement-grid">
+                <label class="submission-checkbox" th:each="a : ${achievements}">
+                    <input type="checkbox" name="achievementSlugs" th:value="${a.slug}"
+                           th:checked="${command.achievementSlugs != null and command.achievementSlugs.contains(a.slug)}"/>
+                    <span th:text="${a.label}">Achievement label</span>
+                </label>
+            </div>
+        </section>
+
+        <div class="submission-consent-block">
+            <label class="submission-checkbox">
+                <input type="checkbox" th:field="*{dataProcessingConsent}"/>
+                I consent to IITM Beacon storing and displaying my testimonial as described in the privacy notice.
+            </label>
+        </div>
+
+        <div class="submission-btn-row">
+            <button type="submit" class="submission-btn submission-btn-primary">Submit testimonial</button>
+            <a class="submission-btn submission-btn-ghost" href="/gallery">Cancel</a>
+        </div>
+    </form>
+</main>
+</body>
+</html>

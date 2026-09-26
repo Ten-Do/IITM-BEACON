@@ -7,16 +7,19 @@ import com.iitm.beacon.common.crypto.EmailLookupHashService;
 import com.iitm.beacon.common.error.SubmissionValidationException;
 import com.iitm.beacon.common.error.TestimonialAlreadyExistsException;
 import com.iitm.beacon.config.PhotoStorageProperties;
+import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
 import com.iitm.beacon.domain.contacttype.ContactTypeRepository;
 import com.iitm.beacon.domain.country.CountryRepository;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
+import com.iitm.beacon.domain.topic.TopicGroupRepository;
 import com.iitm.beacon.domain.topic.TopicRepository;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.ContactMethodInput;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.PhotoInput;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.SectionInput;
+import jakarta.validation.Validator;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Path;
@@ -62,6 +65,12 @@ class SubmissionServiceCreateTest {
 
     @Autowired
     private Clock clock;
+
+    @Autowired
+    private TopicGroupRepository topicGroupRepository;
+
+    @Autowired
+    private Validator validator;
 
     @TempDir
     Path uploadsRoot;
@@ -223,7 +232,8 @@ class SubmissionServiceCreateTest {
     void create_tooManyPhotos_throwsSubmissionValidationExceptionBeforeStoringAnyFile() throws Exception {
         PhotoStorageProperties restrictiveProperties =
                 new PhotoStorageProperties(uploadsRoot.toString(), 1, 5_242_880L);
-        PhotoStorageService restrictivePhotoStorage = new PhotoStorageService(restrictiveProperties);
+        PhotoStorageService restrictivePhotoStorage =
+                new PhotoStorageService(restrictiveProperties, new PhotoUrlResolver());
         SubmissionService restrictedService = new SubmissionService(
                 testimonialRepository,
                 topicRepository,
@@ -233,7 +243,9 @@ class SubmissionServiceCreateTest {
                 emailLookupHashService,
                 restrictivePhotoStorage,
                 restrictiveProperties,
-                clock);
+                clock,
+                topicGroupRepository,
+                validator);
 
         MockMultipartFile fileA = new MockMultipartFile("a", "a.png", "image/png", realPngBytes());
         MockMultipartFile fileB = new MockMultipartFile("b", "b.png", "image/png", realPngBytes());

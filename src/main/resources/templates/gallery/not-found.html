@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout/shell :: head('Testimonial not found')}"></head>
+<body>
+<div th:replace="~{layout/header-visitor :: header('gallery')}"></div>
+
+<main class="gallery-body">
+    <div class="gallery-empty-state">
+        <h3 class="gallery-empty-title">Testimonial not found</h3>
+        <p class="gallery-empty-hint">This testimonial doesn't exist, or hasn't been approved yet. It may also have
+            been removed.</p>
+    </div>
+</main>
+</body>
+</html>

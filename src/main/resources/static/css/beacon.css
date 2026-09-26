@@ -1,0 +1,1480 @@
+/*
+ * IITM Beacon — shared stylesheet.
+ *
+ * Design tokens below are extracted from ui-design/DesignSystem.dc.html
+ * (the static visual-mockup reference). Component classes are added
+ * incrementally by the batch that first needs them — see each section
+ * heading for which batch introduced it.
+ */
+
+:root {
+  /* Color — inherited from the ge.iitm.ac.in / OGE reference palette */
+  --maroon: #ae152d;
+  --maroon-dark: #8c001e;
+  --gold: #d6a64f;
+  --gold-dark: #bda345;
+  --gold-soft: #fbf3e3;
+  --red: #d9261c;
+  --red-soft: #fbeae8;
+  --olive: #4b7043;
+  --olive-soft: #edf2ea;
+  --ink: #17161c;
+  --ink-soft: #5b534c;
+  --paper: #ffffff;
+  --sand: #f7f4ef;
+  --line: #e6dfd3;
+
+  /* Recommendation score gradient (0-10) — originated for IITM Beacon */
+  --score-0: #69221c;
+  --score-1: #832e21;
+  --score-2: #994729;
+  --score-3: #af6831;
+  --score-4: #bd8838;
+  --score-5: #c2a33d;
+  --score-6: #8aaa41;
+  --score-7: #6e9442;
+  --score-8: #5b8344;
+  --score-9: #527944;
+  --score-10: #4b7043;
+
+  /* Typography */
+  --font-base: "Roboto", system-ui, -apple-system, sans-serif;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Border radius scale — only these 5 values, anywhere */
+  --radius-xs: 2px; /* decorative only */
+  --radius-sm: 6px; /* buttons, inputs, small badges */
+  --radius-md: 8px; /* search boxes, empty states */
+  --radius-lg: 12px; /* cards */
+  --radius-full: 999px; /* chips, pills, toggles */
+
+  /* Elevation */
+  --shadow-card: 0 8px 24px rgba(148, 156, 168, 0.2);
+}
+
+/* Base reset */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-base);
+  color: var(--ink);
+  background: var(--paper);
+}
+
+a {
+  color: var(--maroon);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--maroon-dark);
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: 2px solid var(--maroon);
+  outline-offset: 2px;
+}
+
+/* Page shell — max-width centered container reused by later page templates */
+.page-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 40px;
+}
+
+/* Header bar — shared chrome for header-visitor.html and header-admin.html */
+.header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 40px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* Temporary text wordmark standing in for the OGE logo SVG (not yet available) */
+.wordmark {
+  font-family: var(--font-base);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--maroon);
+  letter-spacing: -0.01em;
+}
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.header-nav a {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.header-nav a:hover,
+.header-nav a.active {
+  color: var(--maroon);
+  text-decoration: none;
+}
+
+.admin-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--maroon);
+  border: 1px solid var(--maroon);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+}
+
+/* Moderation queue page (moderation/queue.html) — based on
+   ui-design/ModerationQueue.dc.html and ModerationQueueEmpty.dc.html. */
+.moderation-body {
+  padding: var(--space-6);
+  background: var(--sand);
+}
+
+.moderation-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 var(--space-1) 0;
+}
+
+.moderation-subtitle {
+  font-size: 14px;
+  color: var(--ink-soft);
+  margin: 0 0 var(--space-5) 0;
+}
+
+.moderation-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+}
+
+.moderation-empty-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.moderation-empty-hint {
+  font-size: 14px;
+  color: var(--ink-soft);
+  margin: 0;
+  max-width: 380px;
+  line-height: 1.5;
+}
+
+.moderation-queue-item {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+  box-shadow: var(--shadow-card);
+}
+
+.moderation-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--space-4);
+}
+
+.moderation-item-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.moderation-type-chip {
+  display: inline-flex;
+  width: fit-content;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--gold-soft);
+  color: var(--maroon-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.moderation-type-chip--resubmitted {
+  background: var(--olive-soft);
+  color: var(--olive);
+}
+
+.moderation-identity-line {
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.moderation-meta-line {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.moderation-item-header-right {
+  text-align: right;
+  font-size: 13px;
+  color: var(--ink-soft);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.moderation-changed-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--red-soft);
+  color: var(--red);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.moderation-score-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.moderation-score-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 26px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--paper);
+  border: 1.5px solid currentcolor;
+}
+
+.moderation-section-row {
+  padding: var(--space-3) 0 var(--space-3) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid transparent;
+}
+
+.moderation-section-row:last-of-type {
+  border-bottom: none;
+}
+
+.moderation-section-row--changed {
+  border-left-color: var(--red);
+}
+
+.moderation-section-row-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.moderation-section-row-head strong {
+  font-size: 14px;
+}
+
+.moderation-section-row-body {
+  font-size: 14px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.moderation-section-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.moderation-section-photo {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+}
+
+.moderation-contacts-row,
+.moderation-achievements-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+
+.moderation-contact-chip {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  background: var(--sand);
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+}
+
+.moderation-contact-chip--public {
+  border-color: var(--olive);
+  color: var(--olive);
+  background: var(--olive-soft);
+}
+
+.moderation-achievement-chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  background: var(--sand);
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+}
+
+.moderation-item-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.moderation-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.moderation-btn-approve {
+  background: var(--olive);
+  color: var(--paper);
+}
+
+.moderation-btn-reject {
+  background: transparent;
+  color: var(--red);
+  border: 1.5px solid var(--red);
+}
+
+.moderation-reject-form {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 240px;
+  flex-direction: row-reverse;
+}
+
+.moderation-reject-reason {
+  flex: 1;
+}
+
+.moderation-reject-reason label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  display: block;
+  margin-bottom: var(--space-1);
+}
+
+.moderation-reject-reason textarea {
+  width: 100%;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 13px;
+  font-family: inherit;
+  min-height: 40px;
+  resize: vertical;
+}
+
+.moderation-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.moderation-pagination-link {
+  font-weight: 600;
+}
+
+/* Visitor OTP login pages (submission/login-email.html, login-code.html) —
+   based on ui-design/VisitorLoginEmail.dc.html and VisitorLoginCode.dc.html. */
+.auth-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-7);
+  background: var(--sand);
+  min-height: calc(100vh - 60px);
+}
+
+.auth-wrap {
+  width: 100%;
+  max-width: 420px;
+}
+
+.auth-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 var(--space-1) 0;
+  text-align: center;
+}
+
+.auth-subtitle {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+  margin: 0 0 var(--space-5) 0;
+  text-align: center;
+}
+
+.auth-subtitle strong {
+  color: var(--ink);
+}
+
+.auth-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  box-shadow: var(--shadow-card);
+}
+
+.auth-error-banner {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  background: var(--red-soft);
+  border: 1px solid var(--red);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+}
+
+.auth-error-mark {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.auth-error-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  margin: 0;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.auth-field-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.auth-field-input {
+  height: 44px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-3);
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.auth-code-input {
+  letter-spacing: 0.3em;
+  text-align: center;
+  font-weight: 700;
+}
+
+.auth-field-help {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.auth-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  width: 100%;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.auth-btn-primary {
+  background: var(--maroon);
+  color: #fff;
+}
+
+.auth-btn-ghost {
+  background: transparent;
+  color: var(--ink-soft);
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  width: 100%;
+  padding: var(--space-2) 0;
+}
+
+/* Admin login page (adminauth/login.html) — based on
+   ui-design/AdminLogin.dc.html. A small inline "Resend code" link-styled
+   button sitting next to the code field, distinct from .auth-btn-ghost's
+   full-width block treatment used by the visitor login-code page. */
+.auth-resend-btn {
+  align-self: flex-end;
+  background: transparent;
+  border: none;
+  color: var(--maroon);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.auth-resend-btn:hover {
+  color: var(--maroon-dark);
+  text-decoration: underline;
+}
+
+/* Submission form (submission/form.html) — based on
+   ui-design/SubmissionForm.dc.html. One shared template for both
+   create and edit. */
+.submission-form-body {
+  padding: var(--space-7);
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+  background: var(--sand);
+}
+
+.submission-form-title {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 0 0 var(--space-1) 0;
+}
+
+.submission-form-sub {
+  font-size: 14px;
+  color: var(--ink-soft);
+  margin: 0 0 var(--space-6) 0;
+  line-height: 1.5;
+}
+
+.submission-error-banner {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  background: var(--red-soft);
+  border: 1px solid var(--red);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.submission-error-mark {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.submission-error-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  margin: 0;
+}
+
+.submission-section {
+  margin-bottom: var(--space-6);
+}
+
+.submission-section-heading {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 var(--space-1) 0;
+}
+
+.submission-section-hint {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.submission-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+}
+
+.submission-field-row {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.submission-field-row > .submission-field {
+  flex: 1;
+}
+
+.submission-field-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.submission-field-input,
+.submission-field-select {
+  height: 44px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-3);
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.submission-field-input:disabled {
+  background: var(--sand);
+  color: var(--ink-soft);
+}
+
+.submission-field-textarea {
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  min-height: 100px;
+  line-height: 1.6;
+  resize: vertical;
+  width: 100%;
+}
+
+.submission-field-help {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.submission-score-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  box-shadow: var(--shadow-card);
+}
+
+.submission-score-input {
+  flex: 1;
+}
+
+.submission-score-output {
+  font-size: 28px;
+  font-weight: 700;
+  min-width: 2ch;
+  text-align: right;
+}
+
+.submission-topic-group-heading {
+  font-size: 15px;
+  font-weight: 700;
+  margin: var(--space-5) 0 var(--space-2) 0;
+}
+
+.submission-topic-row {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
+  box-shadow: var(--shadow-card);
+}
+
+.submission-topic-prompt {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.submission-photo-tile-row,
+.submission-photo-upload-row {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.submission-photo-tile,
+.submission-photo-upload-tile {
+  width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.submission-photo-tile-image {
+  width: 120px;
+  height: 90px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+}
+
+.submission-photo-remove {
+  font-size: 11px;
+  color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.submission-photo-tag-input {
+  height: 30px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  font-size: 11px;
+  font-family: inherit;
+}
+
+.submission-photo-upload-input {
+  font-size: 11px;
+}
+
+.submission-contact-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.submission-contact-label {
+  width: 140px;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.submission-contact-visibility {
+  font-size: 12px;
+  color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.submission-achievement-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+
+.submission-checkbox {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.submission-consent-block {
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  margin-bottom: var(--space-6);
+  box-shadow: var(--shadow-card);
+}
+
+.submission-btn-row {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.submission-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.submission-btn-primary {
+  background: var(--maroon);
+  color: #fff;
+}
+
+.submission-btn-ghost {
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1.5px solid var(--line);
+}
+
+/* Submission confirmation page (submission/confirmation.html) — based on
+   ui-design/SubmissionConfirmation.dc.html. */
+.confirmation-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-7);
+  background: var(--sand);
+  min-height: calc(100vh - 60px);
+}
+
+.confirmation-wrap {
+  width: 100%;
+  max-width: 460px;
+  text-align: center;
+}
+
+.confirmation-icon-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-full);
+  background: var(--olive-soft);
+  color: var(--olive);
+  font-size: 24px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--space-5) auto;
+}
+
+.confirmation-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 var(--space-2) 0;
+}
+
+.confirmation-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin-top: var(--space-4);
+  text-align: left;
+  box-shadow: var(--shadow-card);
+}
+
+.confirmation-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 26px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--sand);
+  color: var(--ink-soft);
+  margin-bottom: var(--space-3);
+}
+
+.confirmation-note {
+  font-size: 14px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+  margin: 0 0 var(--space-2) 0;
+}
+
+.confirmation-note strong {
+  color: var(--ink);
+}
+
+.confirmation-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  border: 1.5px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-family: inherit;
+  margin-top: var(--space-5);
+}
+
+/* Public gallery list page (gallery/list.html) — based on
+   ui-design/Gallery.dc.html and GalleryEmpty.dc.html. */
+.gallery-body {
+  flex: 1;
+  padding: var(--space-6) var(--space-6);
+  background: var(--sand);
+}
+
+.gallery-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.gallery-search-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 40px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--sand);
+  border: 1px solid var(--line);
+  width: 280px;
+}
+
+.gallery-search-input {
+  border: none;
+  outline: none;
+  background: transparent;
+  flex: 1;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--ink);
+  width: 100%;
+}
+
+.gallery-country-select {
+  height: 40px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-4);
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.gallery-topic-filter-row {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  flex-basis: 100%;
+}
+
+.gallery-chip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 30px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  font-weight: 600;
+  border: 1.5px solid var(--line);
+  background: var(--paper);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.gallery-chip-toggle:has(.gallery-chip-checkbox:checked) {
+  border-color: var(--gold-dark);
+  background: var(--gold-soft);
+  color: var(--maroon-dark);
+}
+
+.gallery-chip-checkbox {
+  margin: 0;
+}
+
+.gallery-filter-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  background: var(--maroon);
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.gallery-result-count {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.gallery-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.gallery-empty-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.gallery-empty-hint {
+  font-size: 14px;
+  color: var(--ink-soft);
+  margin: 0;
+  max-width: 400px;
+  line-height: 1.5;
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.gallery-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-card);
+}
+
+.gallery-card-photo,
+.gallery-card-photo-placeholder {
+  background: var(--sand);
+  border-bottom: 1px solid var(--line);
+  height: 150px;
+  width: 100%;
+  object-fit: cover;
+}
+
+.gallery-card-body {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.gallery-card-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gallery-card-country {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.gallery-score-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 24px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--paper);
+  border: 1.5px solid currentcolor;
+}
+
+.gallery-score-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: currentcolor;
+}
+
+.gallery-card-excerpt {
+  font-size: 14px;
+  color: var(--ink-soft);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.gallery-read-more {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--maroon);
+  align-self: flex-start;
+}
+
+.gallery-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.gallery-pagination-link {
+  font-weight: 600;
+}
+
+/* Testimonial article / detail page (gallery/detail.html) — based on
+   ui-design/Article.dc.html. */
+.gallery-detail-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: var(--space-6);
+  padding: var(--space-6);
+  background: var(--sand);
+}
+
+.gallery-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
+.gallery-country-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.gallery-article-title {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 var(--space-1) 0;
+}
+
+.gallery-score-label-line {
+  font-size: 14px;
+  color: var(--ink-soft);
+  margin: 0 0 var(--space-6) 0;
+}
+
+.gallery-topic-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5) var(--space-6);
+  margin-bottom: var(--space-5);
+  box-shadow: var(--shadow-card);
+}
+
+.gallery-topic-card:last-child {
+  margin-bottom: 0;
+}
+
+.gallery-group-heading {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 var(--space-1) 0;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.gallery-subtopic-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 16px;
+  font-weight: 700;
+  margin: var(--space-5) 0 var(--space-2) 0;
+}
+
+.gallery-updated-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--gold-soft);
+  color: var(--gold-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.gallery-answer-text {
+  font-size: 16px;
+  line-height: 1.7;
+  margin: 0 0 var(--space-3) 0;
+}
+
+.gallery-photo-row {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.gallery-photo-thumb {
+  background: var(--sand);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  width: 110px;
+  height: 84px;
+  object-fit: cover;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.gallery-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.gallery-side-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card);
+}
+
+.gallery-side-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  margin: 0 0 var(--space-3) 0;
+}
+
+.gallery-reveal-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 44px;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: 600;
+  background: transparent;
+  color: var(--maroon);
+  border: 1.5px solid var(--maroon);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.gallery-contact-list,
+.gallery-achievements-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.gallery-contact-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--olive-soft);
+  border: 1px solid var(--olive);
+  color: var(--olive);
+}
+
+.gallery-achievement-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--sand);
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+}
+
+/* Fullscreen photo viewer overlay (gallery/detail.html + photo-viewer.js) —
+   based on ui-design/PhotoViewer.dc.html. The markup/class names come from
+   layout/shell.html's inert <template id="photo-viewer-template">; this
+   batch is the first to attach CSS/behavior to it. */
+.photo-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(23, 22, 28, 0.94);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.photo-viewer-close {
+  position: absolute;
+  top: var(--space-5);
+  right: var(--space-6);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.photo-viewer-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  max-width: 90vw;
+}
+
+.photo-viewer-nav {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.photo-viewer-image {
+  max-width: 70vw;
+  max-height: 70vh;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+  background: var(--sand);
+}
+
+.photo-viewer-caption {
+  position: absolute;
+  bottom: var(--space-6);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.photo-viewer-caption-text {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.photo-viewer-caption-count {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 13px;
+}

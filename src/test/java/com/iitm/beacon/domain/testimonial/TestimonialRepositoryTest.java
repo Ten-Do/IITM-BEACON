@@ -14,6 +14,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 
 class TestimonialRepositoryTest extends AbstractRepositoryTest {
 
@@ -131,5 +133,98 @@ class TestimonialRepositoryTest extends AbstractRepositoryTest {
 
         assertThat(saved.isIdentityModified()).isFalse();
         assertThat(saved.isScoreModified()).isFalse();
+    }
+
+    @Test
+    void findByStatusOrderByCreatedAtAsc_returnsOnlyMatchingStatus_orderedOldestFirst() {
+        testimonialRepository.saveAndFlush(validTestimonialBuilder("newer-pending@example.com")
+                .status(TestimonialStatus.PENDING)
+                .createdAt(Instant.parse("2026-02-01T00:00:00Z"))
+                .build());
+        testimonialRepository.saveAndFlush(validTestimonialBuilder("older-pending@example.com")
+                .status(TestimonialStatus.PENDING)
+                .createdAt(Instant.parse("2026-01-01T00:00:00Z"))
+                .build());
+        testimonialRepository.saveAndFlush(validTestimonialBuilder("approved@example.com")
+                .status(TestimonialStatus.APPROVED)
+                .createdAt(Instant.parse("2025-12-01T00:00:00Z"))
+                .build());
+
+        Page<Testimonial> page = testimonialRepository.findByStatusOrderByCreatedAtAsc(
+                TestimonialStatus.PENDING, PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).hasSize(2);
+        assertThat(page.getContent().get(0).getCreatedAt()).isEqualTo(Instant.parse("2026-01-01T00:00:00Z"));
+        assertThat(page.getContent().get(1).getCreatedAt()).isEqualTo(Instant.parse("2026-02-01T00:00:00Z"));
+        assertThat(page.getTotalElements()).isEqualTo(2);
+    }
+
+    @Test
+    void findByStatusOrderByCreatedAtAsc_noMatchingStatus_returnsEmptyPage() {
+        testimonialRepository.saveAndFlush(validTestimonialBuilder("only-pending@example.com")
+                .status(TestimonialStatus.PENDING)
+                .build());
+
+        Page<Testimonial> page = testimonialRepository.findByStatusOrderByCreatedAtAsc(
+                TestimonialStatus.REJECTED, PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).isEmpty();
+        assertThat(page.getTotalElements()).isZero();
+    }
+
+    @Test
+    void findByStatusOrderByCreatedAtAsc_pageSizeSmallerThanResultSet_returnsFirstPageWithCorrectTotals() {
+        testimonialRepository.saveAndFlush(validTestimonialBuilder("first@example.com")
+                .status(TestimonialStatus.PENDING)
+                .createdAt(Instant.parse("2026-01-01T00:00:00Z"))
+                .build());
+        testimonialRepository.saveAndFlush(validTestimonialBuilder("second@example.com")
+                .status(TestimonialStatus.PENDING)
+                .createdAt(Instant.parse("2026-01-02T00:00:00Z"))
+                .build());
+
+        Page<Testimonial> page = testimonialRepository.findByStatusOrderByCreatedAtAsc(
+                TestimonialStatus.PENDING, PageRequest.of(0, 1));
+
+        assertThat(page.getContent()).hasSize(1);
+        assertThat(page.getContent().get(0).getCreatedAt()).isEqualTo(Instant.parse("2026-01-01T00:00:00Z"));
+        assertThat(page.getTotalElements()).isEqualTo(2);
+        assertThat(page.getTotalPages()).isEqualTo(2);
+    }
+
+    @Test
+    void findDistinctCountriesByStatus_multipleApprovedTestimonials_returnsDistinctCountriesOrderedByName() {
+        Country unitedStates = countryRepository.findById("US").orElseThrow();
+        testimonialRepository.saveAndFlush(validTestimonialBuilder("approved-in-1@example.com")
+                .status(TestimonialStatus.APPROVED)
+                .country(india)
+                .build());
+        testimonialRepository.saveAndFlush(validTestimonialBuilder("approved-in-2@example.com")
+                .status(TestimonialStatus.APPROVED)
+                .country(india)
+                .build());
+        testimonialRepository.saveAndFlush(validTestimonialBuilder("approved-us@example.com")
+                .status(TestimonialStatus.APPROVED)
+                .country(unitedStates)
+                .build());
+        testimonialRepository.saveAndFlush(validTestimonialBuilder("pending-in@example.com")
+                .status(TestimonialStatus.PENDING)
+                .country(india)
+                .build());
+
+        var countries = testimonialRepository.findDistinctCountriesByStatus(TestimonialStatus.APPROVED);
+
+        assertThat(countries).extracting(Country::getCode).containsExactly("IN", "US");
+    }
+
+    @Test
+    void findDistinctCountriesByStatus_noMatchingTestimonials_returnsEmptyList() {
+        testimonialRepository.saveAndFlush(validTestimonialBuilder("pending-only@example.com")
+                .status(TestimonialStatus.PENDING)
+                .build());
+
+        var countries = testimonialRepository.findDistinctCountriesByStatus(TestimonialStatus.APPROVED);
+
+        assertThat(countries).isEmpty();
     }
 }

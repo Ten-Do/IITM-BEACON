@@ -433,3 +433,80 @@ before or without any admin session — `Achievement` management itself stays ad
 submission form is a visitor-facing concern with no moderation/admin content in it, so it
 belongs next to `ContactType`'s own public listing rather than behind `catalogadmin`'s
 `adminSession` security requirement.
+
+## 21. View layer: REST and server-rendered pages coexist
+
+**Decision:** `gallery`, `moderation`, `submission`, and `adminauth` each gain a second,
+separate `@Controller` ("View-Controller", e.g. `GalleryViewController`) alongside their
+existing `@RestController`. A View-Controller calls its slice's own `Service` directly (a plain
+Java method call, never HTTP/AJAX against the slice's own REST API) and returns a Thymeleaf
+template name. The JSON contract in `api-spec.yaml` is unchanged by this — every existing REST
+endpoint keeps its exact request/response shape; the View-Controller is a second caller of the
+same `Service`, not a replacement for the first. No SPA and no client-side JS framework: pages
+are plain server-rendered HTML with ordinary `<form>` GET/POST navigation; the one exception is
+a small, self-contained vanilla-JS fullscreen photo viewer (`static/js/photo-viewer.js`), since a
+full page reload can't do that job. Templates live under `src/main/resources/templates/<slice>/`,
+with shared chrome factored into `templates/layout/` fragments (`shell.html` for `<head>` +
+a fullscreen-viewer markup skeleton; `header-visitor.html` and `header-admin.html` for the two
+nav-bar variants), and a single global stylesheet (`static/css/beacon.css`) built from the design
+tokens in `ui-design/DesignSystem.dc.html`. `oge-logo.svg`, referenced by the visual mockups,
+does not exist in this repository; both header fragments render a plain text wordmark
+("IITM Beacon") in its place until a real logo asset is supplied.
+
+A View-Controller catches the same domain exceptions its REST sibling lets propagate to
+`GlobalExceptionHandler` (`NotFoundException`, `TestimonialNotPendingException`,
+`SubmissionValidationException`, `TooManyRequestsException`, OTP-verification failures) and
+turns each into a redirect or a re-rendered form with an inline error, instead of letting the
+`@RestControllerAdvice` write a JSON body to what's supposed to be a browser navigation or a
+form-POST response — `GlobalExceptionHandler` itself is unchanged and still owns every REST
+error response.
+
+The submission form posts plain multipart `<form>` fields (flat/indexed, `@ModelAttribute`
+bound), not the JSON-plus-`fileRef` `payload` part the REST endpoint expects. Rather than
+changing that already-shipped REST contract or duplicating `SubmissionService.create`/`edit`'s
+validation and persistence logic, `SubmissionService` gains two adapter methods,
+`createFromForm`/`editFromForm`, that translate the form-bound command object into the exact same
+`TestimonialSubmissionRequest` + file-map shape and then call the existing, unmodified
+`create`/`edit`. `SubmissionService` also gains two form-only read methods, `listAllCountries`
+and `listTopicCatalog` — unlike `gallery`'s equivalents, these return every active entry
+regardless of whether it already has an approved testimonial, since a picker needs the full
+catalog, not just what's already in the gallery; per decision 9, these are `submission`-local
+types, not a shared import from `gallery`.
+
+Three supporting infrastructure changes fall out of the same work, all pre-existing gaps this
+batch happened to touch rather than new problems it introduced:
+- `PhotoStorageService`'s one-line `urlFor` (`"/uploads/" + relativePath`) is promoted out of
+  `submission` into `config.PhotoUrlResolver`, since `gallery` and `moderation` need the exact
+  same mapping to build photo URLs and neither may import a class from `submission` (decision 9).
+  `PhotoStorageService` itself now just delegates to it.
+- Rejecting a testimonial (`ModerationService.reject`) needs to send an arbitrary
+  subject/body email, which `config.OtpMailer`'s single `sendOtp(to, code)` method can't express.
+  `config.NotificationMailer` (`send(to, subject, body)`) is added as a sibling interface, with
+  the same `Smtp*`/`Logging*`, prod/non-prod profile split as `OtpMailer` — kept separate rather
+  than widening `OtpMailer`'s contract, since sending an arbitrary notification isn't an OTP.
+- Approving or rejecting a testimonial that isn't currently `PENDING` (e.g. a second admin
+  double-clicking, or a stale page) now returns 409 via a new `TestimonialNotPendingException`,
+  the same treatment `TestimonialAlreadyExistsException` already gets — `api-spec.yaml` only
+  documented 404 for these two endpoints, but a wrong-state row is a different condition from a
+  missing one and deserves its own status code, matching the project's existing 409 precedent.
+
+Building real pages also closed a latent gap in `SecurityConfig`: its catch-all tail was
+`.anyRequest().authenticated()`, which accepts *any* authenticated role — a `VISITOR` session
+could reach a route with no explicit matcher. Now that every real route (REST and view) is
+listed explicitly, the tail is `.anyRequest().denyAll()`.
+
+**Rationale:** `scope.md`'s tech stack and `architecture.md`'s container diagram (§2.2) always
+described this app as serving "REST API + Thymeleaf pages," and `pom.xml` already carried
+`spring-boot-starter-thymeleaf` from the very first milestone — M1–M3 simply hadn't built the
+page layer yet, so this isn't a new architectural direction, only the first time it's actually
+wired up. Keeping the REST contract untouched and adding a second caller of the same `Service`
+(rather than routing pages through the JSON API internally, or replacing the JSON API with
+HTML responses) is the simplest option that satisfies both "no SPA" and "don't touch a
+already-shipped, already-tested contract": no internal HTTP round-trip, no content-negotiation
+branching in one controller, and `api-spec.yaml` stays the single source of truth for the JSON
+shape. Catching domain exceptions locally in the View-Controller (rather than teaching
+`GlobalExceptionHandler` to branch on `Accept`/response type) keeps the one existing,
+well-tested error-handling path exactly as it is for the API and adds a narrow, view-specific
+handling only where a browser navigation actually needs different treatment. Two new adapter
+methods on `SubmissionService`, rather than reworking `create`/`edit` to accept either shape,
+avoids touching an already-tested code path for a second, unrelated caller.

@@ -106,4 +106,47 @@ class TopicRepositoryTest extends AbstractRepositoryTest {
 
         assertThat(saved.isActive()).isTrue();
     }
+
+    @Test
+    void findByTopicGroupId_groupWithTopics_returnsOnlyThatGroupsTopics() {
+        TopicGroup group = topicGroupRepository.saveAndFlush(
+                TopicGroup.builder().label("Fixture Group For Lookup").displayOrder(1).build());
+        TopicGroup otherGroup = topicGroupRepository.saveAndFlush(
+                TopicGroup.builder().label("Fixture Other Group").displayOrder(2).build());
+        Topic first = topicRepository.saveAndFlush(Topic.builder()
+                .topicGroup(group)
+                .slug("fixture_group_lookup_a")
+                .label("A")
+                .guidingPrompt("Prompt A")
+                .displayOrder(1)
+                .build());
+        Topic second = topicRepository.saveAndFlush(Topic.builder()
+                .topicGroup(group)
+                .slug("fixture_group_lookup_b")
+                .label("B")
+                .guidingPrompt("Prompt B")
+                .displayOrder(2)
+                .build());
+        topicRepository.saveAndFlush(Topic.builder()
+                .topicGroup(otherGroup)
+                .slug("fixture_group_lookup_c")
+                .label("C")
+                .guidingPrompt("Prompt C")
+                .displayOrder(1)
+                .build());
+
+        var found = topicRepository.findByTopicGroupId(group.getId());
+
+        assertThat(found).extracting(Topic::getId).containsExactlyInAnyOrder(first.getId(), second.getId());
+    }
+
+    @Test
+    void findByTopicGroupId_groupWithNoTopics_returnsEmptyList() {
+        TopicGroup emptyGroup = topicGroupRepository.saveAndFlush(
+                TopicGroup.builder().label("Fixture Empty Group").displayOrder(3).build());
+
+        var found = topicRepository.findByTopicGroupId(emptyGroup.getId());
+
+        assertThat(found).isEmpty();
+    }
 }
