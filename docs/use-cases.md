@@ -60,6 +60,7 @@ flowchart LR
     Admin --> UCAdminOtpRequest
     Admin --> UCAdminOtpVerify
     Admin --> UCViewPendingQueue
+    Admin --> UCViewPhotosFullscreen
     Admin --> UCApproveTestimonial
     Admin --> UCRejectTestimonial
     Admin --> UCManageTopicGroups
@@ -183,20 +184,23 @@ list.
 
 Contact type is a database-driven reference table, same pattern as `Topic` (decision 14) — a
 new type is a database edit, not a code change. Each entry a submitter adds pairs one of these
-types with a free-text value; the value accepts whatever's convenient (a handle, a number, or a
-full link) rather than enforcing one shape. Placeholder text on the form guides the expected
-input.
+types with a value; the value may take any of the shapes its type accepts (a handle, a number,
+or a full link — whichever is convenient), and is checked against that type's own validation
+pattern (decision 5), both in the browser and on the server. A type with no pattern only
+requires a non-blank value. Placeholder text on the form guides the expected input.
 
-| Type slug | Placeholder / accepted input | Link building |
-|---|---|---|
-| `email` | email address | used as-is (`mailto:`); pre-filled with the login email as a starting value |
-| `whatsapp` | phone number, or a wa.me link | a plain number becomes a `wa.me` link; a pasted link is kept as-is |
-| `telegram` | phone number, @username, or a t.me link | a plain number or username becomes a `t.me` link; a pasted link is kept as-is |
-| `instagram` | @username or a profile link | a plain handle becomes an `instagram.com` link; a pasted link is kept as-is |
-| `twitter` | @username or a profile link | a plain handle becomes an `x.com` link; a pasted link is kept as-is |
+| Type slug | Placeholder | Accepted shapes (validated) | Link building |
+|---|---|---|---|
+| `email` | email address | an email address | used as-is (`mailto:`); pre-filled with the login email as a starting value |
+| `whatsapp` | phone number, or a wa.me link | a phone number (optional `+`, 7–15 digits; spaces, `-`, parentheses allowed) or a `wa.me/<number>` link | a plain number becomes a `wa.me` link; a pasted link is kept as-is |
+| `telegram` | phone number, @username, or a t.me link | a phone number, a username (5–32 of `A-Z a-z 0-9 _`, optional `@`), or a `t.me/<username>` link | a plain number or username becomes a `t.me` link; a pasted link is kept as-is |
+| `instagram` | @username or a profile link | a username (1–30 of `A-Z a-z 0-9 . _`, optional `@`) or an `instagram.com/<username>` link | a plain handle becomes an `instagram.com` link; a pasted link is kept as-is |
+| `twitter` | @username or a profile link | a username (1–15 of `A-Z a-z 0-9 _`, optional `@`) or an `x.com`/`twitter.com` `/<username>` link | a plain handle becomes an `x.com` link; a pasted link is kept as-is |
+
+Links may omit `http(s)://` (and `www.` where the site uses it).
 
 A submitter may add 0–N of these per testimonial. Each entry carries its own public/private
-flag (UC-REVEAL-CONTACT).
+flag (UC-REVEAL-CONTACT); an entry can only be marked public once it has a value.
 
 ## Achievement checklist (used by UC-CREATE-TESTIMONIAL, UC-EDIT-TESTIMONIAL, UC-MANAGE-ACHIEVEMENTS) — seed data, not a fixed spec
 
@@ -262,9 +266,10 @@ while here.
 - **Preconditions:** gallery is loaded with at least one testimonial.
 - **Main flow:** Visitor clicks "Read more" → the testimonial expands into its full article
   view, rendered as a nested list: a filled subtopic is shown under its group's heading (group
-  heading, then the subtopic's own label, its answer text, and its photos); a group heading
-  appears only if at least one of its subtopics is filled, listing only the filled ones; a
-  filled standalone topic renders as its own flat entry, same as a group heading. The
+  heading, then the subtopic's own label, its answer text, and its photos as thumbnails, each
+  with its custom tags underneath); a group heading appears only if at least one of its
+  subtopics is filled, listing only the filled ones; a filled standalone topic renders as its
+  own flat entry, same as a group heading. The
   recommendation score is shown with its label. A subtopic or standalone topic changed by the
   most recently approved edit (UC-EDIT-TESTIMONIAL, UC-APPROVE-TESTIMONIAL) carries an "updated"
   badge.
@@ -272,23 +277,33 @@ while here.
 - **Postconditions:** expanded state persists until the visitor collapses it.
 
 ## UC-VIEW-PHOTOS-FULLSCREEN: View testimonial photos fullscreen
-- **Actor:** Visitor
+- **Actor:** Visitor (on an expanded article, UC-EXPAND-TESTIMONIAL); Admin (in the pending
+  queue, UC-VIEW-PENDING-QUEUE)
 - **Preconditions:** the testimonial has at least one photo, in any of its sections.
-- **Main flow:** Visitor clicks a thumbnail → fullscreen overlay opens on that photo, with
-  prev/next controls across all of that testimonial's photos, in article order (section by
-  section).
-- **Alternate flows:** none.
-- **Postconditions:** overlay closes on `Escape` or a click outside it.
+- **Main flow:** Viewer clicks a thumbnail → a fullscreen viewer opens on that photo, with
+  prev/next across all of that testimonial's photos, in article order (section by section) —
+  in the admin's queue, only the photos of that one testimonial, never stepping into the next.
+  A caption bar at the bottom shows the photo's topic, its custom tags, and its position
+  ("3 / 8"). The prev/next buttons sit in the bottom-left and bottom-right corners, level with
+  the caption, always in the same place whatever the photo's size or the caption's length, on
+  touch screens too. The viewer can also be paged with the ←/→ keys or by swiping, and a photo
+  can be zoomed by pinching or double-tapping.
+- **Alternate flows:** without JavaScript, clicking a thumbnail simply opens the full-size photo.
+- **Postconditions:** the viewer closes on `Escape`, its close button, or a click outside the
+  photo.
 
 ## UC-REVEAL-CONTACT: Reveal a testimonial's contact info
 - **Actor:** Visitor
 - **Preconditions:** testimonial is `APPROVED` and has at least one contact entry marked
   public.
-- **Main flow:** Visitor clicks a "reveal contact" action on the testimonial → system makes a
-  separate request, decrypts the entries marked public, and returns them → visitor sees the
-  list and can reach out directly.
+- **Main flow:** Visitor clicks "Reveal contact info" on the testimonial's article → system makes a
+  separate request, decrypts the entries marked public, and returns them → the list replaces the
+  button in place, without leaving or scrolling the page, and the visitor can reach out
+  directly. The request is only answered for the site's own article page (decision 27).
 - **Alternate flows:** Testimonial not approved, or no contact entry marked public → the action
-  is not offered at all.
+  is not offered at all (a request made anyway gets "Contact info isn't available."). The
+  request fails (e.g. no network) → a short error under the button, which can be tried again.
+  Without JavaScript → the same button reloads the article with the contact list in its place.
 - **Postconditions:** contact entries are never included in the normal browse/detail response
   (UC-BROWSE-APPROVED, UC-EXPAND-TESTIMONIAL) — only ever returned by this explicit action, and
   only the entries marked public.
@@ -305,7 +320,11 @@ while here.
 - **Alternate flows:** Wrong or expired code → attempt counter decrements, error returned;
   counter reaches the configured max → OTP invalidated, visitor must request a new one. The OTP
   *request* step responds identically whether or not the email has an existing testimonial, so
-  requesting one never reveals that on its own.
+  requesting one never reveals that on its own. The visitor's session has expired (24 hours
+  idle) while they were on the form or the confirmation page → reloading that page, or coming
+  back to its browser tab, takes them to the login page; after logging in again they return to
+  the page they were on. A form submitted after the session expired is not saved: after the
+  login they land on the form again, and what they had typed is lost.
 - **Postconditions:** visitor becomes an Authenticated Visitor for the session; no testimonial
   data is read or written yet.
 
@@ -317,17 +336,38 @@ while here.
   more top-level entries from the topic catalog — a topic group or a standalone topic (at least
   one required) — picking a group reveals all of its subtopics as input blocks (each still
   individually optional to fill in), picking a standalone topic reveals just its own block; for
-  any filled subtopic or standalone topic, optionally attaches photos to it (each photo gets
-  that topic's tag automatically, plus up to 10 free-form custom tags); optionally adds contact
-  methods in the contacts block, each with its own public/private flag; ticks the achievement
+  any filled subtopic or standalone topic, optionally attaches photos to it — chosen or dropped
+  in several at once, previewed before submitting, each removable, within the limits shown
+  under the photo field (by default up to 5 per topic, 50 in total, 20 MB each) — each photo
+  getting that topic's tag automatically, plus up to 10 free-form custom tags; optionally adds
+  contact methods in the contacts block, each with its own public/private flag; ticks the achievement
   checkboxes that apply, shown in full; checks the mandatory data-processing consent; submits.
-  System validates, saves with status `PENDING`, shows a confirmation message.
+  System validates, converts each new photo (resized, re-encoded as WebP, all embedded metadata
+  such as the GPS location removed — the original file is never kept), saves with status
+  `PENDING`, shows a confirmation message. The country starts unselected; the recommendation
+  score slider starts at 10.
 - **Alternate flows (validation failure):** no subtopic or standalone topic actually filled in
   (picking a group alone doesn't count), recommendation score missing, a mandatory identity
-  field missing, data-processing consent unchecked, an uploaded file isn't actually an image,
-  more photos attached than the configured limit, a photo file exceeds the configured size
-  limit, or more than 10 custom tags on one photo → form does not submit, nothing is saved, a
-  clear actionable message is shown per failed field.
+  field missing, no country selected, a roll number not in the `AA00A000` shape (two Latin
+  letters, two digits, one Latin letter, three digits — lowercase letters are accepted and
+  stored uppercased), an admission year before 1959 (IIT Madras's founding year) or after the
+  current year,
+  data-processing consent unchecked, a photo attached to a subtopic or standalone topic whose
+  text is left blank, custom tags entered without a photo, a contact method marked public
+  without a value, a contact value that doesn't match any accepted shape for its type (see the
+  contact method catalog), an uploaded file isn't actually an image or is in a format the
+  server can't read (e.g. HEIC/HEIF or AVIF — JPEG, PNG, WebP, GIF, TIFF and BMP are accepted),
+  an image larger than the configured megapixel limit, more photos on one topic than the
+  per-topic limit, more photos in total than the configured limit, a photo file exceeds the
+  configured size limit, or more than 10 custom tags on one photo → form does not submit,
+  nothing is saved, a clear actionable message is shown next to each failed field (a photo file
+  the server refuses — unreadable, too big, too many megapixels — is for now reported once at
+  the top of the form, BL-025). The form
+  also blocks these in the browser where it can — the photo field stays disabled until its
+  topic has text; a non-image, a file over the size limit, or photos beyond the per-topic or
+  total limit are refused as soon as they're chosen; a contact's "public" checkbox stays
+  disabled until it has a value; the country must be chosen — but the server enforces every
+  rule regardless.
 - **Postconditions:** the testimonial does not appear in the public gallery until approved. The
   visitor can return any time (UC-VISITOR-LOGIN → UC-EDIT-TESTIMONIAL) to edit it.
 
@@ -338,7 +378,9 @@ while here.
 - **Main flow:** System loads the visitor's testimonial pre-filled into the same form
   UC-CREATE-TESTIMONIAL uses (identity fields, country, score, picked topic groups/standalone
   topics with their subtopics' text/photos, contacts, achievements, consent) → visitor changes
-  whatever they want, under the same validation rules as UC-CREATE-TESTIMONIAL → submits →
+  whatever they want, under the same validation rules as UC-CREATE-TESTIMONIAL (the photo
+  limits count the saved photos they keep plus the new ones; a saved photo is removed with its
+  × button) → submits →
   system marks the changed subtopics and fields as modified. If the testimonial was `APPROVED`
   and the only things that changed are country, recommendation score, achievements, or contact
   methods, it stays `APPROVED` immediately — no re-moderation. Otherwise (section text, photos,
@@ -357,21 +399,30 @@ while here.
 ## UC-ADMIN-OTP-REQUEST: Request admin OTP login code
 - **Actor:** Admin
 - **Preconditions:** none.
-- **Main flow:** Admin submits their email on the login page → if it matches the single
-  configured admin email, system generates a 6-character alphanumeric OTP, emails it, and
-  starts its configurable TTL.
-- **Alternate flows:** Email doesn't match → generic failure response (doesn't reveal whether
-  the email was wrong or something else failed).
+- **Main flow:** Admin submits their email on the login page (a screen holding only the email
+  field) → if it matches the single configured admin email, system generates a 6-character
+  alphanumeric OTP, emails it, and starts its configurable TTL → admin is taken to a separate
+  code-entry screen (UC-ADMIN-OTP-VERIFY), same two-step shape as UC-VISITOR-LOGIN.
+- **Alternate flows:** Email doesn't match → no OTP is generated or sent, but the response is
+  identical to a match (the admin is still taken to the code-entry screen), so the login page
+  never reveals whether the email was right (decision 4). Too many code requests in a short
+  window → the code-entry screen shows a "wait a moment" error; a code already received can
+  still be entered.
 - **Postconditions:** a new request replaces any previously pending OTP for that email.
 
 ## UC-ADMIN-OTP-VERIFY: Verify OTP and establish admin session
 - **Actor:** Admin
 - **Preconditions:** a live, unexpired OTP exists from UC-ADMIN-OTP-REQUEST.
-- **Main flow:** Admin submits the OTP code → system checks it against the in-memory value →
-  match and not expired → authenticated session created.
+- **Main flow:** Admin submits the OTP code on the code-entry screen (a single code field; the
+  email is carried over from the previous step, and the screen offers "resend code" and "use a
+  different email") → system checks it against the in-memory value → match and not expired →
+  authenticated session created → admin lands on the pending queue (UC-VIEW-PENDING-QUEUE).
 - **Alternate flows:** Wrong code → attempt counter decrements, 401 returned; counter reaches
   the configured max → OTP invalidated outright, admin must restart from UC-ADMIN-OTP-REQUEST.
-  Expired OTP → same outcome as exhausted attempts.
+  Expired OTP → same outcome as exhausted attempts. The admin's session expired (24 hours idle)
+  while they were on a moderation page → reloading it, or coming back to its browser tab, takes
+  them to the login page; after logging in they return to the moderation page they were on
+  instead of the queue.
 - **Postconditions:** admin may hold sessions on multiple devices at once (no concurrent-session
   cap).
 
@@ -380,7 +431,9 @@ while here.
 - **Preconditions:** admin is authenticated (UC-ADMIN-OTP-VERIFY).
 - **Main flow:** Admin opens the moderation dashboard → system returns a paginated list of
   `PENDING` testimonials, full article view including contact info per item
-  (NFR-MODERATION-QUEUE-PERFORMANCE). On a resubmitted edit of a previously-approved testimonial,
+  (NFR-MODERATION-QUEUE-PERFORMANCE); each photo is shown with its custom tags, so the admin
+  moderates the tags too, and opens fullscreen (UC-VIEW-PHOTOS-FULLSCREEN). On a resubmitted
+  edit of a previously-approved testimonial,
   the sections/fields changed since the last approval are visually flagged, so the admin can
   review just the diff.
 - **Alternate flows:** queue is empty → empty state.

@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.iitm.beacon.domain.country.CountryRepository;
+import com.iitm.beacon.domain.testimonial.Photo;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
@@ -100,6 +102,30 @@ class ModerationControllerTest {
                 .andExpect(jsonPath("$.page").value(0))
                 .andExpect(jsonPath("$.size").value(20))
                 .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    void pending_photos_includeThumbnailUrlAndSize() throws Exception {
+        Testimonial saved = pendingTestimonial("controller-pending-photo@example.com");
+        TestimonialSection section = saved.getSections().get(0);
+        section.getPhotos().add(Photo.builder()
+                .section(section)
+                .filePath("abc.webp")
+                .thumbnailPath("abc-thumb.webp")
+                .width(2560)
+                .height(1707)
+                .displayOrder(0)
+                .build());
+        testimonialRepository.saveAndFlush(saved);
+
+        mockMvc.perform(get("/api/moderation/testimonials/pending").with(authentication(admin())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].sections[0].photos[0].url").value("/uploads/abc.webp"))
+                .andExpect(jsonPath("$.content[0].sections[0].photos[0].thumbnailUrl")
+                        .value("/uploads/abc-thumb.webp"))
+                .andExpect(jsonPath("$.content[0].sections[0].photos[0].width").value(2560))
+                .andExpect(jsonPath("$.content[0].sections[0].photos[0].height").value(1707))
+                .andExpect(jsonPath("$.content[0].sections[0].photos[0].tags").isArray());
     }
 
     @Test
@@ -231,5 +257,29 @@ class ModerationControllerTest {
         mockMvc.perform(post("/api/moderation/testimonials/{id}/reject", saved.getId())
                         .with(authentication(admin())))
                 .andExpect(status().isConflict());
+    }
+
+    // -- GET /api/moderation/session (session ping for session-check.js) --
+
+    @Test
+    void sessionPing_adminSession_returns204WithNoBody() throws Exception {
+        mockMvc.perform(get("/api/moderation/session").with(authentication(admin())))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+    }
+
+    @Test
+    void sessionPing_anonymous_returnsJson401() throws Exception {
+        mockMvc.perform(get("/api/moderation/session"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.path").value("/api/moderation/session"));
+    }
+
+    @Test
+    void sessionPing_visitorSession_returnsJson403() throws Exception {
+        mockMvc.perform(get("/api/moderation/session").with(authentication(visitor())))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
     }
 }

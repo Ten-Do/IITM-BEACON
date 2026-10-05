@@ -1,12 +1,16 @@
 package com.iitm.beacon.submission;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.emptyOrNullString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -18,6 +22,7 @@ import com.iitm.beacon.domain.country.CountryRepository;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -30,8 +35,10 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -245,5 +252,64 @@ class VisitorAuthControllerTest {
         executor.awaitTermination(10, TimeUnit.SECONDS);
 
         assertThat(successes.get()).isEqualTo(1);
+    }
+
+    // -- GET /api/submissions/session (session ping for session-check.js) --
+
+    private MockHttpSession loggedInVisitorSession(String email) throws Exception {
+        String code = requestAndCaptureCode(email);
+        MvcResult result = mockMvc.perform(post("/api/submissions/otp/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new OtpVerifyRequest(email, code))))
+                .andExpect(status().isOk())
+                .andReturn();
+        return (MockHttpSession) result.getRequest().getSession(false);
+    }
+
+    @Test
+    void sessionPing_liveVisitorSession_returns204WithNoBodyAndIsNeverCached() throws Exception {
+        MockHttpSession session = loggedInVisitorSession("ping-live@example.com");
+
+        mockMvc.perform(get("/api/submissions/session").session(session))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(emptyOrNullString()))
+                .andExpect(header().string("Cache-Control", containsString("no-store")));
+    }
+
+    @Test
+    void sessionPing_expiredVisitorSession_returnsJson401() throws Exception {
+        MockHttpSession session = loggedInVisitorSession("ping-expired@example.com");
+        session.invalidate();
+
+        mockMvc.perform(get("/api/submissions/session").session(session))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.path").value("/api/submissions/session"));
+    }
+
+    @Test
+    void sessionPing_anonymous_returnsJson401() throws Exception {
+        mockMvc.perform(get("/api/submissions/session"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401));
+    }
+
+    @Test
+    void sessionPing_adminSession_returnsJson403() throws Exception {
+        var admin = new UsernamePasswordAuthenticationToken(
+                "admin@example.com", null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+
+        mockMvc.perform(get("/api/submissions/session").with(authentication(admin)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+    }
+
+    @Test
+    void sessionPing_isGetOnly() throws Exception {
+        var visitor = new UsernamePasswordAuthenticationToken(
+                "ping-post@example.com", null, List.of(new SimpleGrantedAuthority("ROLE_VISITOR")));
+
+        mockMvc.perform(post("/api/submissions/session").with(authentication(visitor)))
+                .andExpect(status().isForbidden());
     }
 }

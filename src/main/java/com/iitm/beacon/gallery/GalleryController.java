@@ -16,9 +16,10 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Public, unauthenticated read endpoints for the gallery slice
  * (UC-BROWSE-APPROVED, UC-FILTER-COUNTRY, UC-FILTER-TOPIC,
- * UC-SEARCH-KEYWORD, UC-EXPAND-TESTIMONIAL, UC-REVEAL-CONTACT). Role/method
- * authorization for this slice's routes is wired into {@code
- * config.SecurityConfig} in a later batch, alongside {@code moderation}.
+ * UC-SEARCH-KEYWORD, UC-EXPAND-TESTIMONIAL). Deliberately no contact
+ * endpoint (UC-REVEAL-CONTACT): a public one let anyone harvest every
+ * contact with a loop over ids, so contacts are revealed only through the
+ * article page's own same-origin POST in {@link GalleryViewController}.
  */
 @RestController
 @RequestMapping("/api/gallery")
@@ -44,11 +45,6 @@ public class GalleryController {
     @GetMapping("/testimonials/{id}")
     public TestimonialDetailDto detail(@PathVariable Long id) {
         return galleryService.getDetail(id);
-    }
-
-    @GetMapping("/testimonials/{id}/contact")
-    public List<ContactMethodViewDto> contact(@PathVariable Long id) {
-        return galleryService.revealContact(id);
     }
 
     @GetMapping("/countries")

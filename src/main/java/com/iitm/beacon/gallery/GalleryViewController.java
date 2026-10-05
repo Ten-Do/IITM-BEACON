@@ -1,12 +1,15 @@
 package com.iitm.beacon.gallery;
 
 import com.iitm.beacon.common.error.NotFoundException;
+import com.iitm.beacon.common.score.RecommendationScoreLabels;
 import com.iitm.beacon.common.web.PageResponse;
+import com.iitm.beacon.common.web.SameOriginOnly;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -14,6 +17,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 /**
@@ -21,18 +25,24 @@ import org.springframework.web.bind.annotation.RequestParam;
  * (UC-BROWSE-APPROVED, UC-FILTER-COUNTRY, UC-FILTER-TOPIC,
  * UC-SEARCH-KEYWORD, UC-EXPAND-TESTIMONIAL, UC-REVEAL-CONTACT,
  * UC-VIEW-PHOTOS-FULLSCREEN). Delegates all business logic to {@link
- * GalleryService} — the JSON API in {@link GalleryController} already covers
- * the same use cases for API consumers; this controller only renders/drives
- * the plain-HTML browse/filter/expand/reveal flow (no SPA, no XHR, per the
- * project's established "simplest approach" convention — see {@code
- * moderation.ModerationViewController}/{@code submission.SubmissionViewController}).
+ * GalleryService} — the JSON API in {@link GalleryController} covers the
+ * browse/expand use cases for API consumers; this controller renders the
+ * plain-HTML browse/filter/expand flow, plus the article's contact reveal.
  *
- * <p>{@link #detail(Long, String, Model, HttpServletResponse)} catches
- * {@link NotFoundException} itself (same convention as the sibling view
- * controllers) rather than letting it reach {@code GlobalExceptionHandler} (a
- * {@code @RestControllerAdvice} that would write a JSON body — the wrong
- * response shape for a browser page navigation) and instead renders a small
- * in-slice 404 page with the response status set accordingly.
+ * <p>Contact reveal (UC-REVEAL-CONTACT) is a {@code POST} to {@value
+ * #CONTACT_PATH}, answered only for this site's own pages ({@link
+ * SameOriginOnly}; there is no other way to read a contact). The article's
+ * script ({@code static/js/contact-reveal.js}) sends it with {@value
+ * #FRAGMENT_HEADER}{@code : }{@value #FRAGMENT_HEADER_VALUE} and gets back
+ * the contact card alone, to swap in place; a plain form submission (no
+ * JavaScript) gets the whole article with the card in place of the button.
+ * Both render the same {@code gallery/contact-card.html} fragments.
+ *
+ * <p>The handlers catch {@link NotFoundException} themselves (same
+ * convention as the sibling view controllers) rather than letting it reach
+ * {@code GlobalExceptionHandler} (a {@code @RestControllerAdvice} that would
+ * write a JSON body — the wrong response shape for a browser page) and
+ * render a 404 page or fragment instead.
  */
 @Controller
 public class GalleryViewController {
@@ -43,26 +53,15 @@ public class GalleryViewController {
     private static final String LIST_VIEW = "gallery/list";
     private static final String DETAIL_VIEW = "gallery/detail";
     private static final String NOT_FOUND_VIEW = "gallery/not-found";
-    private static final String REVEAL_TRUE = "true";
+    private static final String CONTACT_CARD_FRAGMENT = "gallery/contact-card :: card";
+    private static final String CONTACT_UNAVAILABLE_FRAGMENT = "gallery/contact-card :: unavailable";
 
-    /**
-     * Fixed score → label table (docs/use-cases.md "Recommendation score"),
-     * indexed directly by the 0-10 score — every {@code
-     * TestimonialDetailDto.recommendationScore()} is guaranteed in range by
-     * the {@code testimonial.recommendation_score} DB check constraint.
-     */
-    private static final List<String> SCORE_LABELS = List.of(
-            "Terrible — I regretted my choice a hundred times over",
-            "A very rough experience, almost nothing positive",
-            "It was very hard",
-            "Lots of serious problems",
-            "More disappointed than satisfied",
-            "Mixed — real upsides, but real downsides too",
-            "Solid overall, would work for a lot of people",
-            "A good experience, happy with the choice",
-            "A great experience, a lot to remember",
-            "Excellent! I'm taking a wealth of memories with me!",
-            "Unforgettable! One of the best decisions of this year!");
+    /** Only an id of up to 18 digits (always a {@code Long}): anything else is simply no such page. */
+    static final String CONTACT_PATH = "/gallery/{id:\\d{1,18}}/contact";
+
+    /** The request header, and its value, by which the article's script asks for the contact card alone. */
+    static final String FRAGMENT_HEADER = "X-Requested-With";
+    static final String FRAGMENT_HEADER_VALUE = "fetch";
 
     private final GalleryService galleryService;
 
@@ -97,34 +96,77 @@ public class GalleryViewController {
     }
 
     @GetMapping("/gallery/{id}")
-    public String detail(
-            @PathVariable Long id,
-            @RequestParam(required = false) String reveal,
-            Model model,
-            HttpServletResponse response) {
+    public String detail(@PathVariable Long id, Model model, HttpServletResponse response) {
+        if (!addArticle(id, model)) {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            return NOT_FOUND_VIEW;
+        }
+        return DETAIL_VIEW;
+    }
+
+    /**
+     * The article's script asking for the contact card: just the card, or a
+     * 404 with the "unavailable" card for an unknown or unapproved
+     * testimonial, or one without a public contact.
+     */
+    @SameOriginOnly
+    @PostMapping(path = CONTACT_PATH, headers = FRAGMENT_HEADER + "=" + FRAGMENT_HEADER_VALUE)
+    public String contactCard(@PathVariable Long id, Model model, HttpServletResponse response) {
+        Optional<List<ContactMethodViewDto>> contacts = publicContacts(id);
+        if (contacts.isEmpty()) {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            return CONTACT_UNAVAILABLE_FRAGMENT;
+        }
+        model.addAttribute("contacts", contacts.get());
+        return CONTACT_CARD_FRAGMENT;
+    }
+
+    /**
+     * The reveal button's form submitted without JavaScript: the whole
+     * article, with the contact card in place of the button — or, with no
+     * public contact to show, the "unavailable" card and a 404.
+     */
+    @SameOriginOnly
+    @PostMapping(CONTACT_PATH)
+    public String detailWithContact(@PathVariable Long id, Model model, HttpServletResponse response) {
+        if (!addArticle(id, model)) {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            return NOT_FOUND_VIEW;
+        }
+        Optional<List<ContactMethodViewDto>> contacts = publicContacts(id);
+        if (contacts.isPresent()) {
+            model.addAttribute("contacts", contacts.get());
+        } else {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            model.addAttribute("contactUnavailable", true);
+        }
+        return DETAIL_VIEW;
+    }
+
+    /** Puts the approved testimonial's article into the model; false if there is none to show. */
+    private boolean addArticle(Long id, Model model) {
         TestimonialDetailDto detail;
         try {
             detail = galleryService.getDetail(id);
         } catch (NotFoundException ex) {
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            return NOT_FOUND_VIEW;
+            return false;
         }
-
         model.addAttribute("testimonial", detail);
-        model.addAttribute("scoreLabel", SCORE_LABELS.get(detail.recommendationScore()));
+        model.addAttribute("scoreLabel", RecommendationScoreLabels.forScore(detail.recommendationScore()));
         model.addAttribute("sectionBlocks", buildSectionBlocks(detail.sections()));
         model.addAttribute(
                 "achievementLabels",
                 detail.achievements().stream().map(this::humanize).toList());
+        return true;
+    }
 
-        if (REVEAL_TRUE.equals(reveal)) {
-            try {
-                model.addAttribute("contacts", galleryService.revealContact(id));
-            } catch (NotFoundException ex) {
-                log.info("Reveal-contact skipped for testimonial {}: {}", id, ex.getMessage());
-            }
+    private Optional<List<ContactMethodViewDto>> publicContacts(Long id) {
+        try {
+            return Optional.of(galleryService.revealContact(id));
+        } catch (NotFoundException ex) {
+            log.info("Reveal-contact skipped for testimonial {}: {}", id, ex.getMessage());
+            return Optional.empty();
         }
-        return DETAIL_VIEW;
     }
 
     /**

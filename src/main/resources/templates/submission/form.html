@@ -2,6 +2,8 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{layout/shell :: head(${editing} ? 'Edit your testimonial' : 'Write your testimonial')}"></head>
 <body>
+<!-- Without JS nothing stays cloaked: every topic block is shown (and submitted). -->
+<noscript><style>[x-cloak]{display:block!important}</style></noscript>
 <div th:replace="~{layout/header-visitor :: header('submit')}"></div>
 
 <main class="submission-form-body">
@@ -10,34 +12,56 @@
     <p class="submission-form-sub">Everything below goes to OGE for review before it's published. You can come back
         and edit it any time — just log in again with this email.</p>
 
-    <div class="submission-error-banner" th:if="${error}">
+    <!-- A summary only: each field's own message is shown next to it. -->
+    <div class="submission-error-banner" th:if="${error}" role="alert">
         <span class="submission-error-mark">!</span>
-        <p class="submission-error-text" th:text="${error}">Something went wrong.</p>
+        <div class="submission-error-body">
+            <p class="submission-error-text" th:text="${error}">Something went wrong.</p>
+            <p class="submission-error-text" th:each="detail : ${errorDetails}" th:text="${detail}">Detail</p>
+        </div>
     </div>
 
-    <form method="post" th:action="@{/submissions/form}" th:object="${command}" enctype="multipart/form-data">
+    <form method="post" th:action="@{/submissions/form}" th:object="${command}" enctype="multipart/form-data"
+          x-data="submissionForm" x-on:submit="disableEmptyUploads()" x-on:pageshow.window="restoreUploads()">
 
         <section class="submission-section">
             <h2 class="submission-section-heading">About you</h2>
             <div class="submission-field-row">
                 <div class="submission-field">
                     <label class="submission-field-label" for="firstName">First name</label>
-                    <input class="submission-field-input" id="firstName" th:field="*{firstName}"/>
+                    <input class="submission-field-input" id="firstName" th:field="*{firstName}"
+                           th:errorclass="submission-field-input--invalid" required="required"/>
+                    <span class="submission-field-error" th:if="${#fields.hasErrors('firstName')}"
+                          th:errors="*{firstName}">First name error</span>
                 </div>
                 <div class="submission-field">
                     <label class="submission-field-label" for="lastName">Last name</label>
-                    <input class="submission-field-input" id="lastName" th:field="*{lastName}"/>
+                    <input class="submission-field-input" id="lastName" th:field="*{lastName}"
+                           th:errorclass="submission-field-input--invalid" required="required"/>
+                    <span class="submission-field-error" th:if="${#fields.hasErrors('lastName')}"
+                          th:errors="*{lastName}">Last name error</span>
                 </div>
             </div>
             <div class="submission-field-row">
+                <!-- Same AA00A000 shape the server checks (decision 10); the server
+                     also accepts lowercase, which the pattern mirrors. -->
                 <div class="submission-field">
                     <label class="submission-field-label" for="rollNumber">Roll number</label>
-                    <input class="submission-field-input" id="rollNumber" th:field="*{rollNumber}"/>
+                    <input class="submission-field-input" id="rollNumber" th:field="*{rollNumber}"
+                           th:errorclass="submission-field-input--invalid" required="required" maxlength="8"
+                           pattern="[A-Za-z]{2}[0-9]{2}[A-Za-z][0-9]{3}" autocapitalize="characters"
+                           title="Format: AA00A000, e.g. CS21B001" aria-describedby="rollNumber-help"/>
+                    <span class="submission-field-help" id="rollNumber-help">Format: AA00A000, e.g. CS21B001</span>
+                    <span class="submission-field-error" th:if="${#fields.hasErrors('rollNumber')}"
+                          th:errors="*{rollNumber}">Roll number error</span>
                 </div>
                 <div class="submission-field">
                     <label class="submission-field-label" for="admissionYear">Admission year</label>
-                    <input class="submission-field-input" id="admissionYear" type="number"
-                           th:field="*{admissionYear}"/>
+                    <input class="submission-field-input" id="admissionYear" type="number" step="1"
+                           th:field="*{admissionYear}" th:errorclass="submission-field-input--invalid"
+                           required="required" th:min="${earliestAdmissionYear}" th:max="${latestAdmissionYear}"/>
+                    <span class="submission-field-error" th:if="${#fields.hasErrors('admissionYear')}"
+                          th:errors="*{admissionYear}">Admission year error</span>
                 </div>
             </div>
             <div class="submission-field">
@@ -46,84 +70,208 @@
                 <span class="submission-field-help">From your login — this is how we'll find your testimonial next
                     time.</span>
             </div>
+            <!-- The empty first option is the select's placeholder: nothing is
+                 preselected in create mode, and `required` blocks submitting it. -->
             <div class="submission-field">
                 <label class="submission-field-label" for="countryCode">Country</label>
-                <select class="submission-field-select" id="countryCode" th:field="*{countryCode}">
+                <select class="submission-field-select" id="countryCode" th:field="*{countryCode}"
+                        th:errorclass="submission-field-input--invalid" required="required">
+                    <option value="">Select your country</option>
                     <option th:each="c : ${countries}" th:value="${c.code}" th:text="${c.name}">Country</option>
                 </select>
+                <span class="submission-field-error" th:if="${#fields.hasErrors('countryCode')}"
+                      th:errors="*{countryCode}">Country error</span>
             </div>
         </section>
 
         <section class="submission-section">
             <h2 class="submission-section-heading">Your recommendation</h2>
             <p class="submission-section-hint">How would you rate your overall exchange experience?</p>
-            <div class="submission-score-wrap">
-                <input type="range" class="submission-score-input" min="0" max="10" th:field="*{recommendationScore}"
-                       oninput="this.nextElementSibling.value = this.value"/>
-                <output class="submission-score-output" th:text="${command.recommendationScore}">8</output>
+            <!-- Server renders the current score's number, colour and label (so the
+                 page is right without JS); Alpine then keeps them in sync with the range. -->
+            <div class="submission-score-wrap" x-data="scoreSlider" th:data-initial-score="${currentScore}">
+                <div class="submission-score-value-row" th:style="|color: var(--score-${currentScore})|"
+                     x-bind:style="{ color: 'var(--score-' + score + ')' }">
+                    <span class="submission-score-number" th:text="${currentScore}" x-text="score">8</span>
+                    <span class="submission-score-label" th:each="label, labelStat : ${scoreLabels}"
+                          th:data-score="${labelStat.index}" th:hidden="${labelStat.index != currentScore}"
+                          x-bind:hidden="score !== Number($el.dataset.score)" th:text="${label}">Score label</span>
+                </div>
+                <input type="range" class="submission-score-input" id="recommendationScore" name="recommendationScore"
+                       min="0" max="10" step="1" th:value="${currentScore}" x-model.number="score"
+                       aria-label="Recommendation score from 0 to 10"/>
+                <div class="submission-score-ticks">
+                    <span>0 — Terrible</span><span>5 — Mixed</span><span>10 — Unforgettable</span>
+                </div>
+                <span class="submission-field-error" th:if="${#fields.hasErrors('recommendationScore')}"
+                      th:errors="*{recommendationScore}">Score error</span>
             </div>
         </section>
 
-        <section class="submission-section">
+        <!-- Topic picker: one chip + one fieldset per topic group / standalone topic.
+             An unpicked fieldset is hidden AND disabled, so none of its fields are
+             submitted (in edit mode that removes the topic's saved section).
+             Without JS every fieldset is shown and submitted. -->
+        <section class="submission-section" x-data="topicPicker"
+                 th:data-initial-picked="${#strings.listJoin(initialPicked, ' ')}">
             <h2 class="submission-section-heading">What do you want to share?</h2>
-            <p class="submission-section-hint">Any topic may be left blank — fill in whichever ones apply to your
-                exchange.</p>
+            <p class="submission-section-hint">Pick at least one topic below — picking a group reveals all of its
+                subtopics, each still optional to fill in.</p>
 
-            <div th:each="row, rowStat : ${topicFormRows}">
-                <h3 class="submission-topic-group-heading" th:if="${row.groupLabel != null and row.groupStart}"
-                    th:text="${row.groupLabel}">Group label</h3>
-                <div class="submission-topic-row">
-                    <label class="submission-field-label" th:for="'answer-' + ${rowStat.index}"
-                           th:text="${row.topicLabel}">Topic label</label>
-                    <p class="submission-topic-prompt" th:text="${row.guidingPrompt}">Guiding prompt.</p>
-                    <input type="hidden" th:field="*{sections[__${rowStat.index}__].topicSlug}"/>
-                    <textarea class="submission-field-textarea" th:id="'answer-' + ${rowStat.index}"
-                              th:field="*{sections[__${rowStat.index}__].answerText}"
+            <div class="submission-chip-toggle-row" role="group" aria-label="Topics">
+                <button type="button" class="submission-chip-toggle" th:each="pick : ${topicPicks}"
+                        th:class="|submission-chip-toggle${pick.defaultPick ? ' submission-chip-toggle--general' : ''}${#lists.contains(initialPicked, pick.key) ? ' submission-chip-toggle--selected' : ''}|"
+                        th:data-pick="${pick.key}"
+                        th:aria-pressed="${#lists.contains(initialPicked, pick.key)}"
+                        x-bind:class="{ 'submission-chip-toggle--selected': isPicked($el.dataset.pick) }"
+                        x-bind:aria-pressed="String(isPicked($el.dataset.pick))"
+                        x-on:click="toggle($el.dataset.pick)"
+                        th:text="${pick.label}">Topic</button>
+            </div>
+            <span class="submission-field-error submission-field-error--block" th:if="${#fields.hasErrors('sections')}"
+                  th:errors="*{sections}">Sections error</span>
+
+            <fieldset class="submission-group-block" th:each="pick : ${topicPicks}"
+                      th:data-pick="${pick.key}"
+                      th:x-cloak="${#lists.contains(initialPicked, pick.key)} ? null : 'x-cloak'"
+                      x-show="isPicked($el.dataset.pick)"
+                      x-bind:disabled="!isPicked($el.dataset.pick)">
+                <legend class="submission-group-block-title" th:text="${pick.label}">Topic group</legend>
+
+                <!-- topicBlock: the photo input stays disabled until the answer has text
+                     (decision 21). Nothing is disabled server-side, so the form still works
+                     without JS; the server enforces the same rules. -->
+                <div class="submission-topic-block" x-data="topicBlock" th:each="field : ${pick.fields}"
+                     th:with="i=${field.index}">
+                    <label class="submission-field-label" th:for="|answer-${i}|"
+                           th:text="${field.guidingPrompt}">Guiding prompt?</label>
+                    <input type="hidden" th:field="*{sections[__${i}__].topicSlug}"/>
+                    <textarea class="submission-field-textarea" th:id="|answer-${i}|"
+                              th:field="*{sections[__${i}__].answerText}"
+                              th:errorclass="submission-field-input--invalid"
+                              x-on:input="refresh($event)"
                               placeholder="Optional — leave blank if this doesn't apply to you."></textarea>
+                    <span class="submission-field-error"
+                          th:if="${#fields.hasErrors('sections[__${i}__].answerText')}"
+                          th:errors="*{sections[__${i}__].answerText}">Answer error</span>
 
-                    <div class="submission-photo-tile-row"
-                         th:if="${not #lists.isEmpty(command.sections[rowStat.index].existingPhotoUrls)}">
-                        <div class="submission-photo-tile"
-                             th:each="url, photoStat : ${command.sections[rowStat.index].existingPhotoUrls}">
-                            <img class="submission-photo-tile-image" th:src="${url}" alt="Submitted photo"/>
-                            <input type="hidden"
-                                   th:field="*{sections[__${rowStat.index}__].existingPhotoUrls[__${photoStat.index}__]}"/>
-                            <label class="submission-photo-remove">
-                                <input type="checkbox" th:name="|sections[${rowStat.index}].removedPhotoUrls|"
-                                       th:value="${url}"/>
-                                Remove
-                            </label>
-                            <input type="text" class="submission-photo-tag-input" placeholder="tags, comma-separated"
-                                   th:field="*{sections[__${rowStat.index}__].existingPhotoTags[__${photoStat.index}__]}"/>
+                    <!-- photoPicker: saved photos (edit mode) first, then the new ones the
+                         script previews, each with its own tags field. New files live in the
+                         one multiple file input, whose file list the script rebuilds on every
+                         add or remove, so the file at index j always pairs with photoTags[j].
+                         The limits come from the data attributes. Without JS: the native
+                         input (no tags for new photos) and each saved photo's Remove checkbox. -->
+                    <div class="submission-photos" x-data="photoPicker" data-photo-picker
+                         th:data-tags-name="|sections[${i}].photoTags|"
+                         th:data-max-per-topic="${photoLimits.perTopic}"
+                         th:data-max-total="${photoLimits.perTestimonial}"
+                         th:data-max-bytes="${photoLimits.maxFileBytes}"
+                         th:data-max-size-label="${photoLimits.maxFileSizeLabel()}"
+                         x-on:pageshow.window="sync()">
+                        <div class="submission-photo-grid"
+                             th:hidden="${#lists.isEmpty(command.sections[i].existingPhotoUrls)}"
+                             x-bind:hidden="count() === 0">
+                            <div class="submission-photo-tile" data-saved-photo
+                                 th:each="url, photoStat : ${command.sections[i].existingPhotoUrls}"
+                                 th:data-photo-url="${url}" x-bind:hidden="isRemoved($el.dataset.photoUrl)">
+                                <div class="submission-photo-frame">
+                                    <img class="submission-photo-tile-image" th:src="${url}" alt="Saved photo"
+                                         loading="lazy"/>
+                                    <button type="button" class="submission-photo-remove" aria-label="Remove photo"
+                                            th:data-photo-url="${url}"
+                                            x-on:click="removeSaved($el.dataset.photoUrl)">&times;</button>
+                                </div>
+                                <input type="hidden"
+                                       th:field="*{sections[__${i}__].existingPhotoUrls[__${photoStat.index}__]}"/>
+                                <label class="submission-photo-remove-check">
+                                    <input type="checkbox" th:name="|sections[${i}].removedPhotoUrls|"
+                                           th:value="${url}"
+                                           th:checked="${#lists.contains(command.sections[i].removedPhotoUrls, url)}"/>
+                                    Remove
+                                </label>
+                                <input type="text" class="submission-photo-tag-input" placeholder="tags, comma-separated"
+                                       aria-label="Photo tags"
+                                       th:field="*{sections[__${i}__].existingPhotoTags[__${photoStat.index}__]}"/>
+                            </div>
+                            <template x-for="(photo, index) in newPhotos" x-bind:key="photo.id">
+                                <div class="submission-photo-tile" data-new-photo
+                                     x-bind:class="{ 'submission-photo-tile--inactive': !hasText }">
+                                    <div class="submission-photo-frame">
+                                        <img class="submission-photo-tile-image" x-show="photo.previewable"
+                                             x-bind:src="photo.url" x-bind:alt="'Preview of ' + photo.name"
+                                             x-on:error="photo.previewable = false"/>
+                                        <span class="submission-photo-tile-fallback" x-show="!photo.previewable"
+                                              x-text="photo.name"></span>
+                                        <button type="button" class="submission-photo-remove"
+                                                aria-label="Remove photo"
+                                                x-on:click="removeNew(index)">&times;</button>
+                                    </div>
+                                    <input type="text" class="submission-photo-tag-input"
+                                           placeholder="tags, comma-separated" aria-label="Photo tags"
+                                           x-bind:name="tagsName(index)" x-model="photo.tags"
+                                           x-bind:disabled="!hasText"/>
+                                </div>
+                            </template>
                         </div>
-                    </div>
 
-                    <div class="submission-photo-upload-row">
-                        <div class="submission-photo-upload-tile" th:each="slot : ${#numbers.sequence(1, newPhotoSlots)}">
-                            <input type="file" class="submission-photo-upload-input" accept="image/*"
-                                   th:name="|sections[${rowStat.index}].photos|"/>
-                            <input type="text" class="submission-photo-tag-input" placeholder="tags, comma-separated"
-                                   th:name="|sections[${rowStat.index}].photoTags|"/>
-                        </div>
+                        <label class="submission-photo-add"
+                               x-bind:class="{ 'submission-photo-add--dragover': dragging,
+                                               'submission-photo-add--disabled': !hasText }"
+                               x-on:dragover.prevent="dragging = hasText"
+                               x-on:dragleave="dragging = false"
+                               x-on:drop.prevent="dragging = false; hasText && add($event.dataTransfer.files)">
+                            <input type="file" class="submission-photo-add-input" multiple="multiple"
+                                   accept="image/*" th:name="|sections[${i}].photos|"
+                                   th:aria-describedby="|photo-limits-${i}|"
+                                   x-bind:disabled="!hasText" x-on:change="choose($event)"/>
+                            <span class="submission-photo-add-text">Add photos</span>
+                            <span class="submission-photo-add-hint">or drop them here</span>
+                            <span class="submission-photo-add-count" x-text="countLabel()"></span>
+                        </label>
+                        <p class="submission-photo-limits" th:id="|photo-limits-${i}|"
+                           th:text="${photoLimits.summary()}">Up to 5 photos per topic, 50 in total, up to 20 MB each.</p>
+                        <p class="submission-photo-hint" hidden="hidden"
+                           x-bind:hidden="hasText">Add some text first to attach photos</p>
+                        <p class="submission-photo-message" role="alert" x-text="message"></p>
+                        <span class="submission-field-error submission-field-error--block"
+                              th:if="${#fields.hasErrors('sections[__${i}__].photos')}"
+                              th:errors="*{sections[__${i}__].photos}">Photos error</span>
+                        <span class="submission-field-error submission-field-error--block"
+                              th:if="${#fields.hasErrors('sections[__${i}__].photoTags*')}"
+                              th:errors="*{sections[__${i}__].photoTags*}">Tags error</span>
                     </div>
                 </div>
-            </div>
+            </fieldset>
         </section>
 
         <section class="submission-section">
             <h2 class="submission-section-heading">Contact methods</h2>
             <p class="submission-section-hint">Optional. Each entry can be public (shown to visitors who ask to
                 connect) or kept private.</p>
-            <div class="submission-contact-row" th:each="ct, ctStat : ${contactTypes}">
-                <label class="submission-contact-label" th:text="${ct.label}">email address</label>
-                <input type="hidden" th:field="*{contactMethods[__${ctStat.index}__].typeSlug}"/>
-                <input type="text" class="submission-field-input"
-                       th:field="*{contactMethods[__${ctStat.index}__].value}"
-                       th:placeholder="'e.g. your ' + ${ct.label}"/>
+            <!-- contactRow: "Show publicly" stays disabled (and unchecked) while the row has
+                 no value. The value input carries the type's own pattern (decision 5);
+                 a type without one gets no pattern attribute at all. -->
+            <div class="submission-contact-row" x-data="contactRow" th:each="ct, ctStat : ${contactTypes}"
+                 th:with="k=${ctStat.index}">
+                <label class="submission-contact-label" th:for="|contact-${k}|"
+                       th:text="${ct.name}">Email</label>
+                <input type="hidden" th:field="*{contactMethods[__${k}__].typeSlug}"/>
+                <input type="text" class="submission-field-input submission-contact-input" th:id="|contact-${k}|"
+                       th:field="*{contactMethods[__${k}__].value}"
+                       th:errorclass="submission-field-input--invalid"
+                       th:placeholder="${ct.label}" th:pattern="${ct.valuePattern}" th:title="${ct.label}"
+                       x-on:input="refresh($event)"/>
                 <label class="submission-contact-visibility">
-                    <input type="checkbox" th:field="*{contactMethods[__${ctStat.index}__].publicContact}"/>
+                    <input type="checkbox" th:field="*{contactMethods[__${k}__].publicContact}"
+                           x-bind:disabled="!hasValue"/>
                     Show publicly
                 </label>
+                <span class="submission-field-error submission-contact-error"
+                      th:if="${#fields.hasErrors('contactMethods[__${k}__].value')}"
+                      th:errors="*{contactMethods[__${k}__].value}">Contact error</span>
+                <span class="submission-field-error submission-contact-error"
+                      th:if="${#fields.hasErrors('contactMethods[__${k}__].publicContact')}"
+                      th:errors="*{contactMethods[__${k}__].publicContact}">Visibility error</span>
             </div>
         </section>
 
@@ -137,13 +285,19 @@
                     <span th:text="${a.label}">Achievement label</span>
                 </label>
             </div>
+            <span class="submission-field-error" th:if="${#fields.hasErrors('achievementSlugs')}"
+                  th:errors="*{achievementSlugs}">Achievements error</span>
         </section>
 
         <div class="submission-consent-block">
             <label class="submission-checkbox">
-                <input type="checkbox" th:field="*{dataProcessingConsent}"/>
+                <input type="checkbox" th:field="*{dataProcessingConsent}"
+                       th:errorclass="submission-field-input--invalid"/>
                 I consent to IITM Beacon storing and displaying my testimonial as described in the privacy notice.
             </label>
+            <span class="submission-field-error submission-field-error--block"
+                  th:if="${#fields.hasErrors('dataProcessingConsent')}"
+                  th:errors="*{dataProcessingConsent}">Consent error</span>
         </div>
 
         <div class="submission-btn-row">
@@ -152,5 +306,10 @@
         </div>
     </form>
 </main>
+<!-- Component registrations first: they listen for alpine:init, which Alpine fires as it starts. -->
+<script defer src="/js/submission-form.js"></script>
+<script defer src="/webjars/alpinejs/dist/cdn.min.js"></script>
+<!-- This page needs the visitor login (header-visitor doesn't add the check: it's also on public pages). -->
+<script th:replace="~{layout/session-check :: script('/api/submissions/session')}"></script>
 </body>
 </html>

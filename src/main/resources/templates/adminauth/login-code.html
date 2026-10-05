@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout/shell :: head('Admin sign in')}"></head>
+<body>
+<!-- Same inline admin header as adminauth/login.html — see the comment there. -->
+<header class="header-bar">
+    <div class="header-left">
+        <span class="wordmark">IITM Beacon</span>
+        <span class="admin-badge">Admin</span>
+    </div>
+</header>
+
+<main class="auth-body">
+    <div class="auth-wrap">
+        <h1 class="auth-title">Enter your code</h1>
+        <!--
+          Conditional on purpose: OtpService responds the same for any email,
+          so this page must never confirm that the typed email is the admin's.
+        -->
+        <p class="auth-subtitle">If <strong th:text="${email}">admin@iitm-beacon.example</strong> is the admin email,
+            a one-time code has been sent to it. <a th:href="@{/admin/login}">Use a different email</a></p>
+        <div class="auth-card">
+            <div class="auth-error-banner" th:if="${error}">
+                <span class="auth-error-mark">!</span>
+                <p class="auth-error-text" th:text="${error}">That code is wrong or has expired.</p>
+            </div>
+            <form method="post" th:action="@{/admin/login/verify}">
+                <input type="hidden" name="email" th:value="${email}"/>
+                <div class="auth-field">
+                    <label class="auth-field-label" for="code">One-time code</label>
+                    <input class="auth-field-input auth-code-input" id="code" name="code" type="text" maxlength="6"
+                           autocomplete="one-time-code" required="required"/>
+                </div>
+                <button type="submit" class="auth-btn auth-btn-primary">Verify</button>
+            </form>
+            <form method="post" th:action="@{/admin/login/request}">
+                <input type="hidden" name="email" th:value="${email}"/>
+                <button type="submit" class="auth-btn-ghost">Resend code</button>
+            </form>
+        </div>
+    </div>
+</main>
+</body>
+</html>

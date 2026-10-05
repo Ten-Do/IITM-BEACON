@@ -11,6 +11,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Collections;
+import org.apache.tomcat.util.http.fileupload.impl.FileCountLimitExceededException;
+import org.apache.tomcat.util.http.fileupload.impl.FileSizeLimitExceededException;
+import org.apache.tomcat.util.http.fileupload.impl.SizeLimitExceededException;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpStatus;
@@ -18,6 +21,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 
 /**
  * Unit tests calling {@link GlobalExceptionHandler} handler methods directly
@@ -174,6 +179,32 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void submissionValidationException_withFieldViolations_joinsThemAsFieldColonMessagePairs() {
+        SubmissionValidationException ex = new SubmissionValidationException(java.util.List.of(
+                new FieldViolation("rollNumber", "must look like CS21B001"),
+                new FieldViolation("contactMethods[0].value", "doesn't look like a valid Email contact")));
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleSubmissionValidation(ex, requestFor("/api/submissions"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message()).isEqualTo("rollNumber: must look like CS21B001,"
+                + " contactMethods[0].value: doesn't look like a valid Email contact");
+    }
+
+    @Test
+    void submissionValidationException_emptyViolationList_fallsBackToDefaultMessage() {
+        SubmissionValidationException ex = new SubmissionValidationException(java.util.List.of());
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleSubmissionValidation(ex, requestFor("/api/submissions"));
+
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message()).isEqualTo("Validation failed");
+    }
+
+    @Test
     void submissionValidationException_blankMessage_fallsBackToDefaultMessage() {
         SubmissionValidationException ex = new SubmissionValidationException("");
 
@@ -237,6 +268,155 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().message()).isEqualTo("This testimonial is no longer pending.");
+    }
+
+    // -- multipart failures (upload too large / too many parts / unparseable body) --
+
+    @Test
+    void maxUploadSizeExceededException_mapsTo413WithoutLeakingInternalDetail() {
+        MaxUploadSizeExceededException ex = new MaxUploadSizeExceededException(
+                10_485_760L,
+                new IllegalStateException(
+                        "org.apache.tomcat.util.http.fileupload.impl.FileCountLimitExceededException: attachment"));
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleMaxUploadSizeExceeded(ex, requestFor("/api/submissions"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
+        ErrorResponse body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.status()).isEqualTo(413);
+        assertThat(body.error()).isEqualTo("Payload Too Large");
+        assertThat(body.path()).isEqualTo("/api/submissions");
+        assertThat(body.message()).isNotBlank();
+        assertThat(body.message())
+                .doesNotContain("10485760")
+                .doesNotContain("tomcat")
+                .doesNotContain("FileCountLimitExceededException")
+                .doesNotContain("Maximum upload size");
+    }
+
+    @Test
+    void maxUploadSizeExceededException_unknownLimit_stillMapsTo413() {
+        // Spring reports -1 when the servlet container didn't say which limit
+        // was hit (e.g. Tomcat's part-count limit rather than a byte size).
+        MaxUploadSizeExceededException ex = new MaxUploadSizeExceededException(-1L);
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleMaxUploadSizeExceeded(ex, requestFor("/api/submissions/mine"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message()).isNotBlank().doesNotContain("-1");
+    }
+
+    @Test
+    void otherMultipartException_mapsTo400WithoutLeakingInternalDetail() {
+        MultipartException ex = new MultipartException(
+                "Failed to parse multipart servlet request",
+                new IllegalStateException("org.apache.tomcat.util.http.fileupload.FileUploadException: Stream ended"));
+
+        ResponseEntity<ErrorResponse> response = handler.handleMultipart(ex, requestFor("/api/submissions"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        ErrorResponse body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.status()).isEqualTo(400);
+        assertThat(body.path()).isEqualTo("/api/submissions");
+        assertThat(body.message())
+                .isNotBlank()
+                .doesNotContain("tomcat")
+                .doesNotContain("Stream ended")
+                .doesNotContain("Failed to parse multipart servlet request");
+    }
+
+    /**
+     * With {@code resolve-lazily}, a {@code @RequestPart} argument makes
+     * Spring read the body via {@code getMultipartHeaders}, which wraps
+     * Tomcat's limit failure as a plain {@link MultipartException} ("Could
+     * not access multipart servlet request") instead of a {@link
+     * MaxUploadSizeExceededException} — the exact chain observed for the
+     * JSON API. It is still "too large", not a malformed request.
+     */
+    @Test
+    void genericMultipartException_causedByContainerPartCountLimit_mapsTo413() {
+        MultipartException ex = new MultipartException(
+                "Could not access multipart servlet request",
+                new IllegalStateException(new FileCountLimitExceededException("attachment", 500)));
+
+        ResponseEntity<ErrorResponse> response = handler.handleMultipart(ex, requestFor("/api/submissions"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message()).doesNotContain("attachment").doesNotContain("tomcat");
+    }
+
+    @Test
+    void genericMultipartException_causedByContainerFileSizeLimit_mapsTo413() {
+        MultipartException ex = new MultipartException(
+                "Could not access multipart servlet request",
+                new IllegalStateException(
+                        new FileSizeLimitExceededException("file too big", 11_000_000L, 10_485_760L)));
+
+        assertThat(handler.handleMultipart(ex, requestFor("/api/submissions")).getStatusCode())
+                .isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
+    }
+
+    @Test
+    void genericMultipartException_causedByContainerRequestSizeLimit_mapsTo413() {
+        MultipartException ex = new MultipartException(
+                "Could not access multipart servlet request",
+                new IllegalStateException(
+                        new SizeLimitExceededException("request too big", 120_000_000L, 115_343_360L)));
+
+        assertThat(handler.handleMultipart(ex, requestFor("/api/submissions/mine")).getStatusCode())
+                .isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
+    }
+
+    @Test
+    void genericMultipartException_wrappingMaxUploadSizeExceeded_mapsTo413() {
+        MultipartException ex = new MultipartException(
+                "Could not access multipart servlet request", new MaxUploadSizeExceededException(-1L));
+
+        assertThat(handler.handleMultipart(ex, requestFor("/api/submissions")).getStatusCode())
+                .isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
+    }
+
+    @Test
+    void multipartException_withoutAnyCause_mapsTo400() {
+        MultipartException ex = new MultipartException("Current request is not a multipart request");
+
+        assertThat(handler.handleMultipart(ex, requestFor("/api/submissions")).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void multipartException_withCyclicCauseChain_terminatesAndMapsTo400() {
+        Exception first = new Exception("first");
+        Exception second = new Exception("second", first);
+        first.initCause(second);
+        MultipartException ex = new MultipartException("Failed to parse multipart servlet request", first);
+
+        assertThat(handler.handleMultipart(ex, requestFor("/api/submissions")).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void multipartException_isNotReportedAsGeneric500() throws NoSuchMethodException {
+        // Spring picks the closest @ExceptionHandler by exception-type
+        // distance, so the dedicated handlers must exist for both types;
+        // otherwise these fall through to handleGeneric's 500.
+        assertThat(GlobalExceptionHandler.class
+                        .getMethod("handleMaxUploadSizeExceeded",
+                                MaxUploadSizeExceededException.class, HttpServletRequest.class)
+                        .getAnnotation(org.springframework.web.bind.annotation.ExceptionHandler.class)
+                        .value())
+                .containsExactly(MaxUploadSizeExceededException.class);
+        assertThat(GlobalExceptionHandler.class
+                        .getMethod("handleMultipart", MultipartException.class, HttpServletRequest.class)
+                        .getAnnotation(org.springframework.web.bind.annotation.ExceptionHandler.class)
+                        .value())
+                .containsExactly(MultipartException.class);
     }
 
     private static class DummyTarget {

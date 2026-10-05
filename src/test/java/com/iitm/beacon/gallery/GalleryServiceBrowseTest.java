@@ -391,6 +391,35 @@ class GalleryServiceBrowseTest {
     }
 
     @Test
+    void browse_cardCover_isTheFirstPhotosThumbnail() {
+        Testimonial t = testimonial("browse-card-cover-thumb@example.com", india())
+                .status(TestimonialStatus.APPROVED)
+                .build();
+        TestimonialSection general = section(t, topic("general"), "With photos.");
+        general.getPhotos().add(Photo.builder()
+                .section(general)
+                .filePath("second.webp")
+                .thumbnailPath("second-thumb.webp")
+                .displayOrder(1)
+                .build());
+        general.getPhotos().add(Photo.builder()
+                .section(general)
+                .filePath("first.webp")
+                .thumbnailPath("first-thumb.webp")
+                .displayOrder(0)
+                .build());
+        t.getSections().add(general);
+        testimonialRepository.saveAndFlush(t);
+
+        TestimonialCardDto card = galleryService.browse(null, null, null, PageRequest.of(0, 20)).content().stream()
+                .filter(c -> c.id().equals(t.getId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(card.thumbnailUrl()).isEqualTo("/uploads/first-thumb.webp");
+    }
+
+    @Test
     void browse_cardMapping_firstSectionWithNoPhotos_thumbnailIsNull() {
         Testimonial t = testimonial("browse-card-no-photo@example.com", india())
                 .status(TestimonialStatus.APPROVED)

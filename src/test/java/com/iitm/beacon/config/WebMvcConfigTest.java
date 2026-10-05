@@ -4,6 +4,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.iitm.beacon.testsupport.TestImages;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,21 @@ class WebMvcConfigTest {
         mockMvc.perform(get("/uploads/hello.txt"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("hello world"));
+    }
+
+    @Test
+    void servesWebpPhotosAsImageWebp() throws Exception {
+        byte[] webp = TestImages.webpLossless(TestImages.solid(4, 4, TestImages.RED));
+        Files.write(uploadsRoot.resolve("photo.webp"), webp);
+        Files.write(uploadsRoot.resolve("photo-thumb.webp"), webp);
+
+        mockMvc.perform(get("/uploads/photo.webp"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("image/webp"))
+                .andExpect(content().bytes(webp));
+        mockMvc.perform(get("/uploads/photo-thumb.webp"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("image/webp"));
     }
 
     @Test

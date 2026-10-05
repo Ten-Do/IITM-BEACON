@@ -1,6 +1,10 @@
 package com.iitm.beacon.gallery;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -10,6 +14,7 @@ import com.iitm.beacon.domain.contacttype.ContactTypeRepository;
 import com.iitm.beacon.domain.country.Country;
 import com.iitm.beacon.domain.country.CountryRepository;
 import com.iitm.beacon.domain.testimonial.ContactMethod;
+import com.iitm.beacon.domain.testimonial.Photo;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
@@ -159,6 +164,53 @@ class GalleryControllerTest {
     }
 
     @Test
+    void detail_photos_includeThumbnailUrlAndSize_andLegacyOnesFallBackToTheFullUrl() throws Exception {
+        Testimonial saved = approvedTestimonialWithPublicContact("controller-detail-photos@example.com");
+        TestimonialSection section = saved.getSections().get(0);
+        section.getPhotos().add(Photo.builder()
+                .section(section)
+                .filePath("abc.webp")
+                .thumbnailPath("abc-thumb.webp")
+                .width(2560)
+                .height(1707)
+                .displayOrder(0)
+                .build());
+        section.getPhotos().add(
+                Photo.builder().section(section).filePath("legacy.jpeg").displayOrder(1).build());
+        testimonialRepository.saveAndFlush(saved);
+
+        mockMvc.perform(get("/api/gallery/testimonials/{id}", saved.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sections[0].photos[0].url").value("/uploads/abc.webp"))
+                .andExpect(jsonPath("$.sections[0].photos[0].thumbnailUrl").value("/uploads/abc-thumb.webp"))
+                .andExpect(jsonPath("$.sections[0].photos[0].width").value(2560))
+                .andExpect(jsonPath("$.sections[0].photos[0].height").value(1707))
+                .andExpect(jsonPath("$.sections[0].photos[0].tags").isArray())
+                .andExpect(jsonPath("$.sections[0].photos[1].url").value("/uploads/legacy.jpeg"))
+                .andExpect(jsonPath("$.sections[0].photos[1].thumbnailUrl").value("/uploads/legacy.jpeg"))
+                .andExpect(jsonPath("$.sections[0].photos[1].width").value(nullValue()))
+                .andExpect(jsonPath("$.sections[0].photos[1].height").value(nullValue()));
+    }
+
+    @Test
+    void browse_cardThumbnail_isTheFirstPhotosThumbnailFile() throws Exception {
+        Testimonial saved = approvedTestimonialWithPublicContact("controller-browse-thumb@example.com");
+        TestimonialSection section = saved.getSections().get(0);
+        section.getPhotos().add(Photo.builder()
+                .section(section)
+                .filePath("cover.webp")
+                .thumbnailPath("cover-thumb.webp")
+                .displayOrder(0)
+                .build());
+        testimonialRepository.saveAndFlush(saved);
+
+        mockMvc.perform(get("/api/gallery/testimonials"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.id == " + saved.getId() + ")].thumbnailUrl")
+                        .value("/uploads/cover-thumb.webp"));
+    }
+
+    @Test
     void detail_unknownId_returns404() throws Exception {
         mockMvc.perform(get("/api/gallery/testimonials/{id}", 999_999L)).andExpect(status().isNotFound());
     }
@@ -192,20 +244,19 @@ class GalleryControllerTest {
         mockMvc.perform(get("/api/gallery/testimonials/{id}", saved.getId())).andExpect(status().isNotFound());
     }
 
+    /**
+     * The public JSON contact endpoint is gone: anyone could harvest every
+     * contact with a loop over ids. Contacts are revealed only by the
+     * article page's own same-origin POST (see GalleryContactRevealTest).
+     */
     @Test
-    void contact_approvedWithPublicContact_returns200WithPublicEntries() throws Exception {
+    void contact_endpointNoLongerExists_andNeverReturnsTheContacts() throws Exception {
         Testimonial saved = approvedTestimonialWithPublicContact("controller-contact@example.com");
 
-        mockMvc.perform(get("/api/gallery/testimonials/{id}/contact", saved.getId()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].type").value("email"))
-                .andExpect(jsonPath("$[0].value").value("public@example.com"));
-    }
-
-    @Test
-    void contact_unknownId_returns404() throws Exception {
-        mockMvc.perform(get("/api/gallery/testimonials/{id}/contact", 999_999L))
-                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/gallery/testimonials/{id}/contact", saved.getId())
+                        .header("Origin", "http://localhost"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().string(not(containsString("public@example.com"))));
     }
 
     @Test

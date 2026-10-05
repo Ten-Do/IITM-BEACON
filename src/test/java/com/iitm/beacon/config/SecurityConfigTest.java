@@ -25,7 +25,7 @@ import org.springframework.test.web.servlet.MockMvc;
  *       through to {@code authenticated()} (which a VISITOR-role session
  *       would satisfy);
  *   <li>the {@code permitAll()} static-asset route group ({@code /css/**},
- *       {@code /js/**}, {@code /images/**}) — no content is served from
+ *       {@code /js/**}, {@code /images/**}, {@code /webjars/**}) — no content is served from
  *       these exact paths, so a passing test here only confirms the
  *       security layer lets the request through to Spring MVC's own "no
  *       handler found" 404 instead of blocking it with 401/403. Every other
@@ -64,5 +64,6 @@ class SecurityConfigTest {
         mockMvc.perform(get("/css/app.css")).andExpect(status().isNotFound());
         mockMvc.perform(get("/js/app.js")).andExpect(status().isNotFound());
         mockMvc.perform(get("/images/logo.png")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/webjars/no-such-library/dist/missing.js")).andExpect(status().isNotFound());
     }
 }

@@ -6,7 +6,9 @@
         <!-- Temporary text wordmark; swap for the real OGE logo SVG once available -->
         <span class="wordmark">IITM Beacon</span>
     </div>
-    <nav class="header-nav">
+    <!-- On phones the nav collapses behind this burger (layout/nav-toggle.html). -->
+    <button th:replace="~{layout/nav-toggle :: toggle('visitor-nav')}"></button>
+    <nav class="header-nav" id="visitor-nav" aria-label="Main">
         <a href="/gallery" th:classappend="${activePage == 'gallery'} ? 'active' : ''">Browse testimonials</a>
         <a href="/submissions/login" th:classappend="${activePage == 'submit'} ? 'active' : ''">Write or edit your testimonial</a>
     </nav>

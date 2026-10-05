@@ -38,8 +38,21 @@ public class ContactType {
     @Column(name = "slug", nullable = false, unique = true)
     private String slug;
 
+    /** Display name shown to people, e.g. "WhatsApp". */
+    @Column(name = "name", nullable = false)
+    private String name;
+
+    /** Input placeholder describing the accepted value, e.g. "phone number, or a wa.me link". */
     @Column(name = "label", nullable = false)
     private String label;
+
+    /**
+     * Regular expression (no {@code ^}/{@code $}) a trimmed contact value
+     * must match in full, also rendered as the input's HTML {@code pattern};
+     * {@code null} means only a non-blank value is required (decision 5).
+     */
+    @Column(name = "value_pattern")
+    private String valuePattern;
 
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder;

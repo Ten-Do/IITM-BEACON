@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--
+  Burger button that shows and hides a header's nav on phones, driven by
+  static/js/nav-toggle.js (loaded on every page by layout/shell.html's head).
+  To reuse it in a header: give the nav an id, put this fragment right before
+  the nav (so Tab moves from the button into the open menu), and pass the id:
+      <button th:replace="~{layout/nav-toggle :: toggle('my-nav')}"></button>
+      <nav id="my-nav" class="header-nav">…</nav>
+
+  The script finds every [data-nav-toggle] and opens/closes the element its
+  aria-controls names. Without JavaScript the button stays hidden and the nav
+  stays visible (beacon.css only collapses a nav the script has marked).
+-->
+<button th:fragment="toggle(navId)" type="button" class="nav-toggle" data-nav-toggle
+        th:attr="aria-controls=${navId}" aria-expanded="false" aria-label="Menu">
+    <span class="nav-toggle-bar" aria-hidden="true"></span>
+    <span class="nav-toggle-bar" aria-hidden="true"></span>
+    <span class="nav-toggle-bar" aria-hidden="true"></span>
+</button>
+</body>
+</html>

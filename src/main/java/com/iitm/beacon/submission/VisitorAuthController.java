@@ -5,19 +5,22 @@ import com.iitm.beacon.common.security.SessionAuthenticator;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Visitor login half of the {@code submission} slice: email OTP
- * request/verify/session (UC-VISITOR-LOGIN, decision 17). Create/edit form
- * endpoints live in {@link SubmissionController}.
+ * request/verify/session (UC-VISITOR-LOGIN, decision 17), plus the session
+ * ping. Create/edit form endpoints live in {@link SubmissionController}.
  */
 @RestController
-@RequestMapping("/api/submissions/otp")
+@RequestMapping("/api/submissions")
 public class VisitorAuthController {
 
     private final VisitorOtpService visitorOtpService;
@@ -33,13 +36,13 @@ public class VisitorAuthController {
         this.submissionService = submissionService;
     }
 
-    @PostMapping("/request")
+    @PostMapping("/otp/request")
     public ResponseEntity<Void> request(@Valid @RequestBody OtpRequestRequest body, HttpServletRequest req) {
         visitorOtpService.requestOtp(body.email(), req.getRemoteAddr());
         return ResponseEntity.accepted().build();
     }
 
-    @PostMapping("/verify")
+    @PostMapping("/otp/verify")
     public ResponseEntity<VisitorOtpVerifyResponse> verify(
             @Valid @RequestBody OtpVerifyRequest body, HttpServletRequest req, HttpServletResponse res) {
         VisitorOtpVerifyResult result = visitorOtpService.verify(body.email(), body.code());
@@ -53,5 +56,18 @@ public class VisitorAuthController {
         VisitorOtpVerifyResponse response =
                 new VisitorOtpVerifyResponse(modeResult.mode(), modeResult.testimonialId());
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Session ping for {@code static/js/session-check.js} on the visitor's
+     * protected pages: 204 while the visitor session is alive (the request
+     * itself keeps it alive), otherwise the security layer's JSON 401 (no or
+     * expired session) or 403 (another role's session), which makes the
+     * script reload the page and so go through the login redirect.
+     */
+    @GetMapping("/session")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void session() {
+        // Reaching this method is the whole answer: SecurityConfig already required a visitor session.
     }
 }

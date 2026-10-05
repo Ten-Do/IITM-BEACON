@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--
+  Session check for a page that needs a login (static/js/session-check.js):
+  when the tab becomes visible again it pings pingUrl, the session ping of
+  the page's role, and reloads the page if the session is gone — so the
+  user goes through the login page and comes back here.
+
+  Admin pages get it through layout/header-admin.html's header fragment.
+  A visitor page that needs a login includes it itself, because
+  layout/header-visitor.html is shared with the public and login pages,
+  which must never load it.
+-->
+<script th:fragment="script(pingUrl)" defer src="/js/session-check.js"
+        th:attr="data-session-url=${pingUrl}"></script>
+</body>
+</html>

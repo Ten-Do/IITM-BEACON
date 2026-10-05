@@ -59,6 +59,8 @@ Full permission/workflow detail: `docs/scope.md` (actors, constraints) and `docs
 ## Testing
 
 - Work is done TDD: failing test before implementation, then make it pass. No untested module gets merged. Full testing methodology lives in the `tdd-enforcer` subagent — invoke it for implementation work.
+- Exception: browser end-to-end tests (Playwright, `@Tag("e2e")`, run in Docker via `make e2e`) are NOT written TDD-style. There is nothing to screenshot before the UI exists, so they're written *after* the implementation, as the final check that the finished feature works end to end. TDD still applies to everything else, including the unit/MockMvc tests of the same feature.
+- E2e tests assert ONLY with screenshots: drive the page into a state (navigate, click, type, press keys, swipe, wait for it to settle), then compare a screenshot against its baseline — that one image checks the presence, layout and look of every element at once. No hard-coded colours, pixel coordinates, bounding boxes, computed styles, scroll offsets, element counts or other DOM measurements as assertions; waits used only to synchronise are fine. Anything that isn't visible on the page (HTTP status codes, headers, security checks, request counts) belongs in unit/MockMvc tests, not e2e. The user reviews the baselines by eye.
 
 ## Java/Spring baseline requirements
 

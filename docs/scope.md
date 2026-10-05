@@ -38,9 +38,10 @@ is out of scope for this gallery — see "Out of scope" below.
   and re-parenting topic groups and topics (moving a topic between groups, or promoting it to
   standalone), and for creating, renaming, reordering, and deactivating achievements.
 - Contact methods: a submitter may list 0–N ways to reach them (email, WhatsApp, Telegram,
-  Instagram, Twitter/X, ...), each stored as free text — number, handle, or link, whichever is
-  convenient — against a database-driven contact-type list, same pattern as topics/achievements.
-  Each entry is independently marked public or private by the submitter.
+  Instagram, Twitter/X, ...), each given as a number, handle, or link, whichever is convenient,
+  and validated against the accepted formats of its type from a database-driven contact-type
+  list, same pattern as topics/achievements. Each entry is independently marked public or
+  private by the submitter.
 - On-demand contact reveal: no contact method is shown by default, even on an approved
   testimonial — a visitor must explicitly request it, which triggers a separate lookup
   returning only the entries the submitter marked public, rather than being included in the

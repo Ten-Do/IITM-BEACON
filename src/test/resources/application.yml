@@ -9,15 +9,43 @@ spring:
     port: 1025
     username: test
     password: test
+  # This file shadows src/main/resources/application.yml on the test classpath,
+  # so the upload and photo limits and the session timeout are repeated here
+  # verbatim (defaults only); config.UploadLimitsConfigTest and
+  # config.SessionTimeoutConfigTest fail if the two copies drift apart.
+  servlet:
+    multipart:
+      max-file-size: ${BEACON_UPLOAD_MAX_FILE_SIZE:25MB}
+      max-request-size: ${BEACON_UPLOAD_MAX_REQUEST_SIZE:1010MB}
+      resolve-lazily: true
+
+server:
+  tomcat:
+    max-part-count: ${BEACON_UPLOAD_MAX_PART_COUNT:500}
+  servlet:
+    session:
+      timeout: ${BEACON_SESSION_TIMEOUT:24h}
 
 beacon:
+  web:
+    # Repeated verbatim from the main file (config.AllowedOriginsConfigTest).
+    allowed-origins: ${BEACON_ALLOWED_ORIGINS:}
   crypto:
     encryption-key: aunkIRNayPvNjoN2fPob8307AX7znDryq0XhVWMZoaM=
     hmac-pepper: dev-only-insecure-pepper-do-not-use-in-prod
   storage:
     root-path: ${java.io.tmpdir:/tmp}/beacon-test-uploads
-    max-photos-per-testimonial: 20
-    max-photo-size-bytes: 5242880
+    max-photos-per-testimonial: ${BEACON_PHOTO_MAX_COUNT:50}
+    max-photos-per-section: ${BEACON_PHOTO_MAX_PER_SECTION:5}
+    max-photo-size-bytes: ${BEACON_PHOTO_MAX_SIZE_BYTES:20971520}
+    max-pixels: ${BEACON_PHOTO_MAX_PIXELS:250000000}
+    full-max-edge: ${BEACON_PHOTO_FULL_MAX_EDGE:2560}
+    thumb-max-edge: ${BEACON_PHOTO_THUMB_MAX_EDGE:640}
+    webp-quality: ${BEACON_PHOTO_WEBP_QUALITY:82}
+    thumb-webp-quality: ${BEACON_PHOTO_WEBP_THUMB_QUALITY:75}
+    backfill:
+      # Off: tests that exercise submission.LegacyPhotoBackfill run it explicitly.
+      enabled: false
 
 admin:
   email: admin@example.com

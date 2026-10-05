@@ -136,6 +136,53 @@ class GalleryServiceDetailTest {
         assertThat(dto.hasRevealableContact()).isTrue();
     }
 
+    private Testimonial approvedWithPhotos(String email, Photo... photos) {
+        Testimonial t = testimonial(email).status(TestimonialStatus.APPROVED).build();
+        TestimonialSection general = TestimonialSection.builder()
+                .testimonial(t)
+                .topic(topic("general"))
+                .answerText("Text.")
+                .modified(false)
+                .build();
+        for (Photo photo : photos) {
+            photo.setSection(general);
+            general.getPhotos().add(photo);
+        }
+        t.getSections().add(general);
+        return testimonialRepository.saveAndFlush(t);
+    }
+
+    @Test
+    void getDetail_convertedPhoto_carriesItsThumbnailUrlAndSize() {
+        Testimonial saved = approvedWithPhotos("detail-thumb@example.com", Photo.builder()
+                .filePath("abc.webp")
+                .thumbnailPath("abc-thumb.webp")
+                .width(2560)
+                .height(1707)
+                .displayOrder(0)
+                .build());
+
+        PhotoRefDto photo = galleryService.getDetail(saved.getId()).sections().get(0).photos().get(0);
+
+        assertThat(photo.url()).isEqualTo("/uploads/abc.webp");
+        assertThat(photo.thumbnailUrl()).isEqualTo("/uploads/abc-thumb.webp");
+        assertThat(photo.width()).isEqualTo(2560);
+        assertThat(photo.height()).isEqualTo(1707);
+    }
+
+    @Test
+    void getDetail_legacyPhotoWithoutThumbnail_fallsBackToTheFullUrl_andHasNoSize() {
+        Testimonial saved = approvedWithPhotos("detail-legacy@example.com",
+                Photo.builder().filePath("legacy.jpeg").displayOrder(0).build());
+
+        PhotoRefDto photo = galleryService.getDetail(saved.getId()).sections().get(0).photos().get(0);
+
+        assertThat(photo.url()).isEqualTo("/uploads/legacy.jpeg");
+        assertThat(photo.thumbnailUrl()).isEqualTo("/uploads/legacy.jpeg");
+        assertThat(photo.width()).isNull();
+        assertThat(photo.height()).isNull();
+    }
+
     @Test
     void getDetail_noPublicContactMethods_hasRevealableContactIsFalse() {
         Testimonial t = testimonial("detail-no-public-contact@example.com")

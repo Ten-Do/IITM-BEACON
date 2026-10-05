@@ -34,8 +34,10 @@ services:
       MAIL_PORT: ${MAIL_PORT:?MAIL_PORT is required}
       MAIL_USERNAME: ${MAIL_USERNAME:?MAIL_USERNAME is required}
       MAIL_PASSWORD: ${MAIL_PASSWORD:?MAIL_PASSWORD is required}
+      # Optional: the site's public origin(s) behind a reverse proxy (see .env.example).
+      BEACON_ALLOWED_ORIGINS: ${BEACON_ALLOWED_ORIGINS:-}
     ports:
-      - "8080:8080"
+      - "8081:8080"
     volumes:
       - uploads:/data/uploads
 
@@ -46,6 +48,26 @@ services:
       - .:/workspace
       - maven-repo:/root/.m2
     entrypoint: ["mvn"]
+    profiles: ["tools"]
+
+  # Browser end-to-end tests (Playwright + headless Chromium) — see
+  # Dockerfile.e2e for why they only run in this image. Extra arguments are
+  # appended to `mvn -Pe2e test`, e.g.
+  #   docker compose --profile tools run --rm e2e -De2e.updateScreenshots=true
+  e2e:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - maven-repo:/root/.m2
+    environment:
+      # Browsers are baked into the image; never download others at runtime.
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    # Chromium needs more shared memory than Docker's 64 MB default.
+    ipc: host
+    entrypoint: ["mvn", "-Pe2e", "test"]
     profiles: ["tools"]
 
 volumes:

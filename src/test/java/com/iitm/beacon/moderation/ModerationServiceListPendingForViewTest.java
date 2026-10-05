@@ -14,6 +14,7 @@ import com.iitm.beacon.domain.contacttype.ContactTypeRepository;
 import com.iitm.beacon.domain.country.Country;
 import com.iitm.beacon.domain.country.CountryRepository;
 import com.iitm.beacon.domain.testimonial.ContactMethod;
+import com.iitm.beacon.domain.testimonial.Photo;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
@@ -21,6 +22,7 @@ import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.domain.topic.Topic;
 import com.iitm.beacon.domain.topic.TopicRepository;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -175,6 +177,40 @@ class ModerationServiceListPendingForViewTest {
 
         assertThat(result.content()).hasSize(1);
         assertThat(result.content().get(0).resubmitted()).isTrue();
+    }
+
+    @Test
+    void listPendingForView_photos_carryThumbnailUrlAndSize_withTheFullUrlAsFallbackForLegacyOnes() {
+        Testimonial testimonial = newTestimonial("photos-view@example.com", Instant.now());
+        addSection(testimonial, "general", "Answer.", false);
+        TestimonialSection section = testimonial.getSections().get(0);
+        section.getPhotos().add(Photo.builder()
+                .section(section)
+                .filePath("abc.webp")
+                .thumbnailPath("abc-thumb.webp")
+                .width(1707)
+                .height(2560)
+                .displayOrder(0)
+                .build());
+        section.getPhotos().add(
+                Photo.builder().section(section).filePath("legacy.png").displayOrder(1).build());
+        testimonialRepository.save(testimonial);
+
+        List<ModerationPhotoRefDto> photos = moderationService.listPendingForView(PageRequest.of(0, 20))
+                .content().get(0).sections().get(0).photos();
+
+        assertThat(photos).extracting(ModerationPhotoRefDto::url)
+                .containsExactlyInAnyOrder("/uploads/abc.webp", "/uploads/legacy.png");
+        ModerationPhotoRefDto converted = photos.stream()
+                .filter(p -> p.url().equals("/uploads/abc.webp")).findFirst().orElseThrow();
+        assertThat(converted.thumbnailUrl()).isEqualTo("/uploads/abc-thumb.webp");
+        assertThat(converted.width()).isEqualTo(1707);
+        assertThat(converted.height()).isEqualTo(2560);
+        ModerationPhotoRefDto legacy = photos.stream()
+                .filter(p -> p.url().equals("/uploads/legacy.png")).findFirst().orElseThrow();
+        assertThat(legacy.thumbnailUrl()).isEqualTo("/uploads/legacy.png");
+        assertThat(legacy.width()).isNull();
+        assertThat(legacy.height()).isNull();
     }
 
     @Test

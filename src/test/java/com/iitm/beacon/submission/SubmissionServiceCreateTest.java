@@ -19,6 +19,7 @@ import com.iitm.beacon.domain.topic.TopicRepository;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.ContactMethodInput;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.PhotoInput;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.SectionInput;
+import com.iitm.beacon.testsupport.TestPhotoStorage;
 import jakarta.validation.Validator;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -231,9 +232,10 @@ class SubmissionServiceCreateTest {
     @Test
     void create_tooManyPhotos_throwsSubmissionValidationExceptionBeforeStoringAnyFile() throws Exception {
         PhotoStorageProperties restrictiveProperties =
-                new PhotoStorageProperties(uploadsRoot.toString(), 1, 5_242_880L);
+                TestPhotoStorage.properties(uploadsRoot, 1, TestPhotoStorage.DEFAULT_MAX_PHOTO_SIZE_BYTES);
         PhotoStorageService restrictivePhotoStorage =
-                new PhotoStorageService(restrictiveProperties, new PhotoUrlResolver());
+                new PhotoStorageService(
+                        restrictiveProperties, new PhotoUrlResolver(), new PhotoImageProcessor(restrictiveProperties));
         SubmissionService restrictedService = new SubmissionService(
                 testimonialRepository,
                 topicRepository,

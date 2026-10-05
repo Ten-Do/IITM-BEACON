@@ -49,7 +49,7 @@ class AdminAuthViewControllerExpiredOtpTest {
     private OtpMailer otpMailer;
 
     @Test
-    void verifyAfterTtlElapses_rerendersLoginWithError() throws Exception {
+    void verifyAfterTtlElapses_rerendersTheCodeStepWithErrorAndKeepsEmail() throws Exception {
         mockMvc.perform(post("/admin/login/request").param("email", ADMIN_EMAIL))
                 .andExpect(status().is3xxRedirection());
 
@@ -63,8 +63,9 @@ class AdminAuthViewControllerExpiredOtpTest {
                         .param("email", ADMIN_EMAIL)
                         .param("code", code))
                 .andExpect(status().isOk())
-                .andExpect(view().name("adminauth/login"))
-                .andExpect(model().attributeExists("error"));
+                .andExpect(view().name("adminauth/login-code"))
+                .andExpect(model().attributeExists("error"))
+                .andExpect(model().attribute("email", ADMIN_EMAIL));
     }
 
     @TestConfiguration

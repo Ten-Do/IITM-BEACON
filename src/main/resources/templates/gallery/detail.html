@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{layout/shell :: head(${testimonial.displayName()})}"></head>
-<body>
+<!-- The reveal button (and its script) only while there is something to reveal and it isn't shown yet. -->
+<body th:with="revealable=${contacts == null and contactUnavailable != true and testimonial.hasRevealableContact()}">
 <div th:replace="~{layout/header-visitor :: header('gallery')}"></div>
 
 <main class="gallery-detail-body">
-    <div class="gallery-detail-main">
+    <!-- The whole article is one photo gallery: the viewer steps across all its sections. -->
+    <div class="gallery-detail-main" data-photo-gallery>
         <div class="gallery-title-row">
             <span class="gallery-country-name" th:text="${testimonial.country().name()}">Country</span>
             <span class="gallery-score-badge"
@@ -21,32 +23,32 @@
             <h2 class="gallery-group-heading" th:text="${block.heading()}">Group</h2>
 
             <div th:each="section : ${block.sections()}">
-                <div class="gallery-subtopic-heading" th:if="${block.group()}">
+                <h3 class="gallery-subtopic-heading" th:if="${block.group()}">
                     <span th:text="${section.topicLabel()}">Subtopic</span>
                     <span class="gallery-updated-badge" th:if="${section.updated()}">Updated</span>
-                </div>
+                </h3>
                 <span class="gallery-updated-badge" th:if="${!block.group() and section.updated()}">Updated</span>
                 <p class="gallery-answer-text" th:text="${section.answer()}">Answer text.</p>
                 <div class="gallery-photo-row" th:if="${!section.photos().isEmpty()}">
-                    <img class="gallery-photo-thumb" th:each="photo : ${section.photos()}" th:src="${photo.url()}"
-                         alt="" data-photo-viewer-item="true"
-                         th:attr="data-url=${photo.url()},data-caption=${block.group() ? (block.heading() + ' — ' + section.topicLabel()) : section.topicLabel()}"/>
+                    <th:block th:each="photo : ${section.photos()}">
+                        <figure th:replace="~{layout/photo-viewer :: photo(${photo}, ${block.group() ? (block.heading() + ' — ' + section.topicLabel()) : section.topicLabel()}, 'gallery-photo-thumb')}"></figure>
+                    </th:block>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="gallery-sidebar">
-        <div class="gallery-side-card" th:if="${testimonial.hasRevealableContact() and contacts == null}">
-            <a class="gallery-reveal-btn" th:href="@{/gallery/{id}(id=${testimonial.id()}, reveal=true)}">Reveal contact info</a>
-        </div>
-        <div class="gallery-side-card" th:if="${contacts != null}">
-            <p class="gallery-side-title">Contact</p>
-            <div class="gallery-contact-list">
-                <span class="gallery-contact-chip" th:each="contact : ${contacts}"
-                      th:text="${contact.type()} + ': ' + ${contact.value()}">Email: someone@example.com</span>
-            </div>
-        </div>
+        <!-- The contact slot: gallery/contact-card.html. -->
+        <th:block th:if="${revealable}">
+            <div th:replace="~{gallery/contact-card :: revealForm(${testimonial.id()})}"></div>
+        </th:block>
+        <th:block th:if="${contacts != null}">
+            <div th:replace="~{gallery/contact-card :: card}"></div>
+        </th:block>
+        <th:block th:if="${contactUnavailable == true}">
+            <div th:replace="~{gallery/contact-card :: unavailable}"></div>
+        </th:block>
         <div class="gallery-side-card" th:if="${!achievementLabels.isEmpty()}">
             <p class="gallery-side-title">Achievements</p>
             <div class="gallery-achievements-list">
@@ -57,7 +59,7 @@
     </div>
 </main>
 
-<div th:replace="~{layout/shell :: photoViewerTemplate}"></div>
-<script src="/js/photo-viewer.js"></script>
+<th:block th:replace="~{layout/photo-viewer :: assets}"></th:block>
+<script th:if="${revealable}" defer src="/js/contact-reveal.js"></script>
 </body>
 </html>

@@ -14,9 +14,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Admin moderation endpoints (UC-VIEW-PENDING-QUEUE, UC-APPROVE-TESTIMONIAL,
- * UC-REJECT-TESTIMONIAL). Role enforcement lives in {@code
- * config.SecurityConfig} (added in a later batch), same convention as {@code
- * SubmissionController}.
+ * UC-REJECT-TESTIMONIAL), plus the admin session ping. Role enforcement
+ * lives in {@code config.SecurityConfig} (added in a later batch), same
+ * convention as {@code SubmissionController}.
  */
 @RestController
 @RequestMapping("/api/moderation")
@@ -45,5 +45,18 @@ public class ModerationController {
     public void reject(@PathVariable Long id, @RequestBody(required = false) RejectRequest request) {
         String reason = request != null ? request.reason() : null;
         moderationService.reject(id, reason);
+    }
+
+    /**
+     * Session ping for {@code static/js/session-check.js} on the admin's
+     * pages: 204 while the admin session is alive (the request itself keeps
+     * it alive), otherwise the security layer's JSON 401 (no or expired
+     * session) or 403 (another role's session), which makes the script
+     * reload the page and so go through the login redirect.
+     */
+    @GetMapping("/session")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void session() {
+        // Reaching this method is the whole answer: SecurityConfig already required an admin session.
     }
 }

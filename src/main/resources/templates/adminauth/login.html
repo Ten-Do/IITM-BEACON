@@ -10,7 +10,8 @@
   header-bar is simpler too: just the wordmark and an "Admin" badge, no nav.
   Reuses the existing header-bar/header-left/wordmark/admin-badge classes
   (already shared by header-visitor.html and header-admin.html) inline rather
-  than adding a third header fragment file.
+  than adding a third header fragment file; adminauth/login-code.html repeats
+  this same inline header.
 -->
 <header class="header-bar">
     <div class="header-left">
@@ -22,35 +23,25 @@
 <main class="auth-body">
     <div class="auth-wrap">
         <h1 class="auth-title">IITM Beacon moderation</h1>
-        <p class="auth-subtitle">One shared admin account. Enter the admin email, then the code we send to it.</p>
+        <p class="auth-subtitle">One shared admin account. Enter the admin email and we'll send a one-time code to
+            it.</p>
         <div class="auth-card">
             <div class="auth-error-banner" th:if="${error}">
                 <span class="auth-error-mark">!</span>
                 <p class="auth-error-text" th:text="${error}">Something went wrong.</p>
             </div>
-            <p class="auth-field-help" th:if="${sent}">Code sent — check the admin inbox.</p>
             <!--
-              One shared form for both fields per the mockup (email and code
-              always visible together, no JS-toggled reveal). "Resend code"
-              uses formaction to post the SAME email+code fields to the
-              /request endpoint instead of /verify, so both actions stay
-              plain HTML form submits with no JS.
+              Step 1 of 2, same as the visitor flow (submission/login-email.html):
+              only the email here; the code is entered on its own page,
+              adminauth/login-code.html, after this form redirects there.
             -->
-            <form method="post" th:action="@{/admin/login/verify}">
+            <form method="post" th:action="@{/admin/login/request}">
                 <div class="auth-field">
                     <label class="auth-field-label" for="admin-email">Admin email</label>
                     <input class="auth-field-input" id="admin-email" name="email" type="email"
-                           th:value="${email}" placeholder="admin@iitm-beacon.example" required="required"/>
+                           placeholder="admin@iitm-beacon.example" required="required"/>
                 </div>
-                <div class="auth-field">
-                    <label class="auth-field-label" for="code">One-time code</label>
-                    <input class="auth-field-input auth-code-input" id="code" name="code" type="text"
-                           maxlength="6" autocomplete="one-time-code"/>
-                    <button type="submit" th:formaction="@{/admin/login/request}" class="auth-resend-btn">
-                        Resend code
-                    </button>
-                </div>
-                <button type="submit" class="auth-btn auth-btn-primary">Sign in</button>
+                <button type="submit" class="auth-btn auth-btn-primary">Send code</button>
             </form>
         </div>
     </div>

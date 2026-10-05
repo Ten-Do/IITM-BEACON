@@ -48,4 +48,13 @@
     <Field name="submissionService"/>
     <Bug pattern="EI_EXPOSE_REP2"/>
   </Match>
+
+  <!-- Same false positive, same reasoning: the single RequestCache bean from
+       config.SecurityConfig, constructor-injected (SpotBugs only guesses
+       "mutable" from the interface's removeRequest method). -->
+  <Match>
+    <Class name="com.iitm.beacon.common.security.PostLoginRedirect"/>
+    <Field name="requestCache"/>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+  </Match>
 </FindBugsFilter>

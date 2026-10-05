@@ -8,7 +8,8 @@ the methodology.
 ## 1. Approach
 
 TDD throughout: a failing test is written before the implementation that makes it pass; no
-untested module is merged (`CLAUDE.md`). Four test levels:
+untested module is merged (`CLAUDE.md`). The one exception is the browser end-to-end level
+below: those tests are written after the implementation, never test-first. Five test levels:
 
 - **Unit** — services, the shared `EncryptedValueConverter`/`EmailLookupHashService`, and OTP
   expiry/attempt logic. OTP logic and the rejected-testimonial retention job both inject a
@@ -19,6 +20,16 @@ untested module is merged (`CLAUDE.md`). Four test levels:
   round-trip.
 - **Web layer** — `MockMvc` against controllers: request validation (`@Valid` + Bean Validation),
   file-upload handling, and centralized error mapping (`@RestControllerAdvice`).
+- **Browser end-to-end** — Playwright for Java (`@Tag("e2e")`, `com.iitm.beacon.e2e`) driving
+  the real app in Chromium, desktop and mobile presets. Tests assert only with screenshot
+  baselines: they drive the page into a state (clicks, keys, swipes), then one screenshot checks
+  the presence, layout and look of every element at once — no hard-coded colours, coordinates,
+  computed styles or other DOM measurements. What isn't visible (statuses, headers, security
+  checks) is covered at the web layer above. Runs only inside Docker
+  (`make e2e`; `make e2e-update-screenshots` regenerates baselines) so screenshots are identical
+  on any machine; plain `mvn test` excludes it. **Not TDD:** written after the implementation,
+  as the final check that the finished UI works end to end — there's nothing to screenshot
+  before it exists. Every new baseline is reviewed by eye before it's accepted.
 - **Manual performance/load pass** — the four performance NFRs (`NFR-GALLERY-PERFORMANCE`,
   `NFR-SEARCH-PERFORMANCE`, `NFR-MODERATION-QUEUE-PERFORMANCE`, `NFR-DASHBOARD-PERFORMANCE`) are
   stated as 95th-percentile response times against a production-sized dataset — that's a load-test

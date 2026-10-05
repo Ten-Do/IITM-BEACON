@@ -72,10 +72,24 @@ body {
   padding: 0;
 }
 
+/* The page is a full-height column: the header, then main stretched over
+   the rest of the screen (the login and confirmation pages centre their card
+   in it). The body's background also paints the viewport below the body, so
+   a short page is beige to the bottom; the header keeps its own white.
+   100dvh: on phones 100vh is the height with the browser's toolbar hidden,
+   taller than the screen while it shows. */
 body {
   font-family: var(--font-base);
   color: var(--ink);
-  background: var(--paper);
+  background: var(--sand);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+body > main {
+  flex: 1 0 auto;
 }
 
 a {
@@ -91,6 +105,13 @@ a:hover {
 :focus-visible {
   outline: 2px solid var(--maroon);
   outline-offset: 2px;
+}
+
+/* Alpine.js: elements marked x-cloak stay hidden until Alpine has
+   initialized them (templates that load Alpine add a <noscript> override,
+   so without JS the same elements are simply shown). */
+[x-cloak] {
+  display: none !important;
 }
 
 /* Page shell — max-width centered container reused by later page templates */
@@ -152,6 +173,82 @@ a:hover {
   border: 1px solid var(--maroon);
   border-radius: var(--radius-sm);
   padding: 2px 8px;
+}
+
+/* Burger button (layout/nav-toggle.html, driven by static/js/nav-toggle.js).
+   Hidden by default: the phone block at the end of this file shows it only
+   once the script has marked it .nav-toggle--ready, and hides only a nav the
+   script has marked .nav-menu--collapsible — so without JS the nav stays. */
+.nav-toggle {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  margin-right: -10px; /* the bars, not the button's edge, line up with the page padding */
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+/* Hover only where there is a real pointer: on a touch screen :hover sticks
+   after a tap, and the open button would stay shaded. */
+@media (hover: hover) {
+  .nav-toggle:hover {
+    background: var(--sand);
+  }
+}
+
+.nav-toggle-bar {
+  display: block;
+  width: 22px;
+  height: 2px;
+  border-radius: var(--radius-xs);
+  background: currentcolor;
+  transition:
+    transform 0.15s ease,
+    opacity 0.15s ease;
+}
+
+/* Open: the three bars turn into a cross (bars 2px + gaps 5px = 7px apart). */
+.nav-toggle[aria-expanded="true"] .nav-toggle-bar:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+
+.nav-toggle[aria-expanded="true"] .nav-toggle-bar:nth-child(2) {
+  opacity: 0;
+}
+
+.nav-toggle[aria-expanded="true"] .nav-toggle-bar:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-toggle-bar {
+    transition: none;
+  }
+}
+
+/* Text users type — names, answers, emails, URLs, contact values — can hold
+   one word longer than its box (a pasted link, say): break it there rather
+   than push the page wider than a phone screen. */
+.gallery-card-excerpt,
+.gallery-article-title,
+.gallery-answer-text,
+.gallery-contact-chip,
+.moderation-identity-line,
+.moderation-meta-line,
+.moderation-section-row-body,
+.moderation-contact-chip,
+.auth-subtitle strong,
+.confirmation-note strong,
+.submission-error-text {
+  overflow-wrap: anywhere;
 }
 
 /* Moderation queue page (moderation/queue.html) — based on
@@ -329,16 +426,20 @@ a:hover {
 .moderation-section-photos {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
 }
 
+/* The thumbnail <img> inside layout/photo-viewer.html's photo figure. */
 .moderation-section-photo {
-  width: 72px;
-  height: 72px;
+  display: block;
+  width: 160px;
+  height: 120px;
   object-fit: cover;
   border-radius: var(--radius-sm);
   border: 1px solid var(--line);
+  background: var(--sand);
 }
 
 .moderation-contacts-row,
@@ -457,7 +558,9 @@ a:hover {
 }
 
 /* Visitor OTP login pages (submission/login-email.html, login-code.html) —
-   based on ui-design/VisitorLoginEmail.dc.html and VisitorLoginCode.dc.html. */
+   based on ui-design/VisitorLoginEmail.dc.html and VisitorLoginCode.dc.html.
+   The two-step admin login pages (adminauth/login.html, login-code.html)
+   reuse these same classes. */
 .auth-body {
   flex: 1;
   display: flex;
@@ -465,7 +568,6 @@ a:hover {
   justify-content: center;
   padding: var(--space-7);
   background: var(--sand);
-  min-height: calc(100vh - 60px);
 }
 
 .auth-wrap {
@@ -501,6 +603,14 @@ a:hover {
   flex-direction: column;
   gap: var(--space-4);
   box-shadow: var(--shadow-card);
+}
+
+/* The card's gap doesn't reach inside a <form>: without the same gap here
+   the submit button sits flush against the field above it. */
+.auth-card form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
 .auth-error-banner {
@@ -590,27 +700,6 @@ a:hover {
   padding: var(--space-2) 0;
 }
 
-/* Admin login page (adminauth/login.html) — based on
-   ui-design/AdminLogin.dc.html. A small inline "Resend code" link-styled
-   button sitting next to the code field, distinct from .auth-btn-ghost's
-   full-width block treatment used by the visitor login-code page. */
-.auth-resend-btn {
-  align-self: flex-end;
-  background: transparent;
-  border: none;
-  color: var(--maroon);
-  font-size: 13px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  padding: 0;
-}
-
-.auth-resend-btn:hover {
-  color: var(--maroon-dark);
-  text-decoration: underline;
-}
-
 /* Submission form (submission/form.html) — based on
    ui-design/SubmissionForm.dc.html. One shared template for both
    create and edit. */
@@ -656,6 +745,38 @@ a:hover {
   line-height: 1.5;
   color: var(--ink);
   margin: 0;
+}
+
+/* The banner is a summary: the highlighted-fields line, messages tied to no
+   single field, and the "attach your photos again" reminder. */
+.submission-error-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* One field's own error, rendered right under it (decision 21). */
+.submission-field-error {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--red);
+}
+
+/* For errors that sit on their own line outside a .submission-field column. */
+.submission-field-error--block {
+  display: block;
+  margin-top: var(--space-2);
+}
+
+.submission-field-input--invalid,
+.submission-field-input--invalid:focus {
+  border-color: var(--red);
+  background: var(--red-soft);
+}
+
+input[type="checkbox"].submission-field-input--invalid {
+  outline: 2px solid var(--red);
+  outline-offset: 2px;
 }
 
 .submission-section {
@@ -733,8 +854,8 @@ a:hover {
 
 .submission-score-wrap {
   display: flex;
-  align-items: center;
-  gap: var(--space-4);
+  flex-direction: column;
+  gap: var(--space-3);
   padding: var(--space-5);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
@@ -742,63 +863,240 @@ a:hover {
   box-shadow: var(--shadow-card);
 }
 
-.submission-score-input {
-  flex: 1;
+/* Number + label share the row's colour (var(--score-N), set inline). */
+.submission-score-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
 }
 
-.submission-score-output {
-  font-size: 28px;
+.submission-score-number {
+  font-size: 32px;
   font-weight: 700;
   min-width: 2ch;
-  text-align: right;
 }
 
-.submission-topic-group-heading {
+/* No `display` here: the labels rely on the [hidden] attribute to show one at a time. */
+.submission-score-label {
   font-size: 15px;
-  font-weight: 700;
-  margin: var(--space-5) 0 var(--space-2) 0;
+  font-weight: 600;
 }
 
-.submission-topic-row {
+.submission-score-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  margin: var(--space-2) 0;
+  border-radius: var(--radius-full);
+  background: linear-gradient(
+    to right,
+    var(--score-0),
+    var(--score-1),
+    var(--score-2),
+    var(--score-3),
+    var(--score-4),
+    var(--score-5),
+    var(--score-6),
+    var(--score-7),
+    var(--score-8),
+    var(--score-9),
+    var(--score-10)
+  );
+  cursor: pointer;
+}
+
+.submission-score-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  background: var(--paper);
+  border: 2.5px solid var(--maroon);
+}
+
+.submission-score-input::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  background: var(--paper);
+  border: 2.5px solid var(--maroon);
+}
+
+.submission-score-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.submission-chip-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.submission-chip-toggle {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  font-weight: 600;
+  border: 1.5px solid var(--line);
+  background: var(--paper);
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* Same selected look as the gallery's checked topic filter chips. */
+.submission-chip-toggle--selected {
+  border-color: var(--gold-dark);
+  background: var(--gold-soft);
+  color: var(--maroon-dark);
+}
+
+/* The General topic is pre-picked on a new form (it can still be unpicked). */
+.submission-chip-toggle--general {
+  border-style: dashed;
+}
+
+/* One per pick: a whole topic group, or one standalone topic. */
+.submission-group-block {
+  min-width: 0;
+  margin: 0 0 var(--space-4) 0;
+  padding: var(--space-5);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--paper);
-  padding: var(--space-4);
-  margin-bottom: var(--space-3);
   box-shadow: var(--shadow-card);
 }
 
-.submission-topic-prompt {
-  font-size: 12px;
-  color: var(--ink-soft);
-  margin: 0 0 var(--space-2) 0;
+/* Floated so the legend sits inside the card instead of on its border. */
+.submission-group-block-title {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin: 0 0 var(--space-4) 0;
+  font-size: 15px;
+  font-weight: 700;
 }
 
-.submission-photo-tile-row,
-.submission-photo-upload-row {
-  display: flex;
-  gap: var(--space-3);
+.submission-topic-block {
+  clear: both;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+  margin-top: var(--space-4);
+}
+
+.submission-group-block-title + .submission-topic-block {
+  padding-top: 0;
+  border-top: none;
+  margin-top: 0;
+}
+
+.submission-topic-block .submission-field-label {
+  display: block;
+  margin-bottom: var(--space-2);
+}
+
+/* -- Photos of one topic block: saved and new photos in one grid, then the
+   "Add photos" drop zone. submission-form.js marks the block
+   .submission-photos--js once it runs; until then (or without JS) the native
+   file input and each saved photo's Remove checkbox are shown instead of
+   the drop zone's hidden input and the photos' × buttons. -- */
+.submission-photos {
   margin-top: var(--space-3);
-  flex-wrap: wrap;
 }
 
-.submission-photo-tile,
-.submission-photo-upload-tile {
-  width: 120px;
+/* Auto-fill: four ~130px columns in the desktop form, two on a phone. */
+.submission-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.submission-photo-tile {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  min-width: 0;
+}
+
+/* Their own display above would otherwise beat the [hidden] attribute. */
+.submission-photo-grid[hidden],
+.submission-photo-tile[hidden] {
+  display: none;
+}
+
+/* A new photo of a topic whose text was cleared: it won't be sent. */
+.submission-photo-tile--inactive {
+  opacity: 0.5;
+}
+
+.submission-photo-frame {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--sand);
 }
 
 .submission-photo-tile-image {
-  width: 120px;
-  height: 90px;
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
+}
+
+/* A new photo the browser can't preview (e.g. HEIC in Chrome): its file name instead. */
+.submission-photo-tile-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-2);
+  font-size: 12px;
+  color: var(--ink-soft);
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .submission-photo-remove {
+  display: none;
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: rgba(23, 22, 28, 0.72);
+  color: var(--paper);
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.submission-photo-remove:hover {
+  background: var(--maroon-dark);
+}
+
+.submission-photos--js .submission-photo-remove {
+  display: flex;
+}
+
+.submission-photo-remove-check {
   font-size: 11px;
   color: var(--ink-soft);
   display: flex;
@@ -806,7 +1104,13 @@ a:hover {
   gap: var(--space-1);
 }
 
+.submission-photos--js .submission-photo-remove-check {
+  display: none;
+}
+
 .submission-photo-tag-input {
+  width: 100%;
+  min-width: 0;
   height: 30px;
   border: 1.5px solid var(--line);
   border-radius: var(--radius-sm);
@@ -815,15 +1119,133 @@ a:hover {
   font-family: inherit;
 }
 
-.submission-photo-upload-input {
+/* The drop zone; without JS it simply frames the native file input. */
+.submission-photo-add {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1) var(--space-3);
+  min-height: 56px;
+  padding: var(--space-3) var(--space-4);
+  border: 1.5px dashed var(--gold-dark);
+  border-radius: var(--radius-md);
+  background: var(--gold-soft);
+  color: var(--maroon-dark);
+  cursor: pointer;
+}
+
+.submission-photo-add:hover,
+.submission-photo-add--dragover {
+  border-color: var(--maroon);
+}
+
+.submission-photo-add--dragover {
+  background: var(--paper);
+}
+
+.submission-photo-add:focus-within {
+  outline: 2px solid var(--maroon);
+  outline-offset: 2px;
+}
+
+/* Disabled until the topic has text (the Alpine class, and the input itself). */
+.submission-photo-add--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* After the drop zone's own text, which names the (native) control. */
+.submission-photo-add-input {
+  order: 1;
+  max-width: 100%;
   font-size: 11px;
+}
+
+/* Visually hidden but still focusable: the whole drop zone is its label. */
+.submission-photos--js .submission-photo-add-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.submission-photo-add-text {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.submission-photo-add-hint {
+  display: none;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* Dropping works with a mouse, and only once the script runs. */
+@media (hover: hover) {
+  .submission-photos--js .submission-photo-add-hint {
+    display: inline;
+  }
+}
+
+.submission-photo-add-count {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.submission-photo-add-count:empty {
+  display: none;
+}
+
+.submission-photo-tag-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.submission-photo-limits {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin: var(--space-2) 0 0 0;
+}
+
+/* No `display` here: the hint relies on the [hidden] attribute Alpine toggles. */
+.submission-photo-hint {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin: var(--space-1) 0 0 0;
+}
+
+/* Always in the page (a live region); takes no room while empty. */
+.submission-photo-message {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--red);
+  margin: var(--space-2) 0 0 0;
+}
+
+.submission-photo-message:empty {
+  margin: 0;
 }
 
 .submission-contact-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-1) var(--space-3);
   margin-bottom: var(--space-3);
+}
+
+.submission-contact-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A contact row's errors wrap onto their own line, aligned under the input. */
+.submission-contact-error {
+  flex-basis: 100%;
+  padding-left: calc(140px + var(--space-3));
 }
 
 .submission-contact-label {
@@ -908,7 +1330,6 @@ a:hover {
   justify-content: center;
   padding: var(--space-7);
   background: var(--sand);
-  min-height: calc(100vh - 60px);
 }
 
 .confirmation-wrap {
@@ -1128,8 +1549,28 @@ a:hover {
 
 .gallery-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-5);
+}
+
+/* Cards per row by viewport width: 4 at 1200px and up, 3 from 900px, 2 from
+   560px, 1 below. Widest first — same specificity, so the order decides. */
+@media (max-width: 1199px) {
+  .gallery-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 899px) {
+  .gallery-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 559px) {
+  .gallery-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .gallery-card {
@@ -1146,7 +1587,7 @@ a:hover {
 .gallery-card-photo-placeholder {
   background: var(--sand);
   border-bottom: 1px solid var(--line);
-  height: 150px;
+  height: 200px;
   width: 100%;
   object-fit: cover;
 }
@@ -1274,6 +1715,8 @@ a:hover {
   border-bottom: 1px solid var(--line);
 }
 
+/* An <h3> (under the card's <h2>): every property a browser's default h3
+   style sets — display, font-size, font-weight, margins — is set here. */
 .gallery-subtopic-heading {
   display: flex;
   align-items: center;
@@ -1302,20 +1745,21 @@ a:hover {
 
 .gallery-photo-row {
   display: flex;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
   flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
+/* The thumbnail <img> inside layout/photo-viewer.html's photo figure. */
 .gallery-photo-thumb {
+  display: block;
   background: var(--sand);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  width: 110px;
-  height: 84px;
+  width: 200px;
+  height: 150px;
   object-fit: cover;
-  flex-shrink: 0;
-  cursor: pointer;
 }
 
 .gallery-sidebar {
@@ -1341,7 +1785,22 @@ a:hover {
   margin: 0 0 var(--space-3) 0;
 }
 
+/* The contact slot's reveal form (gallery/contact-card.html), driven by
+   static/js/contact-reveal.js: while the request runs, the button is
+   aria-busy (a spinner at its left edge — the label doesn't move) and
+   aria-disabled; a failure shows the error line under it. */
+.gallery-reveal-form {
+  margin: 0;
+}
+
+/* Without JavaScript the reveal lands on #contact: keep the card clear of
+   the screen's top edge (and room for its focus outline). */
+.gallery-side-card[data-contact-card] {
+  scroll-margin-top: var(--space-5);
+}
+
 .gallery-reveal-btn {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1359,6 +1818,57 @@ a:hover {
   font-family: inherit;
 }
 
+.gallery-reveal-btn[aria-disabled="true"] {
+  cursor: progress;
+  background: var(--gold-soft);
+}
+
+.gallery-reveal-spinner {
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: var(--space-4);
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  border: 2px solid currentcolor;
+  border-right-color: transparent;
+  border-radius: var(--radius-full);
+  animation: gallery-reveal-spin 0.7s linear infinite;
+}
+
+.gallery-reveal-btn[aria-busy="true"] .gallery-reveal-spinner {
+  display: block;
+}
+
+@keyframes gallery-reveal-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Slower, not still: a spinner that doesn't turn no longer says "loading". */
+@media (prefers-reduced-motion: reduce) {
+  .gallery-reveal-spinner {
+    animation-duration: 2s;
+  }
+}
+
+/* No `display` here: the line relies on the [hidden] attribute the script toggles. */
+.gallery-reveal-error {
+  margin: var(--space-2) 0 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--red);
+}
+
+.gallery-contact-unavailable {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
 .gallery-contact-list,
 .gallery-achievements-list {
   display: flex;
@@ -1366,11 +1876,13 @@ a:hover {
   gap: var(--space-2);
 }
 
+/* min-height, not height: a long contact value wraps onto more lines. */
 .gallery-contact-chip {
   display: inline-flex;
   align-items: center;
-  height: 26px;
-  padding: 0 var(--space-3);
+  min-height: 26px;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-full);
   font-size: 12px;
   font-weight: 600;
@@ -1392,89 +1904,578 @@ a:hover {
   color: var(--ink-soft);
 }
 
-/* Fullscreen photo viewer overlay (gallery/detail.html + photo-viewer.js) —
-   based on ui-design/PhotoViewer.dc.html. The markup/class names come from
-   layout/shell.html's inert <template id="photo-viewer-template">; this
-   batch is the first to attach CSS/behavior to it. */
-.photo-viewer-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  background: rgba(23, 22, 28, 0.94);
+/* A photo in a photo row — layout/photo-viewer.html :: photo, on
+   gallery/detail.html and moderation/queue.html: the thumbnail, a link to
+   the full-size photo that opens the fullscreen viewer, then the photo's
+   tag chips. The figure is exactly as wide as its thumbnail (the page's own
+   class sets the thumbnail's size); its chips wrap onto more lines. */
+.photo-figure {
+  margin: 0;
+  width: min-content;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  gap: var(--space-2);
 }
 
-.photo-viewer-close {
-  position: absolute;
-  top: var(--space-5);
-  right: var(--space-6);
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1.5px solid rgba(255, 255, 255, 0.3);
-  color: #fff;
-  font-size: 20px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
+/* Takes the figure's width without widening it: a long one-line chip must
+   not make the figure wider than its thumbnail. */
+.photo-figure .photo-tag-list {
+  width: 0;
+  min-width: 100%;
 }
 
-.photo-viewer-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  max-width: 90vw;
-}
-
-.photo-viewer-nav {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1.5px solid rgba(255, 255, 255, 0.3);
-  color: #fff;
-  font-size: 22px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.photo-viewer-image {
-  max-width: 70vw;
-  max-height: 70vh;
+.photo-figure-link {
+  display: block;
   border-radius: var(--radius-sm);
-  object-fit: contain;
-  background: var(--sand);
 }
 
-.photo-viewer-caption {
-  position: absolute;
-  bottom: var(--space-6);
-  left: 0;
-  right: 0;
+.photo-figure-link:focus-visible {
+  outline: 2px solid var(--maroon);
+  outline-offset: 2px;
+}
+
+.photo-tag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-1);
 }
 
-.photo-viewer-caption-text {
-  color: #fff;
-  font-size: 14px;
+/* One line, cut short with an ellipsis if longer than the thumbnail is
+   wide — its title attribute holds the whole tag, as does the viewer. */
+.photo-tag-chip {
+  max-width: 100%;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: 11px;
   font-weight: 600;
-  text-align: center;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--sand);
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
 }
 
-.photo-viewer-caption-count {
-  color: rgba(255, 255, 255, 0.65);
+/* Fullscreen photo viewer — static/js/photo-viewer.js on PhotoSwipe 5; the
+   look follows ui-design/PhotoViewer.dc.html. PhotoSwipe's stylesheet loads
+   after this one, so every override of its classes is scoped to
+   ".pswp.beacon-pswp" (the viewer's mainClass) and wins on specificity, not
+   on order.
+
+   Layout: close button top right; prev/next arrows in the bottom corners;
+   the caption bar (caption, tag chips, counter) between them, growing
+   upwards when it wraps — so the arrows sit at the very same spot for every
+   photo, whatever its size or caption. photo-viewer.js reads the two
+   "-space" properties below (plain px values: it can't resolve calc()) and
+   measures the caption bar, to keep the photo clear of all the controls. */
+:root {
+  --photo-viewer-edge: 16px; /* controls' distance from the screen edges */
+  --photo-viewer-control-size: 48px; /* arrows (a 44px+ touch target) */
+  --photo-viewer-close-size: 44px;
+  --photo-viewer-top-space: 68px; /* edge + close button + half an edge */
+  --photo-viewer-side-space: 16px;
+}
+
+.pswp.beacon-pswp {
+  --pswp-bg: #1f1917;
+  --pswp-icon-color: #fff;
+  font-family: var(--font-base);
+}
+
+.pswp.beacon-pswp .pswp__button--close {
+  width: var(--photo-viewer-close-size);
+  height: var(--photo-viewer-close-size);
+  margin: var(--photo-viewer-edge) var(--photo-viewer-edge) 0 0;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  opacity: 1;
+}
+
+/* PhotoSwipe centres its arrows vertically and hides them on touch screens
+   (until a mouse is used): here they are pinned to the bottom corners and
+   always shown. */
+.pswp.beacon-pswp .pswp__button--arrow {
+  top: auto;
+  bottom: var(--photo-viewer-edge);
+  width: var(--photo-viewer-control-size);
+  height: var(--photo-viewer-control-size);
+  margin-top: 0;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  opacity: 1;
+  visibility: visible;
+}
+
+.pswp.beacon-pswp .pswp__button--arrow--prev {
+  left: var(--photo-viewer-edge);
+}
+
+.pswp.beacon-pswp .pswp__button--arrow--next {
+  left: auto;
+  right: var(--photo-viewer-edge);
+}
+
+.pswp.beacon-pswp .pswp__button--close:hover,
+.pswp.beacon-pswp .pswp__button--arrow:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1.5px solid rgba(255, 255, 255, 0.5);
+}
+
+.pswp.beacon-pswp .pswp__button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.pswp.beacon-pswp .photo-viewer-icon {
+  top: 50%;
+  left: 50%;
+  right: auto;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  transform: translate(-50%, -50%);
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Between the arrows, never under them: a long caption or tag list wraps
+   (and, past 45% of the screen height, scrolls). The first/last child's
+   auto margins centre the content without clipping it when it overflows. */
+.photo-viewer-caption {
+  position: absolute;
+  bottom: 0;
+  left: calc(var(--photo-viewer-control-size) + 2 * var(--photo-viewer-edge));
+  right: calc(var(--photo-viewer-control-size) + 2 * var(--photo-viewer-edge));
+  min-height: calc(var(--photo-viewer-control-size) + 2 * var(--photo-viewer-edge));
+  max-height: 45vh;
+  overflow-y: auto;
+  padding: var(--photo-viewer-edge) 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  color: #fff;
+  font-family: var(--font-base);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.photo-viewer-caption > :first-child {
+  margin-top: auto;
+}
+
+.photo-viewer-caption > :last-child {
+  margin-bottom: auto;
+}
+
+/* photo-viewer.js's off-screen copy of the bar, to measure its height. */
+.photo-viewer-caption--measure {
+  position: fixed;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.photo-viewer-caption-text {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.photo-viewer-caption .photo-tag-list {
+  justify-content: center;
+}
+
+.photo-viewer-caption .photo-tag-chip {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+  text-shadow: none;
+}
+
+.photo-viewer-counter {
+  margin: 0;
   font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Phones and small tablets (720px and narrower). Everything here overrides
+   the rules above at the same specificity, so this block stays last but for
+   the small-phone block that refines it. */
+@media (max-width: 720px) {
+  :root {
+    --photo-viewer-edge: 8px;
+    --photo-viewer-top-space: 56px;
+    --photo-viewer-side-space: 0px;
+  }
+
+  /* iOS Safari zooms the page into any focused form control whose text is
+     under 16px. !important: the controls' own classes (11px to 15px) are
+     more specific than these element selectors. */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  /* -- Header: the nav collapses behind the burger once nav-toggle.js has
+     marked it; without JS its links wrap onto a second row instead. -- */
+  .header-bar {
+    position: relative;
+    flex-wrap: wrap;
+    gap: 0 var(--space-4);
+    padding: var(--space-2) var(--space-4);
+  }
+
+  .header-left {
+    min-height: 44px;
+  }
+
+  .header-nav {
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    gap: 0 var(--space-5);
+  }
+
+  .header-nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .nav-toggle--ready {
+    display: inline-flex;
+  }
+
+  .nav-menu--collapsible:not(.nav-menu--open) {
+    display: none;
+  }
+
+  /* The open menu: a full-width panel right under the header bar, over the page. */
+  .header-nav.nav-menu--collapsible {
+    position: absolute;
+    top: calc(100% + 1px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: var(--space-2) 0;
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+    box-shadow: var(--shadow-card);
+  }
+
+  .header-nav.nav-menu--collapsible a {
+    min-height: 48px;
+    padding: 0 var(--space-4) 0 calc(var(--space-4) - 3px);
+    border-left: 3px solid transparent;
+    font-size: 16px;
+  }
+
+  .header-nav.nav-menu--collapsible a.active {
+    border-left-color: var(--maroon);
+    background: var(--gold-soft);
+  }
+
+  /* Inside the row: the rows touch the screen edges, which would clip it. */
+  .header-nav.nav-menu--collapsible a:focus-visible {
+    outline-offset: -2px;
+  }
+
+  /* -- Gallery list -- */
+  .gallery-body {
+    padding: var(--space-4);
+  }
+
+  .gallery-filter-bar {
+    padding: var(--space-4);
+  }
+
+  .gallery-search-box,
+  .gallery-country-select,
+  .gallery-filter-submit {
+    flex: 1 1 100%;
+    height: 44px;
+  }
+
+  /* Topic chips (here and in the submission form's topic picker): compact,
+     32px tall, but each with an invisible tap area 4px above and below it —
+     a 40px target; the rows' 8px gap keeps two rows' areas apart. */
+  .gallery-topic-filter-row {
+    gap: var(--space-2) 6px;
+  }
+
+  .gallery-chip-toggle {
+    position: relative;
+    height: 32px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+
+  .gallery-chip-toggle::after {
+    content: "";
+    position: absolute;
+    inset: -4px 0;
+  }
+
+  .gallery-read-more,
+  .gallery-pagination-link,
+  .moderation-pagination-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .gallery-pagination-link,
+  .moderation-pagination-link {
+    padding: 0 var(--space-2);
+  }
+
+  /* -- Testimonial article: the sidebar goes under the article -- */
+  .gallery-detail-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-5);
+    padding: var(--space-4);
+  }
+
+  .gallery-article-title {
+    font-size: 24px;
+  }
+
+  .gallery-score-label-line {
+    margin-bottom: var(--space-5);
+  }
+
+  .gallery-topic-card {
+    padding: var(--space-4);
+  }
+
+  /* Photo rows: two full-width 4:3 columns (article and moderation queue). */
+  .gallery-photo-row,
+  .moderation-section-photos {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .photo-figure {
+    width: auto;
+  }
+
+  .gallery-photo-thumb,
+  .moderation-section-photo {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 3;
+  }
+
+  /* -- Moderation queue -- */
+  .moderation-body {
+    padding: var(--space-4);
+  }
+
+  .moderation-queue-item {
+    padding: var(--space-4);
+  }
+
+  .moderation-item-header {
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+  }
+
+  .moderation-item-header-right {
+    text-align: left;
+  }
+
+  .moderation-identity-line {
+    flex-wrap: wrap;
+  }
+
+  .moderation-item-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .moderation-reject-form {
+    flex-direction: column;
+    align-items: stretch;
+    min-width: 0;
+  }
+
+  .moderation-btn {
+    width: 100%;
+    height: 44px;
+  }
+
+  /* At 16px the placeholder alone takes three lines. */
+  .moderation-reject-reason textarea {
+    min-height: 96px;
+  }
+
+  /* -- Login pages and the confirmation page -- */
+  .auth-body,
+  .confirmation-body {
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .auth-card {
+    padding: var(--space-5);
+  }
+
+  .auth-btn-ghost {
+    min-height: 44px;
+  }
+
+  .confirmation-card {
+    padding: var(--space-4);
+  }
+
+  .confirmation-btn {
+    height: 44px;
+  }
+
+  /* -- Submission form -- */
+  .submission-form-body {
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .submission-form-title {
+    font-size: 22px;
+  }
+
+  .submission-field-row {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .submission-score-wrap,
+  .submission-group-block {
+    padding: var(--space-4);
+  }
+
+  .submission-score-ticks {
+    gap: var(--space-2);
+  }
+
+  .submission-score-ticks > :last-child {
+    text-align: right;
+  }
+
+  /* Compact topic chips, as in the gallery's filter (see there). */
+  .submission-chip-toggle-row {
+    gap: var(--space-2) 6px;
+  }
+
+  .submission-chip-toggle {
+    position: relative;
+    height: 32px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+
+  .submission-chip-toggle::after {
+    content: "";
+    position: absolute;
+    inset: -4px 0;
+  }
+
+  /* The photo grid stays auto-fill (two columns at phone widths). */
+  .submission-photo-tag-input {
+    width: 100%;
+    height: 44px;
+  }
+
+  /* 36px circles, each with an invisible 44px tap area. */
+  .submission-photo-remove {
+    width: 36px;
+    height: 36px;
+    top: 6px;
+    right: 6px;
+  }
+
+  .submission-photo-remove::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+  }
+
+  .submission-photo-remove-check,
+  .submission-contact-visibility {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  /* Contact rows: label above the input, "Show publicly" under it. */
+  .submission-contact-row {
+    margin-bottom: var(--space-4);
+  }
+
+  .submission-contact-label {
+    width: 100%;
+  }
+
+  .submission-contact-input {
+    flex: 1 1 100%;
+  }
+
+  .submission-contact-error {
+    padding-left: 0;
+  }
+
+  .submission-achievement-grid {
+    row-gap: 0;
+  }
+
+  .submission-achievement-grid .submission-checkbox {
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .submission-checkbox input,
+  .submission-contact-visibility input,
+  .submission-photo-remove-check input {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    flex-shrink: 0;
+  }
+
+  .submission-btn-row {
+    flex-direction: column;
+  }
+
+  .submission-btn {
+    width: 100%;
+  }
+}
+
+/* Small phones (480px and narrower): tighter cards. */
+@media (max-width: 480px) {
+  .auth-card {
+    padding: var(--space-4);
+  }
+
+  /* Keeps each of the three labels on one line down to 320px. */
+  .submission-score-ticks {
+    font-size: 11px;
+  }
+
+  .gallery-empty-state,
+  .moderation-empty-state {
+    padding: var(--space-7) var(--space-4);
+  }
 }

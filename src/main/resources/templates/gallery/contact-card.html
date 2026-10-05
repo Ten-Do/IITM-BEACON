@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--
+  The article's contact slot (UC-REVEAL-CONTACT), in the sidebar of
+  gallery/detail.html: one card, id="contact" and data-contact-card, in one
+  of the three states below. GalleryViewController renders "card" and
+  "unavailable" on their own for static/js/contact-reveal.js, and inside the
+  whole article for a form submitted without JavaScript — the same markup
+  either way.
+-->
+
+<!-- Before: the button. A plain POST form, so it works without JavaScript:
+     the server answers with the whole article, and #contact lands on the card.
+     contact-reveal.js takes the submit over, asks for the card alone and swaps
+     it in here, showing the error line (hidden until then) if that fails. -->
+<div th:fragment="revealForm(testimonialId)" class="gallery-side-card" id="contact" data-contact-card>
+    <form class="gallery-reveal-form" method="post"
+          th:action="@{/gallery/{id}/contact#contact(id=${testimonialId})}">
+        <button type="submit" class="gallery-reveal-btn">
+            <span class="gallery-reveal-spinner" aria-hidden="true"></span>
+            <span>Reveal contact info</span>
+        </button>
+        <p class="gallery-reveal-error" data-contact-reveal-error role="alert" hidden></p>
+    </form>
+</div>
+
+<!-- After: the public contacts. tabindex="-1": the script moves the focus here,
+     since the button that had it is gone. -->
+<div th:fragment="card" class="gallery-side-card" id="contact" data-contact-card tabindex="-1"
+     role="region" aria-labelledby="contact-title">
+    <p class="gallery-side-title" id="contact-title">Contact</p>
+    <div class="gallery-contact-list">
+        <span class="gallery-contact-chip" th:each="contact : ${contacts}"
+              th:text="${contact.type()} + ': ' + ${contact.value()}">email: someone@example.com</span>
+    </div>
+</div>
+
+<!-- Or: nothing to show — an unknown or unapproved testimonial, or no public contact. -->
+<div th:fragment="unavailable" class="gallery-side-card" id="contact" data-contact-card tabindex="-1">
+    <p class="gallery-contact-unavailable">Contact info isn't available.</p>
+</div>
+</body>
+</html>

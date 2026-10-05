@@ -4,6 +4,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +15,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
@@ -34,6 +39,10 @@ public class GlobalExceptionHandler {
             "A testimonial already exists for this visitor.";
     private static final String TESTIMONIAL_NOT_PENDING_FALLBACK_MESSAGE =
             "This testimonial is no longer pending.";
+    private static final String UPLOAD_TOO_LARGE_MESSAGE =
+            "The upload is too large or contains too many parts. Send fewer or smaller photos.";
+    private static final String MALFORMED_MULTIPART_MESSAGE =
+            "The multipart request could not be read. Check the request body and try again.";
 
     private final Clock clock;
 
@@ -85,6 +94,13 @@ public class GlobalExceptionHandler {
                 request);
     }
 
+    /**
+     * Every violation of the submission in one {@link ErrorResponse}: the
+     * exception's message already joins them as {@code field: message,
+     * field2: message2} (a global violation contributes just its message),
+     * all of them written by the application itself, never an exception's
+     * internals.
+     */
     @ExceptionHandler(SubmissionValidationException.class)
     public ResponseEntity<ErrorResponse> handleSubmissionValidation(
             SubmissionValidationException ex, HttpServletRequest request) {
@@ -109,6 +125,38 @@ public class GlobalExceptionHandler {
                 request);
     }
 
+    /**
+     * Upload over a servlet-container multipart limit — per-file size,
+     * whole-request size, or (Tomcat's {@code max-part-count}) number of
+     * parts, which Spring also reports as this type. Never echoes the
+     * container's own message, which names internal classes and limits.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSizeExceeded(
+            MaxUploadSizeExceededException ex, HttpServletRequest request) {
+        log.warn("Rejected oversized multipart request to {}: {}", request.getRequestURI(), ex.getMessage());
+        return build(HttpStatus.PAYLOAD_TOO_LARGE, UPLOAD_TOO_LARGE_MESSAGE, request);
+    }
+
+    /**
+     * Any other multipart failure. Spring does not always classify a
+     * container limit breach as {@link MaxUploadSizeExceededException}: with
+     * lazy multipart resolution, a {@code @RequestPart} argument reads the
+     * body via {@code getMultipartHeaders}, which wraps e.g. Tomcat's {@code
+     * FileCountLimitExceededException} in a plain {@link
+     * MultipartException}. Those are still answered with 413; everything
+     * else (a truncated or malformed body) is a 400.
+     */
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<ErrorResponse> handleMultipart(MultipartException ex, HttpServletRequest request) {
+        if (isUploadLimitBreach(ex)) {
+            log.warn("Rejected oversized multipart request to {}: {}", request.getRequestURI(), ex.getMessage());
+            return build(HttpStatus.PAYLOAD_TOO_LARGE, UPLOAD_TOO_LARGE_MESSAGE, request);
+        }
+        log.warn("Rejected unreadable multipart request to {}: {}", request.getRequestURI(), ex.getMessage());
+        return build(HttpStatus.BAD_REQUEST, MALFORMED_MULTIPART_MESSAGE, request);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneric(Exception ex, HttpServletRequest request) {
         log.error("Unhandled exception while processing request {}", request.getRequestURI(), ex);
@@ -123,6 +171,24 @@ public class GlobalExceptionHandler {
                 message,
                 request.getRequestURI());
         return ResponseEntity.status(status).body(body);
+    }
+
+    /**
+     * True if the cause chain holds a {@link MaxUploadSizeExceededException}
+     * or a servlet container's upload-limit exception. Tomcat's (file size,
+     * request size, part count) share no common limit supertype but are all
+     * named {@code *LimitExceededException}; matching on the name keeps this
+     * class free of a compile-time dependency on container internals.
+     */
+    private static boolean isUploadLimitBreach(Throwable ex) {
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Throwable cause = ex; cause != null && seen.add(cause); cause = cause.getCause()) {
+            if (cause instanceof MaxUploadSizeExceededException
+                    || cause.getClass().getSimpleName().endsWith("LimitExceededException")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String safeMessage(String message, String fallback) {

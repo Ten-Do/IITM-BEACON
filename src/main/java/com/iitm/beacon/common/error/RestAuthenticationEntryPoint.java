@@ -17,6 +17,10 @@ import org.springframework.stereotype.Component;
  * Duplicates just enough of its response-building logic to produce an
  * identically-shaped {@link ErrorResponse} JSON body for unauthenticated
  * requests, instead of Spring Security's default HTML error page.
+ *
+ * <p>Used for every unauthenticated request except the HTML pages that need
+ * a login, which {@code config.SecurityConfig} redirects to their login page
+ * instead.
  */
 @Component
 public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {

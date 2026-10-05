@@ -7,9 +7,14 @@
         <span class="wordmark">IITM Beacon</span>
         <span class="admin-badge">Moderator</span>
     </div>
-    <nav class="header-nav">
+    <!-- On phones the nav collapses behind this burger (layout/nav-toggle.html). -->
+    <button th:replace="~{layout/nav-toggle :: toggle('admin-nav')}"></button>
+    <nav class="header-nav" id="admin-nav" aria-label="Main">
         <a href="/moderation/queue" th:classappend="${activePage == 'queue'} ? 'active' : ''">Queue</a>
     </nav>
+    <!-- Every page with this header needs the admin login, so each gets the session check.
+         The admin login pages use their own inline header instead, and must never get it. -->
+    <script th:replace="~{layout/session-check :: script('/api/moderation/session')}"></script>
 </header>
 </body>
 </html>

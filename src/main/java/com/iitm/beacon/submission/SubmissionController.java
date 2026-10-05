@@ -1,6 +1,5 @@
 package com.iitm.beacon.submission;
 
-import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -21,6 +20,11 @@ import org.springframework.web.multipart.MultipartHttpServletRequest;
  * config.SecurityConfig}; the visitor's email comes from the session
  * principal established at OTP verify (decision 17), same convention as
  * {@code VisitorAuthController}.
+ *
+ * <p>The {@code payload} is deliberately not {@code @Valid}: {@link
+ * SubmissionService} applies Bean Validation itself, together with its own
+ * business rules, so a request breaking several rules gets all of them back
+ * in one 400 (decision 21) instead of only the annotation-level ones.
  */
 @RestController
 @RequestMapping("/api/submissions")
@@ -45,7 +49,7 @@ public class SubmissionController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public SubmissionResultResponse create(
-            @RequestPart("payload") @Valid TestimonialSubmissionRequest payload,
+            @RequestPart("payload") TestimonialSubmissionRequest payload,
             MultipartHttpServletRequest request,
             Authentication authentication) {
         String email = (String) authentication.getPrincipal();
@@ -60,7 +64,7 @@ public class SubmissionController {
 
     @PutMapping(path = "/mine", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public SubmissionResultResponse editMine(
-            @RequestPart("payload") @Valid TestimonialSubmissionRequest payload,
+            @RequestPart("payload") TestimonialSubmissionRequest payload,
             MultipartHttpServletRequest request,
             Authentication authentication) {
         String email = (String) authentication.getPrincipal();

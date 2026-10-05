@@ -128,12 +128,18 @@ public class GalleryService {
                 thumbnailUrl);
     }
 
+    /** The card cover: the section's first photo's thumbnail (its full-size file for a legacy photo). */
     private String firstPhotoUrl(TestimonialSection section) {
         return section.getPhotos().stream()
                 .sorted(Comparator.comparing(Photo::getDisplayOrder))
                 .findFirst()
-                .map(photo -> photoUrlResolver.resolve(photo.getFilePath()))
+                .map(this::thumbnailUrl)
                 .orElse(null);
+    }
+
+    private String thumbnailUrl(Photo photo) {
+        String path = photo.getThumbnailPath() != null ? photo.getThumbnailPath() : photo.getFilePath();
+        return photoUrlResolver.resolve(path);
     }
 
     private String truncate(String text) {
@@ -224,7 +230,12 @@ public class GalleryService {
     private PhotoRefDto toPhotoRef(Photo photo) {
         List<String> tags =
                 photo.getTags().stream().map(PhotoTag::getTagText).toList();
-        return new PhotoRefDto(photoUrlResolver.resolve(photo.getFilePath()), tags);
+        return new PhotoRefDto(
+                photoUrlResolver.resolve(photo.getFilePath()),
+                thumbnailUrl(photo),
+                photo.getWidth(),
+                photo.getHeight(),
+                tags);
     }
 
     /** "First name + last-initial." (decision 10), e.g. "David J." */

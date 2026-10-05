@@ -11,6 +11,35 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
+  servlet:
+    multipart:
+      # Deliberately above beacon.storage.max-photo-size-bytes (20MB), so a
+      # 20-25MB photo reaches PhotoStorageService and gets its readable
+      # "Photo exceeds..." error instead of failing inside multipart parsing.
+      max-file-size: ${BEACON_UPLOAD_MAX_FILE_SIZE:25MB}
+      # max-photos-per-testimonial (50) x max-photo-size-bytes (20MB) + 10MB of
+      # form text. Raise it together with either of those two limits.
+      max-request-size: ${BEACON_UPLOAD_MAX_REQUEST_SIZE:1010MB}
+      # Parse the body while the handler's arguments are bound (not up front in
+      # DispatcherServlet), so a limit breach is raised inside the controller and
+      # SubmissionViewController's own @ExceptionHandler can turn it into a
+      # redirect back to the form.
+      resolve-lazily: true
+
+server:
+  tomcat:
+    # Boot's default (50) is far below what the submission form can post: without
+    # JS every topic block is sent (2 text fields + 1 file part, even if empty);
+    # each new photo is 1 file part + 1 tags field, each saved photo 3 fields
+    # (url, remove checkbox, tags). Worst case with 50 saved + 50 new photos:
+    # well under 400.
+    max-part-count: ${BEACON_UPLOAD_MAX_PART_COUNT:500}
+  servlet:
+    session:
+      # How long an idle admin or visitor stays logged in (both log in into this
+      # HTTP session). Boot's default of 30 minutes logged visitors out while
+      # they were still writing their testimonial.
+      timeout: ${BEACON_SESSION_TIMEOUT:24h}
 
 admin:
   otp:
@@ -31,7 +60,35 @@ visitor:
     request-window-per-ip: ${VISITOR_OTP_REQUEST_WINDOW_PER_IP:PT1M}
 
 beacon:
+  web:
+    # This site's public origins (scheme://host[:port], comma-separated) for the
+    # same-origin check of the article's contact reveal (common.web.SameOriginGuard).
+    # Empty: each request's own scheme, host and port, which is right when browsers
+    # reach the app directly. Behind a reverse proxy (TLS termination, another host
+    # name or port) set it to the address browsers use, e.g. https://beacon.example.
+    allowed-origins: ${BEACON_ALLOWED_ORIGINS:}
   storage:
     root-path: ${BEACON_UPLOADS_ROOT:/data/uploads}
-    max-photos-per-testimonial: ${BEACON_PHOTO_MAX_COUNT:20}
-    max-photo-size-bytes: ${BEACON_PHOTO_MAX_SIZE_BYTES:5242880}
+    # Most photos one testimonial can have, and one section (topic) of it; both
+    # count the photos already saved (kept) plus the new uploads.
+    max-photos-per-testimonial: ${BEACON_PHOTO_MAX_COUNT:50}
+    max-photos-per-section: ${BEACON_PHOTO_MAX_PER_SECTION:5}
+    # Largest accepted upload file (20 MB): a full-resolution phone photo fits.
+    max-photo-size-bytes: ${BEACON_PHOTO_MAX_SIZE_BYTES:20971520}
+    # Every upload is converted to a lossy WebP (plus a thumbnail) by
+    # submission.PhotoImageProcessor. Largest accepted image in pixels, checked
+    # from the file header before decoding (a decompression-bomb guard): 250 MP
+    # still admits 48 MP and 200 MP phone photos.
+    max-pixels: ${BEACON_PHOTO_MAX_PIXELS:250000000}
+    # Long edge, in pixels, of the stored full-size image and of its thumbnail;
+    # smaller images are never upscaled. At most 16383 (WebP's own limit).
+    full-max-edge: ${BEACON_PHOTO_FULL_MAX_EDGE:2560}
+    thumb-max-edge: ${BEACON_PHOTO_THUMB_MAX_EDGE:640}
+    # Lossy WebP quality, 0-100, of the full-size image and of the thumbnail.
+    webp-quality: ${BEACON_PHOTO_WEBP_QUALITY:82}
+    thumb-webp-quality: ${BEACON_PHOTO_WEBP_THUMB_QUALITY:75}
+    backfill:
+      # Converts photos stored before the WebP pipeline (no thumbnail yet) once,
+      # synchronously at startup (submission.LegacyPhotoBackfill). A no-op once
+      # every photo has been converted.
+      enabled: ${BEACON_PHOTO_BACKFILL_ENABLED:true}

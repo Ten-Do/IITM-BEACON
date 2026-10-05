@@ -23,8 +23,9 @@ import lombok.Setter;
 
 /**
  * A photo attached to a {@link TestimonialSection} (decision 2). {@code
- * filePath} is relative to the mounted uploads volume root; the automatic
- * topic tag is inherited from its section, not stored redundantly here.
+ * filePath} (the full-size image) and {@code thumbnailPath} are relative to
+ * the mounted uploads volume root; the automatic topic tag is inherited from
+ * its section, not stored redundantly here.
  */
 @Entity
 @Table(name = "photo")
@@ -47,6 +48,21 @@ public class Photo {
 
     @Column(name = "file_path", nullable = false)
     private String filePath;
+
+    /**
+     * The thumbnail WebP, relative to the uploads root like {@code
+     * filePath}; {@code null} for a legacy photo stored before thumbnails.
+     */
+    @Column(name = "thumbnail_path")
+    private String thumbnailPath;
+
+    /** Full-size image width in pixels; {@code null} for a legacy photo. */
+    @Column(name = "width")
+    private Integer width;
+
+    /** Full-size image height in pixels; {@code null} for a legacy photo. */
+    @Column(name = "height")
+    private Integer height;
 
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder;

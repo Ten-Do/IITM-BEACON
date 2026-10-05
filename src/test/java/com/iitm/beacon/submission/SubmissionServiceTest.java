@@ -87,6 +87,28 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void listActiveContactTypes_carriesDisplayNameAndPlaceholderLabelSeparately() {
+        var types = submissionService.listActiveContactTypes();
+
+        assertThat(types).first().satisfies(email -> {
+            assertThat(email.slug()).isEqualTo("email");
+            assertThat(email.name()).isEqualTo("Email");
+            assertThat(email.label()).isEqualTo("email address");
+        });
+        assertThat(types).extracting(ContactTypeView::name)
+                .containsExactly("Email", "WhatsApp", "Telegram", "Instagram", "X (Twitter)");
+    }
+
+    @Test
+    void listActiveContactTypes_carriesEachTypesValuePattern() {
+        var types = submissionService.listActiveContactTypes();
+
+        assertThat(types).allSatisfy(type -> assertThat(type.valuePattern()).as(type.slug()).isNotBlank());
+        assertThat(types).first().extracting(ContactTypeView::valuePattern)
+                .isEqualTo("[^@\\s]+@[^@\\s]+\\.[^@\\s]+");
+    }
+
+    @Test
     void listActiveAchievements_returnsSeededActiveAchievements() {
         var achievements = submissionService.listActiveAchievements();
 

@@ -1,5 +1,7 @@
 package com.iitm.beacon.adminauth;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -16,13 +18,16 @@ import org.springframework.test.web.servlet.MockMvc;
 
 /**
  * Narrowly-scoped, separately-cached Spring context proving {@link
- * AdminAuthViewController} re-renders the login page with a friendly
+ * AdminAuthViewController} renders the code step with a friendly
  * model-bound error (not a JSON body from {@code GlobalExceptionHandler}, the
  * wrong response shape for a plain browser form POST) when {@code OtpService}
  * rejects a request for exceeding its rate limit — mirrors {@code
- * AdminAuthControllerRateLimitTest} for the REST layer.
+ * AdminAuthControllerRateLimitTest} for the REST layer. The code step, not
+ * the email step, because a code may already be on its way: the same
+ * response is expected whether the rejected request was the first one from
+ * the email page or a "Resend code" from the code page.
  *
- * <p>Uses a probe email distinct from {@code AdminAuthControllerRateLimitTest}'s
+ * <p>Uses probe emails distinct from {@code AdminAuthControllerRateLimitTest}'s
  * ("admin@example.com") deliberately: this class shares the exact same
  * {@code @TestPropertySource} properties, so Spring's test-context cache
  * reuses the very same {@code ApplicationContext} (and therefore the same
@@ -31,7 +36,8 @@ import org.springframework.test.web.servlet.MockMvc;
  * is enforced before {@code OtpService} even checks whether the email
  * matches the configured admin account, so a non-matching probe email still
  * exercises the exact same rate-limit-rejection path without touching the
- * other test's "admin@example.com" bucket.
+ * other test's "admin@example.com" bucket. Each test uses its own probe email
+ * for the same reason.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -42,7 +48,7 @@ import org.springframework.test.web.servlet.MockMvc;
         })
 class AdminAuthViewControllerRateLimitTest {
 
-    private static final String ADMIN_EMAIL = "admin-view-ratelimit-probe@example.com";
+    private static final String STILL_ENTER_IT_HINT = "if you already received a code, you can still enter it below";
 
     @Autowired
     private MockMvc mockMvc;
@@ -51,14 +57,38 @@ class AdminAuthViewControllerRateLimitTest {
     private OtpMailer otpMailer;
 
     @Test
-    void secondRequestWithinWindow_rerendersLoginWithErrorInsteadOfJson() throws Exception {
-        mockMvc.perform(post("/admin/login/request").param("email", ADMIN_EMAIL))
+    void resendWithinWindow_rendersTheCodeStepWithErrorAndKeepsEmail() throws Exception {
+        String email = "admin-view-ratelimit-resend-probe@example.com";
+        mockMvc.perform(post("/admin/login/request").param("email", email))
                 .andExpect(status().is3xxRedirection());
 
-        mockMvc.perform(post("/admin/login/request").param("email", ADMIN_EMAIL))
+        String html = mockMvc.perform(post("/admin/login/request").param("email", email))
                 .andExpect(status().isOk())
-                .andExpect(view().name("adminauth/login"))
-                .andExpect(model().attributeExists("error"))
-                .andExpect(model().attribute("email", ADMIN_EMAIL));
+                .andExpect(view().name("adminauth/login-code"))
+                .andExpect(model().attribute("error", containsString(STILL_ENTER_IT_HINT)))
+                .andExpect(model().attribute("email", email))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(html).contains("name=\"code\"");
+    }
+
+    @Test
+    void firstRequestFromThisBrowserAlreadyOverTheLimit_stillRendersTheCodeStepNotTheEmailStep() throws Exception {
+        // The per-email budget was already spent elsewhere (another device),
+        // so this browser's very first request is the one rejected.
+        String email = "admin-view-ratelimit-first-probe@example.com";
+        mockMvc.perform(post("/admin/login/request").param("email", email).with(request -> {
+                    request.setRemoteAddr("203.0.113.7");
+                    return request;
+                }))
+                .andExpect(status().is3xxRedirection());
+
+        mockMvc.perform(post("/admin/login/request").param("email", email))
+                .andExpect(status().isOk())
+                .andExpect(view().name("adminauth/login-code"))
+                .andExpect(model().attribute("error", containsString(STILL_ENTER_IT_HINT)))
+                .andExpect(model().attribute("email", email));
     }
 }

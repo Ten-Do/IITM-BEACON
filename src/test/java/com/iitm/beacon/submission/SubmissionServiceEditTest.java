@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.iitm.beacon.common.error.NotFoundException;
 import com.iitm.beacon.common.error.SubmissionValidationException;
+import com.iitm.beacon.domain.achievement.TestimonialAchievement;
+import com.iitm.beacon.domain.testimonial.PhotoTag;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
@@ -12,6 +14,7 @@ import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.ContactMethodInput;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.PhotoInput;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.SectionInput;
+import jakarta.persistence.EntityManager;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.util.List;
@@ -38,6 +41,9 @@ class SubmissionServiceEditTest {
 
     @Autowired
     private TestimonialRepository testimonialRepository;
+
+    @Autowired
+    private EntityManager entityManager;
 
     private static byte[] realPngBytes() throws Exception {
         BufferedImage image = new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB);
@@ -323,6 +329,128 @@ class SubmissionServiceEditTest {
         List<SectionInput> sections = List.of(section("general", "Text."), newSectionClaimingExistingUrl);
         assertThatThrownBy(() -> submissionService.edit(email, baseRequest(sections), Map.of()))
                 .isInstanceOf(SubmissionValidationException.class);
+    }
+
+    // The tests below flush explicitly: Hibernate only detects a duplicate
+    // entity identity / executes orphan deletes at flush time, and a
+    // @Transactional test that never flushes rolls back before that point,
+    // hiding exactly the failures these tests exist for.
+
+    private TestimonialSubmissionRequest requestWithAchievements(List<String> achievementSlugs) {
+        return new TestimonialSubmissionRequest(
+                "David", "Jones", "GE26Z001", 2024, "IN", 8, List.of(section("general", "Text.")),
+                achievementSlugs, List.of(), true);
+    }
+
+    /** Flushes pending SQL, then detaches everything so the reload really hits the database. */
+    private Testimonial flushAndReload(Long testimonialId) {
+        entityManager.flush();
+        entityManager.clear();
+        return testimonialRepository.findById(testimonialId).orElseThrow();
+    }
+
+    private static List<String> achievementSlugs(Testimonial testimonial) {
+        return testimonial.getAchievements().stream()
+                .map(TestimonialAchievement::getAchievement)
+                .map(a -> a.getSlug())
+                .toList();
+    }
+
+    @Test
+    void edit_approvedKeepingExactlyTheSameAchievements_flushesAndStaysApprovedWithAchievementsUnchanged() {
+        String email = "same-achievements@example.com";
+        List<String> slugs = List.of("made_new_friends", "traveled_nearby_countries");
+        Testimonial created = createAndLoad(email, requestWithAchievements(slugs));
+        approve(created.getId());
+
+        SubmissionResultResponse result = submissionService.edit(email, requestWithAchievements(slugs), Map.of());
+        Testimonial reloaded = flushAndReload(created.getId());
+
+        assertThat(result.status()).isEqualTo(TestimonialStatus.APPROVED);
+        assertThat(reloaded.getStatus()).isEqualTo(TestimonialStatus.APPROVED);
+        assertThat(achievementSlugs(reloaded))
+                .containsExactlyInAnyOrder("made_new_friends", "traveled_nearby_countries");
+    }
+
+    @Test
+    void edit_keepsOneAchievementDropsOneAddsOne_flushesToExactlyTheNewSet() {
+        String email = "diff-achievements@example.com";
+        Testimonial created = createAndLoad(
+                email, requestWithAchievements(List.of("made_new_friends", "traveled_nearby_countries")));
+        approve(created.getId());
+
+        submissionService.edit(
+                email, requestWithAchievements(List.of("made_new_friends", "missed_home")), Map.of());
+        Testimonial reloaded = flushAndReload(created.getId());
+
+        assertThat(achievementSlugs(reloaded)).containsExactlyInAnyOrder("made_new_friends", "missed_home");
+    }
+
+    @Test
+    void edit_droppingEveryAchievement_flushesToAnEmptySet() {
+        String email = "drop-all-achievements@example.com";
+        Testimonial created = createAndLoad(
+                email, requestWithAchievements(List.of("made_new_friends", "traveled_nearby_countries")));
+        approve(created.getId());
+
+        submissionService.edit(email, requestWithAchievements(List.of()), Map.of());
+        Testimonial reloaded = flushAndReload(created.getId());
+
+        assertThat(reloaded.getAchievements()).isEmpty();
+    }
+
+    @Test
+    void edit_duplicateSlugOfAnAlreadyHeldAchievement_flushesToASingleRow() {
+        String email = "duplicate-achievement@example.com";
+        Testimonial created = createAndLoad(email, requestWithAchievements(List.of("made_new_friends")));
+        approve(created.getId());
+
+        submissionService.edit(
+                email, requestWithAchievements(List.of("made_new_friends", "made_new_friends")), Map.of());
+        Testimonial reloaded = flushAndReload(created.getId());
+
+        assertThat(achievementSlugs(reloaded)).containsExactly("made_new_friends");
+    }
+
+    @Test
+    void edit_keptPhotoKeepsOneTagAndSwapsAnother_flushesToExactlyTheNewTags() throws Exception {
+        String email = "tag-swap@example.com";
+        MockMultipartFile file = new MockMultipartFile("photo", "a.png", "image/png", realPngBytes());
+        SectionInput withPhoto =
+                new SectionInput("general", "Text.", List.of(new PhotoInput("a", List.of("a", "b"))));
+        Testimonial created = createAndLoad(email, baseRequest(List.of(withPhoto)), "a", file);
+        String filePath = created.getSections().get(0).getPhotos().get(0).getFilePath();
+        approve(created.getId());
+
+        SectionInput retagged = new SectionInput(
+                "general", "Text.", List.of(new PhotoInput("/uploads/" + filePath, List.of("a", "c"))));
+        SubmissionResultResponse result = submissionService.edit(email, baseRequest(List.of(retagged)), Map.of());
+        Testimonial reloaded = flushAndReload(created.getId());
+
+        assertThat(result.status()).isEqualTo(TestimonialStatus.PENDING);
+        assertThat(reloaded.getSections().get(0).getPhotos()).hasSize(1);
+        assertThat(reloaded.getSections().get(0).getPhotos().get(0).getTags())
+                .extracting(PhotoTag::getTagText)
+                .containsExactlyInAnyOrder("a", "c");
+    }
+
+    @Test
+    void edit_keptPhotoKeepsEveryOldTagAndAddsOne_flushesToOldPlusNew() throws Exception {
+        String email = "tag-superset@example.com";
+        MockMultipartFile file = new MockMultipartFile("photo", "a.png", "image/png", realPngBytes());
+        SectionInput withPhoto = new SectionInput("general", "Text.", List.of(new PhotoInput("a", List.of("a"))));
+        Testimonial created = createAndLoad(email, baseRequest(List.of(withPhoto)), "a", file);
+        String filePath = created.getSections().get(0).getPhotos().get(0).getFilePath();
+        approve(created.getId());
+
+        SectionInput retagged = new SectionInput(
+                "general", "Text.", List.of(new PhotoInput("/uploads/" + filePath, List.of("a", "b"))));
+        submissionService.edit(email, baseRequest(List.of(retagged)), Map.of());
+        Testimonial reloaded = flushAndReload(created.getId());
+
+        assertThat(reloaded.getSections().get(0).getPhotos().get(0).getTags())
+                .extracting(PhotoTag::getTagText)
+                .containsExactlyInAnyOrder("a", "b");
     }
 
     private Testimonial createAndLoad(

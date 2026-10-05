@@ -17,7 +17,8 @@
             here as they come in.</p>
     </div>
 
-    <div class="moderation-queue-item" th:each="card : ${queue.content()}">
+    <!-- Each testimonial is its own photo gallery: the viewer's arrows never step into another one. -->
+    <div class="moderation-queue-item" data-photo-gallery th:each="card : ${queue.content()}">
         <div class="moderation-item-header">
             <div class="moderation-item-header-left">
                 <span class="moderation-type-chip"
@@ -54,8 +55,9 @@
             </div>
             <p class="moderation-section-row-body" th:text="${section.answer()}">Answer text.</p>
             <div class="moderation-section-photos" th:if="${!section.photos().isEmpty()}">
-                <img class="moderation-section-photo" th:each="photo : ${section.photos()}" th:src="${photo.url()}"
-                     alt="Submitted photo"/>
+                <th:block th:each="photo : ${section.photos()}">
+                    <figure th:replace="~{layout/photo-viewer :: photo(${photo}, ${section.topicLabel()}, 'moderation-section-photo')}"></figure>
+                </th:block>
             </div>
         </div>
 
@@ -100,5 +102,7 @@
            class="moderation-pagination-link">Next</a>
     </nav>
 </main>
+
+<th:block th:replace="~{layout/photo-viewer :: assets}"></th:block>
 </body>
 </html>

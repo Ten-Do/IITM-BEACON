@@ -18,5 +18,7 @@
         <a class="confirmation-btn" href="/gallery">Back to homepage</a>
     </div>
 </main>
+<!-- This page needs the visitor login (header-visitor doesn't add the check: it's also on public pages). -->
+<script th:replace="~{layout/session-check :: script('/api/submissions/session')}"></script>
 </body>
 </html>

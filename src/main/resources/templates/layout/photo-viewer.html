@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--
+  Fullscreen photo viewer (UC-VIEW-PHOTOS-FULLSCREEN): PhotoSwipe 5, driven
+  by static/js/photo-viewer.js. The markup below is the contract that module
+  reads:
+    - every element with data-photo-gallery is one gallery — the arrows step
+      through its photos only (the page puts it on its own container);
+    - each photo is an a[data-photo-viewer-item] link to the full-size image,
+      with its pixel size in data-pswp-width/-height (omitted when unknown, as
+      for a legacy photo: the module then measures the thumbnail) and the
+      viewer caption in data-caption, wrapping the thumbnail <img>;
+    - the photo's tag chips (.photo-tag-chip) follow the link inside the same
+      <figure>, and are shown in the viewer caption as well. Under the
+      thumbnail a long tag is cut short (its title holds it in full); the
+      viewer caption shows it whole.
+  Without JavaScript the link simply opens the full-size photo.
+-->
+
+<!-- One photo: photo is a gallery.PhotoRefDto or a moderation.ModerationPhotoRefDto
+     (same accessors), caption its viewer caption (also the thumbnail's alt text),
+     thumbClass the page's own class for the thumbnail <img>. -->
+<figure th:fragment="photo(photo, caption, thumbClass)" class="photo-figure">
+    <a class="photo-figure-link" th:href="${photo.url()}" target="_blank" data-photo-viewer-item
+       th:attr="data-pswp-width=${photo.width()},data-pswp-height=${photo.height()},data-caption=${caption}"><img
+            th:class="${thumbClass}" th:src="${photo.thumbnailUrl()}" th:alt="${caption}" loading="lazy"/></a>
+    <ul class="photo-tag-list" th:unless="${#lists.isEmpty(photo.tags())}">
+        <li class="photo-tag-chip" th:each="tag : ${photo.tags()}" th:title="${tag}" th:text="${tag}">tag</li>
+    </ul>
+</figure>
+
+<!-- The viewer itself: PhotoSwipe's stylesheet and the module. Include once, at
+     the end of <body>, on a page that renders the photo fragment above. -->
+<th:block th:fragment="assets">
+    <link rel="stylesheet" href="/webjars/photoswipe/dist/photoswipe.css"/>
+    <script type="module" src="/js/photo-viewer.js"></script>
+</th:block>
+</body>
+</html>

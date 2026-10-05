@@ -1,0 +1,18 @@
+# Runner image for the browser end-to-end tests — docker-compose service `e2e`
+# (profile "tools"), used by `make e2e` / `make e2e-update-screenshots`.
+#
+# The Playwright image pins the exact Chromium build, system fonts and OS
+# libraries the screenshot baselines are rendered with, so the same test
+# produces the same pixels on every machine. Its tag MUST equal
+# `playwright.version` in pom.xml (the Java client drives exactly the browser
+# build baked into this image).
+#
+# That image ships Maven but only JDK 25, while the project targets JDK 21, so
+# the same Temurin 21 JDK used by the `maven` service and the app's build stage
+# is layered on top. Browsers, fonts and Maven stay those of the Playwright image.
+FROM eclipse-temurin:21-jdk-noble AS jdk
+
+FROM mcr.microsoft.com/playwright/java:v1.63.0-noble
+COPY --from=jdk /opt/java/openjdk /opt/java/openjdk
+ENV JAVA_HOME=/opt/java/openjdk
+ENV PATH=/opt/java/openjdk/bin:$PATH

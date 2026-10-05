@@ -201,6 +201,10 @@ public class ModerationService {
         List<ModerationPhotoRefDto> photos = section.getPhotos().stream()
                 .map(photo -> new ModerationPhotoRefDto(
                         photoUrlResolver.resolve(photo.getFilePath()),
+                        photoUrlResolver.resolve(
+                                photo.getThumbnailPath() != null ? photo.getThumbnailPath() : photo.getFilePath()),
+                        photo.getWidth(),
+                        photo.getHeight(),
                         photo.getTags().stream().map(PhotoTag::getTagText).toList()))
                 .toList();
         return new ModerationSectionViewDto(

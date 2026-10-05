@@ -21,6 +21,24 @@
     <java.version>21</java.version>
     <archunit.version>1.4.2</archunit.version>
     <checkstyle-core.version>10.26.1</checkstyle-core.version>
+    <alpinejs.version>3.17.4</alpinejs.version>
+    <photoswipe.version>5.4.3</photoswipe.version>
+    <twelvemonkeys.version>3.15.2</twelvemonkeys.version>
+    <webp-imageio.version>0.11.0</webp-imageio.version>
+    <metadata-extractor.version>2.21.0</metadata-extractor.version>
+    <!-- Overrides Spring Boot's managed Kotlin (1.9.x): webp-imageio is
+         written in Kotlin and built against kotlin-stdlib 2.4.0, and Boot's
+         dependency management would otherwise silently downgrade that
+         runtime dependency. Nothing else in this Java-only app uses Kotlin. -->
+    <kotlin.version>2.4.0</kotlin.version>
+    <!-- MUST equal the tag of the Playwright Docker image in Dockerfile.e2e:
+         the Java client drives exactly the browser build baked into it. -->
+    <playwright.version>1.63.0</playwright.version>
+    <!-- JUnit 5 tag filters for surefire. The default build skips the
+         browser end-to-end tests (@Tag("e2e")); the `e2e` profile flips
+         both so it runs only them. -->
+    <beacon.test.groups/>
+    <beacon.test.excludedGroups>e2e</beacon.test.excludedGroups>
   </properties>
 
   <dependencies>
@@ -85,6 +103,84 @@
       <version>8.14.0</version>
     </dependency>
 
+    <!-- Alpine.js for in-page interactivity on server-rendered pages
+         (decision 21), served by the app itself from the WebJar under
+         /webjars/**; webjars-locator-lite (version managed by Spring Boot)
+         lets templates use the version-less /webjars/alpinejs/... URL. -->
+    <dependency>
+      <groupId>org.webjars.npm</groupId>
+      <artifactId>alpinejs</artifactId>
+      <version>${alpinejs.version}</version>
+    </dependency>
+    <!-- PhotoSwipe 5, the fullscreen photo viewer (static/js/photo-viewer.js),
+         served the same way at /webjars/photoswipe/dist/... -->
+    <dependency>
+      <groupId>org.webjars.npm</groupId>
+      <artifactId>photoswipe</artifactId>
+      <version>${photoswipe.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.webjars</groupId>
+      <artifactId>webjars-locator-lite</artifactId>
+    </dependency>
+
+    <!-- Photo pipeline (submission.PhotoImageProcessor): TwelveMonkeys adds
+         ImageIO readers the JDK lacks or gets wrong (CMYK/YCCK JPEG, more
+         TIFF flavours, WebP, PSD, PNM, TGA); webp-imageio is the only WebP
+         WRITER (native libwebp bundled in the jar); metadata-extractor reads
+         the EXIF Orientation tag. imageio-core is also used directly (its
+         zero-copy ByteArrayImageInputStream). -->
+    <dependency>
+      <groupId>com.twelvemonkeys.imageio</groupId>
+      <artifactId>imageio-core</artifactId>
+      <version>${twelvemonkeys.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.twelvemonkeys.imageio</groupId>
+      <artifactId>imageio-jpeg</artifactId>
+      <version>${twelvemonkeys.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.twelvemonkeys.imageio</groupId>
+      <artifactId>imageio-tiff</artifactId>
+      <version>${twelvemonkeys.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.twelvemonkeys.imageio</groupId>
+      <artifactId>imageio-webp</artifactId>
+      <version>${twelvemonkeys.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.twelvemonkeys.imageio</groupId>
+      <artifactId>imageio-bmp</artifactId>
+      <version>${twelvemonkeys.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.twelvemonkeys.imageio</groupId>
+      <artifactId>imageio-psd</artifactId>
+      <version>${twelvemonkeys.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.twelvemonkeys.imageio</groupId>
+      <artifactId>imageio-pnm</artifactId>
+      <version>${twelvemonkeys.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.twelvemonkeys.imageio</groupId>
+      <artifactId>imageio-tga</artifactId>
+      <version>${twelvemonkeys.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.github.usefulness</groupId>
+      <artifactId>webp-imageio</artifactId>
+      <version>${webp-imageio.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.drewnoakes</groupId>
+      <artifactId>metadata-extractor</artifactId>
+      <version>${metadata-extractor.version}</version>
+    </dependency>
+
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
@@ -101,6 +197,14 @@
       <version>${archunit.version}</version>
       <scope>test</scope>
     </dependency>
+    <!-- Browser end-to-end tests (src/test/java/com/iitm/beacon/e2e),
+         run only via `make e2e` inside the Playwright Docker image. -->
+    <dependency>
+      <groupId>com.microsoft.playwright</groupId>
+      <artifactId>playwright</artifactId>
+      <version>${playwright.version}</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
@@ -115,6 +219,15 @@
               <artifactId>lombok</artifactId>
             </exclude>
           </excludes>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <groups>${beacon.test.groups}</groups>
+          <excludedGroups>${beacon.test.excludedGroups}</excludedGroups>
         </configuration>
       </plugin>
 
@@ -178,5 +291,19 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- `mvn -Pe2e test`: runs ONLY the browser end-to-end tests. Meant to
+         run inside the `e2e` docker-compose service (see `make e2e`), so
+         screenshots are rendered by the same browser build and fonts on
+         every machine. -->
+    <profile>
+      <id>e2e</id>
+      <properties>
+        <beacon.test.groups>e2e</beacon.test.groups>
+        <beacon.test.excludedGroups/>
+      </properties>
+    </profile>
+  </profiles>
 
 </project>

@@ -1,6 +1,7 @@
 package com.iitm.beacon.submission;
 
 import com.iitm.beacon.common.crypto.EmailLookupHashService;
+import com.iitm.beacon.common.error.FieldViolation;
 import com.iitm.beacon.common.error.NotFoundException;
 import com.iitm.beacon.common.error.SubmissionValidationException;
 import com.iitm.beacon.common.error.TestimonialAlreadyExistsException;
@@ -26,13 +27,13 @@ import com.iitm.beacon.domain.topic.TopicRepository;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.ContactMethodInput;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.PhotoInput;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.SectionInput;
-import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.Year;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -40,8 +41,15 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiPredicate;
+import java.util.function.UnaryOperator;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -53,6 +61,11 @@ import org.springframework.web.multipart.MultipartFile;
  */
 @Service
 public class SubmissionService {
+
+    private static final Logger log = LoggerFactory.getLogger(SubmissionService.class);
+
+    static final String PHOTOS_NEED_TEXT_MESSAGE =
+            "Photos need some text — write something here, or remove the photos.";
 
     private final TestimonialRepository testimonialRepository;
     private final TopicRepository topicRepository;
@@ -109,8 +122,21 @@ public class SubmissionService {
         return contactTypeRepository.findAll().stream()
                 .filter(ContactType::isActive)
                 .sorted(Comparator.comparing(ContactType::getDisplayOrder))
-                .map(ct -> new ContactTypeView(ct.getSlug(), ct.getLabel()))
+                .map(ct -> new ContactTypeView(ct.getSlug(), ct.getName(), ct.getLabel(), ct.getValuePattern()))
                 .toList();
+    }
+
+    /**
+     * The latest admission year a submission may carry — the current year per
+     * the application {@code Clock} (decision 10). Also the form's {@code max}.
+     */
+    public int latestAdmissionYear() {
+        return Year.now(clock).getValue();
+    }
+
+    /** The photo limits the submission form states and its script enforces; this service enforces them too. */
+    public PhotoUploadLimits photoUploadLimits() {
+        return PhotoUploadLimits.from(photoStorageProperties);
     }
 
     /** Active achievements for the submission form's checklist (decision 20). */
@@ -190,46 +216,49 @@ public class SubmissionService {
 
     /**
      * Creates a new testimonial for a visitor with no existing one
-     * (UC-CREATE-TESTIMONIAL). Validates every business rule that isn't
-     * already expressed as Bean Validation on the DTO, then stores photos
-     * only after every slug/count check has passed, to avoid orphaned
-     * uploads on rejection (decision 2).
+     * (UC-CREATE-TESTIMONIAL). Every rule — Bean Validation on the request
+     * plus the business rules below — is checked in one pass, and all
+     * violations are thrown together as one {@link
+     * SubmissionValidationException} (decision 21). Photos are stored only
+     * after everything has passed, to avoid orphaned uploads on rejection
+     * (decision 2).
      */
     @Transactional
     public SubmissionResultResponse create(
             String email, TestimonialSubmissionRequest req, Map<String, MultipartFile> fileParts) {
+        return create(email, req, fileParts, UnaryOperator.identity());
+    }
+
+    /**
+     * {@link #create}, with {@code reportAs} turning the request-level
+     * violations into the ones actually thrown (the HTML form translates
+     * them to its own field paths and adds its form-only rules) — so the
+     * throw still happens before anything is stored, even when only a
+     * form-only rule is broken.
+     */
+    private SubmissionResultResponse create(
+            String email,
+            TestimonialSubmissionRequest req,
+            Map<String, MultipartFile> fileParts,
+            UnaryOperator<List<FieldViolation>> reportAs) {
         String hash = emailLookupHashService.hash(email);
         if (testimonialRepository.findByEmailLookupHash(hash).isPresent()) {
             throw new TestimonialAlreadyExistsException("A testimonial already exists for this visitor.");
         }
 
-        ValidatedRefs refs = validateCommonRefs(req);
-        Country country = refs.country();
+        List<FieldViolation> violations = new ArrayList<>();
+        ValidatedRefs refs = validateCommonRules(req, violations);
+        List<FilledSection> filledSections = validateSections(
+                req.sections(),
+                violations,
+                (topic, fileRef) -> fileParts.containsKey(fileRef),
+                "Photo fileRef does not match an uploaded file: ");
+        checkTotalPhotoCount(filledSections, violations);
+        throwIfAny(reportAs.apply(violations));
+
+        Country country = refs.country().orElseThrow();
         List<Achievement> achievements = refs.achievements();
         Map<String, ContactType> contactTypesBySlug = refs.contactTypesBySlug();
-
-        List<SectionInput> filledSections = nonBlankSections(req.sections());
-        if (filledSections.isEmpty()) {
-            throw new SubmissionValidationException("At least one section must be filled in.");
-        }
-
-        Map<SectionInput, Topic> topicsBySection = new LinkedHashMap<>();
-        int totalPhotos = 0;
-        for (SectionInput section : filledSections) {
-            Topic topic = resolveTopic(section.topicSlug());
-            topicsBySection.put(section, topic);
-            for (PhotoInput photo : section.photos()) {
-                if (!fileParts.containsKey(photo.fileRef())) {
-                    throw new SubmissionValidationException(
-                            "Photo fileRef does not match an uploaded file: " + photo.fileRef());
-                }
-            }
-            totalPhotos += section.photos().size();
-        }
-        if (totalPhotos > photoStorageProperties.maxPhotosPerTestimonial()) {
-            throw new SubmissionValidationException(
-                    "Too many photos: maximum is " + photoStorageProperties.maxPhotosPerTestimonial() + ".");
-        }
 
         Testimonial testimonial = Testimonial.builder()
                 .firstName(req.firstName())
@@ -245,22 +274,17 @@ public class SubmissionService {
                 .createdAt(Instant.now(clock))
                 .build();
 
-        for (SectionInput section : filledSections) {
+        for (FilledSection filled : filledSections) {
+            SectionInput section = filled.input();
             TestimonialSection ts = TestimonialSection.builder()
                     .testimonial(testimonial)
-                    .topic(topicsBySection.get(section))
+                    .topic(filled.topic())
                     .answerText(section.answer().trim())
                     .modified(false)
                     .build();
             int photoOrder = 0;
             for (PhotoInput photoInput : section.photos()) {
-                MultipartFile file = fileParts.get(photoInput.fileRef());
-                String storedPath = photoStorageService.store(file);
-                Photo photo = Photo.builder()
-                        .section(ts)
-                        .filePath(storedPath)
-                        .displayOrder(photoOrder++)
-                        .build();
+                Photo photo = storePhoto(ts, fileParts.get(photoInput.fileRef()), photoOrder++);
                 addTags(photo, photoInput.tags());
                 ts.getPhotos().add(photo);
             }
@@ -345,12 +369,56 @@ public class SubmissionService {
     @Transactional
     public SubmissionResultResponse edit(
             String email, TestimonialSubmissionRequest req, Map<String, MultipartFile> fileParts) {
+        return edit(email, req, fileParts, UnaryOperator.identity());
+    }
+
+    /** {@link #edit}, with the same {@code reportAs} hook as the private {@code create} overload. */
+    private SubmissionResultResponse edit(
+            String email,
+            TestimonialSubmissionRequest req,
+            Map<String, MultipartFile> fileParts,
+            UnaryOperator<List<FieldViolation>> reportAs) {
         String hash = emailLookupHashService.hash(email);
         Testimonial testimonial = testimonialRepository
                 .findByEmailLookupHash(hash)
                 .orElseThrow(() -> new NotFoundException("No testimonial exists yet for this visitor."));
 
-        ValidatedRefs refs = validateCommonRefs(req);
+        List<FieldViolation> violations = new ArrayList<>();
+        ValidatedRefs refs = validateCommonRules(req, violations);
+
+        Map<Long, TestimonialSection> existingSectionsByTopicId = new LinkedHashMap<>();
+        Map<Long, Set<String>> currentPhotoUrlsByTopicId = new LinkedHashMap<>();
+        for (TestimonialSection section : testimonial.getSections()) {
+            existingSectionsByTopicId.put(section.getTopic().getId(), section);
+            currentPhotoUrlsByTopicId.put(
+                    section.getTopic().getId(),
+                    section.getPhotos().stream()
+                            .map(p -> photoStorageService.urlFor(p.getFilePath()))
+                            .collect(Collectors.toSet()));
+        }
+
+        // Validate every section and photo fileRef with zero IO, so a
+        // rejection never leaves an orphaned upload or a wrongly-deleted
+        // live file behind. A kept photo is one whose fileRef is the url of
+        // a photo its own section already has; anything else must name a
+        // genuinely new multipart part (decision 18).
+        List<FilledSection> filledSections = validateSections(
+                req.sections(),
+                violations,
+                (topic, fileRef) -> currentPhotoUrlsByTopicId.getOrDefault(topic.getId(), Set.of()).contains(fileRef)
+                        || fileParts.containsKey(fileRef),
+                "Photo fileRef does not match an existing photo or an uploaded file: ");
+        Map<Long, Topic> topicByTopicId = new LinkedHashMap<>();
+        Map<Long, SectionInput> incomingByTopicId = new LinkedHashMap<>();
+        for (FilledSection filled : filledSections) {
+            topicByTopicId.put(filled.topic().getId(), filled.topic());
+            // A duplicate topicSlug across incoming sections is not a
+            // documented case; last-one-wins here, matching a plain map put.
+            incomingByTopicId.put(filled.topic().getId(), filled.input());
+        }
+        checkTotalPhotoCount(
+                incomingByTopicId.values().stream().mapToInt(section -> section.photos().size()).sum(), violations);
+        throwIfAny(reportAs.apply(violations));
 
         boolean identityModified = !Objects.equals(testimonial.getFirstName(), req.firstName())
                 || !Objects.equals(testimonial.getLastName(), req.lastName())
@@ -358,54 +426,7 @@ public class SubmissionService {
                 || !Objects.equals(testimonial.getAdmissionYear(), req.admissionYear());
         boolean scoreModified = !Objects.equals(testimonial.getRecommendationScore(), req.recommendationScore());
 
-        List<SectionInput> filledSections = nonBlankSections(req.sections());
-
-        Map<Long, Topic> topicByTopicId = new LinkedHashMap<>();
-        Map<Long, SectionInput> incomingByTopicId = new LinkedHashMap<>();
-        for (SectionInput incoming : filledSections) {
-            Topic topic = resolveTopic(incoming.topicSlug());
-            topicByTopicId.put(topic.getId(), topic);
-            // A duplicate topicSlug across incoming sections is not a
-            // documented case; last-one-wins here, matching a plain map put.
-            incomingByTopicId.put(topic.getId(), incoming);
-        }
-        if (incomingByTopicId.isEmpty()) {
-            throw new SubmissionValidationException("At least one section must be filled in.");
-        }
-
-        Map<Long, TestimonialSection> existingSectionsByTopicId = new LinkedHashMap<>();
-        for (TestimonialSection section : testimonial.getSections()) {
-            existingSectionsByTopicId.put(section.getTopic().getId(), section);
-        }
-
-        // Phase 1: validate every photo fileRef and compute the resulting
-        // total photo count with zero IO, so a rejection here never leaves
-        // an orphaned upload or a wrongly-deleted live file behind.
-        int totalPhotos = 0;
-        for (Map.Entry<Long, SectionInput> entry : incomingByTopicId.entrySet()) {
-            SectionInput incoming = entry.getValue();
-            TestimonialSection existing = existingSectionsByTopicId.get(entry.getKey());
-            Set<String> currentUrls = existing == null
-                    ? Set.of()
-                    : existing.getPhotos().stream()
-                            .map(p -> photoStorageService.urlFor(p.getFilePath()))
-                            .collect(Collectors.toSet());
-            for (PhotoInput photo : incoming.photos()) {
-                boolean isKept = currentUrls.contains(photo.fileRef());
-                if (!isKept && !fileParts.containsKey(photo.fileRef())) {
-                    throw new SubmissionValidationException(
-                            "Photo fileRef does not match an existing photo or an uploaded file: "
-                                    + photo.fileRef());
-                }
-            }
-            totalPhotos += incoming.photos().size();
-        }
-        if (totalPhotos > photoStorageProperties.maxPhotosPerTestimonial()) {
-            throw new SubmissionValidationException(
-                    "Too many photos: maximum is " + photoStorageProperties.maxPhotosPerTestimonial() + ".");
-        }
-
-        // Phase 2: apply. Every incoming section is either brand new or an
+        // Apply. Every incoming section is either brand new or an
         // existing one being diffed; whatever's left in
         // existingSectionsByTopicId afterward was left out of the request
         // entirely, and is removed without setting `modified` on anything
@@ -424,7 +445,7 @@ public class SubmissionService {
         }
         for (TestimonialSection removed : existingSectionsByTopicId.values()) {
             for (Photo photo : removed.getPhotos()) {
-                photoStorageService.delete(photo.getFilePath());
+                photoStorageService.delete(photo);
             }
         }
 
@@ -443,15 +464,9 @@ public class SubmissionService {
                     .build());
         }
 
-        testimonial.getAchievements().clear();
-        for (Achievement achievement : refs.achievements()) {
-            testimonial.getAchievements().add(TestimonialAchievement.builder()
-                    .testimonial(testimonial)
-                    .achievement(achievement)
-                    .build());
-        }
+        syncAchievements(testimonial, refs.achievements());
 
-        testimonial.setCountry(refs.country());
+        testimonial.setCountry(refs.country().orElseThrow());
         testimonial.setFirstName(req.firstName());
         testimonial.setLastName(req.lastName());
         testimonial.setRollNumber(req.rollNumber());
@@ -477,30 +492,20 @@ public class SubmissionService {
     }
 
     /**
-     * Fixed number of new-photo upload slots the (JS-free) submission form
-     * offers per section — a static HTML form can't grow "add another photo"
-     * tiles dynamically. This is a form-rendering limitation only: the real
-     * per-testimonial photo cap is still enforced by {@link
-     * #photoStorageProperties} inside {@link #create}/{@link #edit}.
-     */
-    static final int NEW_PHOTO_SLOTS_PER_SECTION = 3;
-
-    /**
      * Translates a {@link SubmissionFormCommand} from the plain multipart
      * HTML submission form into the exact same {@code
      * TestimonialSubmissionRequest} + file-map shape {@link #create} already
-     * expects, then delegates to it unchanged (no business rule is
-     * duplicated here). Bean Validation on the built request is applied
-     * explicitly with {@link #validator}, since {@code @ModelAttribute}
-     * binding doesn't get the {@code @Valid} treatment the JSON path relies
-     * on for the same DTO.
+     * expects (see {@link FormSubmission}), then delegates to it — no
+     * business rule is duplicated here. Every violation comes back in one
+     * {@link SubmissionValidationException}, at FORM field paths ({@code
+     * sections[k].answerText}, {@code contactMethods[k].value}, ...) and
+     * merged with the form-only rules, so the view can show each message
+     * next to its own field (decision 21).
      */
     @Transactional
     public SubmissionResultResponse createFromForm(String email, SubmissionFormCommand command) {
-        Map<String, MultipartFile> fileMap = new LinkedHashMap<>();
-        TestimonialSubmissionRequest request = toSubmissionRequest(command, fileMap);
-        validateFormRequest(request);
-        return create(email, request, fileMap);
+        FormSubmission form = FormSubmission.from(command);
+        return create(email, form.request(), form.fileMap(), form::toFormViolations);
     }
 
     /**
@@ -511,103 +516,8 @@ public class SubmissionService {
      */
     @Transactional
     public SubmissionResultResponse editFromForm(String email, SubmissionFormCommand command) {
-        Map<String, MultipartFile> fileMap = new LinkedHashMap<>();
-        TestimonialSubmissionRequest request = toSubmissionRequest(command, fileMap);
-        validateFormRequest(request);
-        return edit(email, request, fileMap);
-    }
-
-    private void validateFormRequest(TestimonialSubmissionRequest request) {
-        Set<ConstraintViolation<TestimonialSubmissionRequest>> violations = validator.validate(request);
-        if (!violations.isEmpty()) {
-            String message = violations.stream()
-                    .map(v -> v.getPropertyPath() + ": " + v.getMessage())
-                    .collect(Collectors.joining(", "));
-            throw new SubmissionValidationException(message);
-        }
-    }
-
-    private TestimonialSubmissionRequest toSubmissionRequest(
-            SubmissionFormCommand command, Map<String, MultipartFile> fileMap) {
-        List<SectionFormEntry> commandSections = nullSafeList(command.getSections());
-        List<SectionInput> sections = new ArrayList<>();
-        for (int i = 0; i < commandSections.size(); i++) {
-            SectionFormEntry entry = commandSections.get(i);
-            if (entry == null || entry.getTopicSlug() == null || entry.getTopicSlug().isBlank()) {
-                continue;
-            }
-            sections.add(toSectionInput(i, entry, fileMap));
-        }
-
-        // The form renders one contact row per active contact type so the
-        // visitor never has to "add" one — an unused row (blank value, or no
-        // type picked at all) is dropped here rather than passed through as
-        // an invalid ContactMethodInput.
-        List<ContactMethodInput> contactMethods = nullSafeList(command.getContactMethods()).stream()
-                .filter(Objects::nonNull)
-                .filter(c -> c.getTypeSlug() != null && !c.getTypeSlug().isBlank())
-                .filter(c -> c.getValue() != null && !c.getValue().isBlank())
-                .map(c -> new ContactMethodInput(c.getTypeSlug(), c.getValue(), c.isPublicContact()))
-                .toList();
-
-        List<String> achievementSlugs = nullSafeList(command.getAchievementSlugs());
-
-        return new TestimonialSubmissionRequest(
-                command.getFirstName(),
-                command.getLastName(),
-                command.getRollNumber(),
-                command.getAdmissionYear(),
-                command.getCountryCode(),
-                command.getRecommendationScore(),
-                sections,
-                achievementSlugs,
-                contactMethods,
-                command.isDataProcessingConsent());
-    }
-
-    private SectionInput toSectionInput(int sectionIndex, SectionFormEntry entry, Map<String, MultipartFile> fileMap) {
-        List<PhotoInput> photos = new ArrayList<>();
-
-        List<String> existingUrls = nullSafeList(entry.getExistingPhotoUrls());
-        List<String> existingTags = nullSafeList(entry.getExistingPhotoTags());
-        Set<String> removedUrls = new HashSet<>(nullSafeList(entry.getRemovedPhotoUrls()));
-        for (int u = 0; u < existingUrls.size(); u++) {
-            String url = existingUrls.get(u);
-            if (url == null || url.isBlank() || removedUrls.contains(url)) {
-                continue;
-            }
-            String rawTags = u < existingTags.size() ? existingTags.get(u) : null;
-            photos.add(new PhotoInput(url, parseCommaSeparatedTags(rawTags)));
-        }
-
-        List<MultipartFile> newFiles = nullSafeList(entry.getPhotos());
-        List<String> newTags = nullSafeList(entry.getPhotoTags());
-        for (int p = 0; p < newFiles.size(); p++) {
-            MultipartFile file = newFiles.get(p);
-            if (file == null || file.isEmpty()) {
-                continue;
-            }
-            String fileRef = "section-" + sectionIndex + "-photo-" + p;
-            fileMap.put(fileRef, file);
-            String rawTags = p < newTags.size() ? newTags.get(p) : null;
-            photos.add(new PhotoInput(fileRef, parseCommaSeparatedTags(rawTags)));
-        }
-
-        return new SectionInput(entry.getTopicSlug(), entry.getAnswerText(), photos);
-    }
-
-    private static <T> List<T> nullSafeList(List<T> list) {
-        return list == null ? List.of() : list;
-    }
-
-    private static List<String> parseCommaSeparatedTags(String rawCommaSeparated) {
-        if (rawCommaSeparated == null || rawCommaSeparated.isBlank()) {
-            return List.of();
-        }
-        return Arrays.stream(rawCommaSeparated.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .toList();
+        FormSubmission form = FormSubmission.from(command);
+        return edit(email, form.request(), form.fileMap(), form::toFormViolations);
     }
 
     private TestimonialSection buildNewSection(
@@ -620,17 +530,27 @@ public class SubmissionService {
                 .build();
         int order = 0;
         for (PhotoInput photoInput : incoming.photos()) {
-            MultipartFile file = fileParts.get(photoInput.fileRef());
-            String stored = photoStorageService.store(file);
-            Photo photo = Photo.builder()
-                    .section(created)
-                    .filePath(stored)
-                    .displayOrder(order++)
-                    .build();
+            Photo photo = storePhoto(created, fileParts.get(photoInput.fileRef()), order++);
             addTags(photo, photoInput.tags());
             created.getPhotos().add(photo);
         }
         return created;
+    }
+
+    /**
+     * Converts and stores one uploaded file ({@link PhotoStorageService}) and
+     * builds its {@link Photo} row: full-size file, thumbnail, and size.
+     */
+    private Photo storePhoto(TestimonialSection section, MultipartFile file, int displayOrder) {
+        StoredPhoto stored = photoStorageService.store(file);
+        return Photo.builder()
+                .section(section)
+                .filePath(stored.filePath())
+                .thumbnailPath(stored.thumbnailPath())
+                .width(stored.width())
+                .height(stored.height())
+                .displayOrder(displayOrder)
+                .build();
     }
 
     /**
@@ -656,25 +576,19 @@ public class SubmissionService {
             Photo kept = currentPhotosByUrl.remove(incomingPhoto.fileRef());
             if (kept != null) {
                 if (tagsChanged(kept, incomingPhoto.tags())) {
-                    replaceTags(kept, incomingPhoto.tags());
+                    syncTags(kept, incomingPhoto.tags());
                     photosChanged = true;
                 }
                 newOrder.add(kept);
             } else {
-                MultipartFile file = fileParts.get(incomingPhoto.fileRef());
-                String stored = photoStorageService.store(file);
-                Photo newPhoto = Photo.builder()
-                        .section(existing)
-                        .filePath(stored)
-                        .displayOrder(newOrder.size())
-                        .build();
+                Photo newPhoto = storePhoto(existing, fileParts.get(incomingPhoto.fileRef()), newOrder.size());
                 addTags(newPhoto, incomingPhoto.tags());
                 newOrder.add(newPhoto);
                 photosChanged = true;
             }
         }
         for (Photo dropped : currentPhotosByUrl.values()) {
-            photoStorageService.delete(dropped.getFilePath());
+            photoStorageService.delete(dropped);
             photosChanged = true;
         }
 
@@ -693,74 +607,252 @@ public class SubmissionService {
         return !current.equals(dedupeTags(incomingTags));
     }
 
-    private void replaceTags(Photo photo, List<String> incomingTags) {
-        photo.getTags().clear();
-        addTags(photo, incomingTags);
+    /**
+     * Diffs a kept photo's tags against the incoming ones instead of
+     * clear-and-re-add: Hibernate executes orphan deletes after inserts at
+     * flush, so re-inserting a tag text the photo already has would violate
+     * {@code photo_tag}'s {@code (photo_id, tag_text)} uniqueness before the
+     * old row is gone. Only tags no longer wanted are removed, and only
+     * genuinely new ones are added.
+     */
+    private void syncTags(Photo photo, List<String> incomingTags) {
+        Set<String> wanted = dedupeTags(incomingTags);
+        photo.getTags().removeIf(tag -> !wanted.contains(tag.getTagText()));
+        Set<String> present =
+                photo.getTags().stream().map(PhotoTag::getTagText).collect(Collectors.toSet());
+        for (String tag : wanted) {
+            if (present.add(tag)) {
+                photo.getTags().add(PhotoTag.builder().photo(photo).tagText(tag).build());
+            }
+        }
     }
 
-    /** Shared validation for both {@link #create} and {@link #edit}. */
+    /**
+     * Diffs the testimonial's achievement join rows against the incoming
+     * selection instead of clear-and-re-add: a {@link TestimonialAchievement}'s
+     * composite id is derived from (testimonial, achievement), so a fresh
+     * instance for an achievement that is already selected would share the id
+     * of the old row still in the persistence context and fail the flush
+     * ({@code NonUniqueObjectException}). Only deselected rows are removed
+     * (via {@code orphanRemoval}), and only newly selected ones are added.
+     */
+    private void syncAchievements(Testimonial testimonial, List<Achievement> selected) {
+        Set<Long> selectedIds = selected.stream().map(Achievement::getId).collect(Collectors.toSet());
+        testimonial.getAchievements().removeIf(ta -> !selectedIds.contains(ta.getAchievement().getId()));
+        Set<Long> presentIds = testimonial.getAchievements().stream()
+                .map(ta -> ta.getAchievement().getId())
+                .collect(Collectors.toSet());
+        for (Achievement achievement : selected) {
+            if (presentIds.add(achievement.getId())) {
+                testimonial.getAchievements().add(TestimonialAchievement.builder()
+                        .testimonial(testimonial)
+                        .achievement(achievement)
+                        .build());
+            }
+        }
+    }
+
+    /** References resolved while validating; {@code country} is empty only if a violation was recorded. */
     private record ValidatedRefs(
-            Country country, List<Achievement> achievements, Map<String, ContactType> contactTypesBySlug) {
+            Optional<Country> country, List<Achievement> achievements, Map<String, ContactType> contactTypesBySlug) {
     }
 
-    private ValidatedRefs validateCommonRefs(TestimonialSubmissionRequest req) {
-        Country country = resolveCountry(req.countryCode());
-        List<Achievement> achievements = resolveAchievements(req.achievementSlugs());
-        Map<String, ContactType> contactTypesBySlug = resolveContactTypesBySlug(req.contactMethods());
+    /** A section with a non-blank answer that passed validation, with its resolved topic. */
+    private record FilledSection(SectionInput input, Topic topic) {
+    }
+
+    /**
+     * Every rule shared by {@link #create} and {@link #edit} that doesn't
+     * concern sections: Bean Validation on the request, the admission
+     * year's current-year ceiling (decision 10), and the country,
+     * achievement, and contact references — each contact value checked
+     * against its type's {@code valuePattern} (decision 5). Violations are
+     * appended to {@code violations}; a reference check is skipped for a
+     * field Bean Validation already reported, so one mistake yields one
+     * violation.
+     */
+    private ValidatedRefs validateCommonRules(TestimonialSubmissionRequest req, List<FieldViolation> violations) {
+        List<FieldViolation> beanViolations = validator.validate(req).stream()
+                .map(v -> new FieldViolation(v.getPropertyPath().toString(), v.getMessage()))
+                .sorted(Comparator.comparing(FieldViolation::field).thenComparing(FieldViolation::message))
+                .toList();
+        violations.addAll(beanViolations);
+        Set<String> reported = beanViolations.stream().map(FieldViolation::field).collect(Collectors.toSet());
+
+        int latestYear = latestAdmissionYear();
+        if (req.admissionYear() != null && !reported.contains("admissionYear") && req.admissionYear() > latestYear) {
+            violations.add(new FieldViolation(
+                    "admissionYear",
+                    "must be between " + TestimonialSubmissionRequest.EARLIEST_ADMISSION_YEAR + " and " + latestYear));
+        }
+
+        Optional<Country> country = reported.contains("countryCode")
+                ? Optional.empty()
+                : resolveCountry(req.countryCode(), violations);
+        List<Achievement> achievements = resolveAchievements(req.achievementSlugs(), violations);
+        Map<String, ContactType> contactTypesBySlug = resolveContactMethods(req.contactMethods(), violations);
         return new ValidatedRefs(country, achievements, contactTypesBySlug);
     }
 
-    private Country resolveCountry(String countryCode) {
-        String normalized = countryCode.toUpperCase(Locale.ROOT);
-        return countryRepository
-                .findById(normalized)
-                .orElseThrow(() -> new SubmissionValidationException("Unknown country code: " + countryCode));
+    private Optional<Country> resolveCountry(String countryCode, List<FieldViolation> violations) {
+        Optional<Country> country = countryRepository.findById(countryCode.toUpperCase(Locale.ROOT));
+        if (country.isEmpty()) {
+            violations.add(new FieldViolation("countryCode", "Unknown country code: " + countryCode));
+        }
+        return country;
     }
 
-    private Topic resolveTopic(String slug) {
-        return topicRepository
-                .findBySlug(slug)
-                .filter(Topic::isActive)
-                .orElseThrow(() -> new SubmissionValidationException("Unknown or inactive topic: " + slug));
-    }
-
-    private List<Achievement> resolveAchievements(List<String> slugs) {
+    private List<Achievement> resolveAchievements(List<String> slugs, List<FieldViolation> violations) {
         List<Achievement> result = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         for (String slug : slugs) {
             if (!seen.add(slug)) {
                 continue;
             }
-            Achievement achievement = achievementRepository
+            achievementRepository
                     .findBySlug(slug)
                     .filter(Achievement::isActive)
-                    .orElseThrow(
-                            () -> new SubmissionValidationException("Unknown or inactive achievement: " + slug));
-            result.add(achievement);
+                    .ifPresentOrElse(
+                            result::add,
+                            () -> violations.add(new FieldViolation(
+                                    "achievementSlugs", "Unknown or inactive achievement: " + slug)));
         }
         return result;
     }
 
-    private Map<String, ContactType> resolveContactTypesBySlug(List<ContactMethodInput> contactMethods) {
+    /**
+     * Resolves each contact method's type and checks its (already trimmed)
+     * value against the type's {@code valuePattern}. A blank type slug or
+     * value is left to Bean Validation.
+     */
+    private Map<String, ContactType> resolveContactMethods(
+            List<ContactMethodInput> contactMethods, List<FieldViolation> violations) {
+        Map<String, Optional<ContactType>> lookedUp = new HashMap<>();
         Map<String, ContactType> result = new LinkedHashMap<>();
-        for (ContactMethodInput cm : contactMethods) {
-            if (result.containsKey(cm.typeSlug())) {
+        for (int j = 0; j < contactMethods.size(); j++) {
+            ContactMethodInput cm = contactMethods.get(j);
+            if (isBlank(cm.typeSlug())) {
                 continue;
             }
-            ContactType contactType = contactTypeRepository
-                    .findBySlug(cm.typeSlug())
-                    .filter(ContactType::isActive)
-                    .orElseThrow(() -> new SubmissionValidationException(
-                            "Unknown or inactive contact type: " + cm.typeSlug()));
-            result.put(cm.typeSlug(), contactType);
+            Optional<ContactType> contactType = lookedUp.computeIfAbsent(
+                    cm.typeSlug(), slug -> contactTypeRepository.findBySlug(slug).filter(ContactType::isActive));
+            if (contactType.isEmpty()) {
+                violations.add(new FieldViolation(
+                        "contactMethods[" + j + "].typeSlug", "Unknown or inactive contact type: " + cm.typeSlug()));
+                continue;
+            }
+            ContactType type = contactType.get();
+            result.put(cm.typeSlug(), type);
+            if (!isBlank(cm.value()) && !matchesValuePattern(type, cm.value())) {
+                violations.add(new FieldViolation(
+                        "contactMethods[" + j + "].value",
+                        "doesn't look like a valid " + type.getName() + " contact — expected: " + type.getLabel()));
+            }
         }
         return result;
     }
 
-    private List<SectionInput> nonBlankSections(List<SectionInput> sections) {
-        return sections.stream()
-                .filter(s -> s.answer() != null && !s.answer().isBlank())
-                .toList();
+    /**
+     * Full match against the type's pattern (decision 5). A type without
+     * one only needs a non-blank value; so does one whose pattern doesn't
+     * compile — the same thing a browser does with an invalid HTML {@code
+     * pattern} — rather than failing every submission for that type.
+     */
+    private static boolean matchesValuePattern(ContactType type, String value) {
+        String valuePattern = type.getValuePattern();
+        if (isBlank(valuePattern)) {
+            return true;
+        }
+        try {
+            return Pattern.compile(valuePattern).matcher(value).matches();
+        } catch (PatternSyntaxException e) {
+            log.warn("Contact type {} has a value_pattern that does not compile, so only a non-blank value is"
+                    + " required: {}", type.getSlug(), e.getDescription());
+            return true;
+        }
+    }
+
+    /**
+     * Validates the request's sections, returning the non-blank ones (with
+     * their topics) to save. A blank-answer section is dropped silently —
+     * unless it carries photos, which is a violation at its {@code answer}
+     * (UC-CREATE-TESTIMONIAL). {@code isResolvableFileRef} decides whether a
+     * photo's {@code fileRef} names something real: a multipart part on
+     * create, or also a kept photo of the same topic's section on edit. A
+     * section may end up with at most {@code max-photos-per-section} photos,
+     * kept and new together — a violation at its {@code photos}.
+     */
+    private List<FilledSection> validateSections(
+            List<SectionInput> sections,
+            List<FieldViolation> violations,
+            BiPredicate<Topic, String> isResolvableFileRef,
+            String unresolvedFileRefMessage) {
+        if (sections == null || sections.isEmpty()) {
+            // Already reported at `sections` by Bean Validation (@NotEmpty).
+            return List.of();
+        }
+        List<FilledSection> filled = new ArrayList<>();
+        boolean anyAnswered = false;
+        for (int i = 0; i < sections.size(); i++) {
+            SectionInput section = sections.get(i);
+            String path = "sections[" + i + "]";
+            if (isBlank(section.answer())) {
+                if (!section.photos().isEmpty()) {
+                    violations.add(new FieldViolation(path + ".answer", PHOTOS_NEED_TEXT_MESSAGE));
+                }
+                continue;
+            }
+            anyAnswered = true;
+            if (isBlank(section.topicSlug())) {
+                continue;
+            }
+            Optional<Topic> topic = topicRepository.findBySlug(section.topicSlug()).filter(Topic::isActive);
+            if (topic.isEmpty()) {
+                violations.add(new FieldViolation(
+                        path + ".topicSlug", "Unknown or inactive topic: " + section.topicSlug()));
+                continue;
+            }
+            List<PhotoInput> photos = section.photos();
+            int maxPhotosPerSection = photoStorageProperties.maxPhotosPerSection();
+            if (photos.size() > maxPhotosPerSection) {
+                violations.add(new FieldViolation(
+                        path + ".photos", "At most " + PhotoUploadLimits.photos(maxPhotosPerSection) + " per topic."));
+            }
+            for (int p = 0; p < photos.size(); p++) {
+                String fileRef = photos.get(p).fileRef();
+                if (!isBlank(fileRef) && !isResolvableFileRef.test(topic.get(), fileRef)) {
+                    violations.add(new FieldViolation(
+                            path + ".photos[" + p + "].fileRef", unresolvedFileRefMessage + fileRef));
+                }
+            }
+            filled.add(new FilledSection(section, topic.get()));
+        }
+        if (!anyAnswered) {
+            violations.add(new FieldViolation("sections", TestimonialSubmissionRequest.AT_LEAST_ONE_SECTION_MESSAGE));
+        }
+        return filled;
+    }
+
+    private void checkTotalPhotoCount(List<FilledSection> filledSections, List<FieldViolation> violations) {
+        checkTotalPhotoCount(
+                filledSections.stream().mapToInt(filled -> filled.input().photos().size()).sum(), violations);
+    }
+
+    private void checkTotalPhotoCount(int totalPhotos, List<FieldViolation> violations) {
+        int max = photoStorageProperties.maxPhotosPerTestimonial();
+        if (totalPhotos > max) {
+            violations.add(FieldViolation.global("Too many photos: maximum is " + max + "."));
+        }
+    }
+
+    private static void throwIfAny(List<FieldViolation> violations) {
+        if (!violations.isEmpty()) {
+            throw new SubmissionValidationException(violations);
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private Set<String> dedupeTags(List<String> tags) {
