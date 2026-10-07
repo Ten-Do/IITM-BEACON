@@ -474,10 +474,13 @@ while here.
 ## UC-PURGE-REJECTED: Purge long-rejected testimonials
 - **Actor:** Scheduler (system-initiated, no human actor)
 - **Preconditions:** a `REJECTED` testimonial's `rejectedAt` is older than 30 days.
-- **Main flow:** scheduled job (weekly) finds all such testimonials, deletes their photo files,
-  then deletes the testimonial rows (cascading through sections and photos).
-- **Alternate flows:** a photo file is already missing on disk → row deletion still proceeds,
-  the job logs the inconsistency and continues with the rest of the batch.
+- **Main flow:** scheduled job (weekly) finds all such testimonials and deletes the testimonial
+  rows (cascading through sections, photos, photo tags, contact methods and achievement ticks)
+  in one transaction; once that has committed, it deletes their photo files.
+- **Alternate flows:** a photo file is already missing on disk → the job logs the inconsistency
+  and continues with the rest of the batch. A testimonial the visitor resubmitted
+  (UC-EDIT-TESTIMONIAL) after the job found it is no longer `REJECTED` and is not deleted. The
+  transaction fails → nothing is deleted, rows or files; the next run tries again.
 - **Postconditions:** purged testimonials are unrecoverable.
 
 ## UC-MANAGE-TOPIC-GROUPS: Manage topic groups
