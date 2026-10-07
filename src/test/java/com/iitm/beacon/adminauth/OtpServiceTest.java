@@ -52,7 +52,8 @@ class OtpServiceTest {
         otpMailer = mock(OtpMailer.class);
         rateLimiterService = mock(RateLimiterService.class);
         when(rateLimiterService.tryConsume(anyString(), any(), anyInt(), any())).thenReturn(true);
-        otpService = new OtpService(adminProperties, otpProperties, codeGenerator, otpMailer, clock, rateLimiterService);
+        otpService = new OtpService(
+                adminProperties, otpProperties, codeGenerator, otpMailer, clock, rateLimiterService);
     }
 
     @Test

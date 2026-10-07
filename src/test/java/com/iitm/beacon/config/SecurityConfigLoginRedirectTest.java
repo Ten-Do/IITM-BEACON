@@ -75,6 +75,15 @@ class SecurityConfigLoginRedirectTest {
                 Arguments.of(get("/moderation"), "/admin/login"),
                 Arguments.of(post("/moderation/queue/1/approve"), "/admin/login"),
                 Arguments.of(post("/moderation/queue/1/reject").param("reason", "x"), "/admin/login"),
+                Arguments.of(get("/catalog/topics"), "/admin/login"),
+                Arguments.of(get("/catalog/achievements"), "/admin/login"),
+                Arguments.of(get("/catalog/topics/5"), "/admin/login"),
+                Arguments.of(get("/catalog/topic-groups/new"), "/admin/login"),
+                Arguments.of(get("/catalog/achievements/3/delete"), "/admin/login"),
+                Arguments.of(get("/catalog"), "/admin/login"),
+                Arguments.of(post("/catalog/topics/new").param("slug", "x"), "/admin/login"),
+                Arguments.of(post("/catalog/topics/5/active").param("active", "false"), "/admin/login"),
+                Arguments.of(post("/catalog/topic-groups/5/delete"), "/admin/login"),
                 Arguments.of(get("/submissions/form"), "/submissions/login"),
                 Arguments.of(anonymousFormPost(), "/submissions/login"),
                 Arguments.of(get("/submissions/confirmation"), "/submissions/login"));
@@ -109,12 +118,17 @@ class SecurityConfigLoginRedirectTest {
     @ValueSource(strings = {
         "/api/moderation/testimonials/pending",
         "/api/moderation/session",
+        "/api/catalog/topics",
+        "/api/catalog/topic-groups",
+        "/api/catalog/achievements",
         "/api/submissions/mine",
         "/api/submissions/session",
         "/favicon.ico",
         "/submissions/formatted",
         "/submissions/confirmation/extra",
         "/moderationx",
+        "/catalogx",
+        "/catalog-topics",
     })
     void anonymousNonPageRequest_keepsTheJson401(String path) throws Exception {
         mockMvc.perform(get(path))
@@ -146,6 +160,17 @@ class SecurityConfigLoginRedirectTest {
         assertThat(saved.getRedirectUrl()).endsWith("/moderation/queue?page=2");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"/catalog/topics", "/catalog/topics/5", "/catalog/achievements/3/delete"})
+    void anonymousCatalogPageGet_isSaved(String page) throws Exception {
+        MockHttpSession session = new MockHttpSession();
+
+        mockMvc.perform(get(page).session(session)).andExpect(status().isFound());
+
+        assertThat(savedRequestIn(session)).isNotNull();
+        assertThat(savedRequestIn(session).getRedirectUrl()).endsWith(page);
+    }
+
     @Test
     void anonymousVisitorPageGet_isSaved() throws Exception {
         MockHttpSession session = new MockHttpSession();
@@ -160,6 +185,9 @@ class SecurityConfigLoginRedirectTest {
         return Stream.of(
                 anonymousFormPost(),
                 post("/moderation/queue/1/approve"),
+                post("/catalog/topics/5/delete"),
+                post("/catalog/achievements/new").param("slug", "x"),
+                get("/api/catalog/topics"),
                 get("/api/moderation/testimonials/pending"),
                 get("/api/moderation/session"),
                 get("/api/submissions/session"),

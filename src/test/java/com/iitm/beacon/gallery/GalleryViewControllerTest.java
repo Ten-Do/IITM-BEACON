@@ -193,7 +193,8 @@ class GalleryViewControllerTest {
 
         mockMvc.perform(get("/gallery"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(allOf(containsString("gallery-pagination-status"), containsString("Next"))));
+                .andExpect(content().string(
+                        allOf(containsString("gallery-pagination-status"), containsString("Next"))));
     }
 
     @Test

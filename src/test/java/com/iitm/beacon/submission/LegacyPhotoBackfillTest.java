@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.spy;
 
+import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.config.PhotoStorageProperties;
 import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.country.CountryRepository;
@@ -85,7 +86,11 @@ class LegacyPhotoBackfillTest {
     }
 
     private PhotoStorageService storage(PhotoStorageProperties properties) {
-        return new PhotoStorageService(properties, new PhotoUrlResolver(), new PhotoImageProcessor(properties));
+        return new PhotoStorageService(
+                properties,
+                new PhotoUrlResolver(),
+                new PhotoImageProcessor(properties),
+                new PhotoFileDeleter(properties));
     }
 
     private LegacyPhotoBackfill backfill(boolean enabled) {

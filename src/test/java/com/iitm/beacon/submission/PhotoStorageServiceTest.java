@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.iitm.beacon.common.error.SubmissionValidationException;
+import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.config.PhotoStorageProperties;
 import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.testimonial.Photo;
@@ -37,7 +38,11 @@ class PhotoStorageServiceTest {
 
     private PhotoStorageService serviceWithLimit(long maxBytes) {
         PhotoStorageProperties properties = TestPhotoStorage.properties(root, 20, maxBytes);
-        return new PhotoStorageService(properties, new PhotoUrlResolver(), new PhotoImageProcessor(properties));
+        return new PhotoStorageService(
+                properties,
+                new PhotoUrlResolver(),
+                new PhotoImageProcessor(properties),
+                new PhotoFileDeleter(properties));
     }
 
     private PhotoStorageService service() {
@@ -48,7 +53,11 @@ class PhotoStorageServiceTest {
     private PhotoStorageService serviceWithFixedId(String id) {
         PhotoStorageProperties properties = TestPhotoStorage.properties(root);
         return new PhotoStorageService(
-                properties, new PhotoUrlResolver(), new PhotoImageProcessor(properties), () -> id);
+                properties,
+                new PhotoUrlResolver(),
+                new PhotoImageProcessor(properties),
+                new PhotoFileDeleter(properties),
+                () -> id);
     }
 
     private static MockMultipartFile upload(String filename, String contentType, byte[] bytes) {
@@ -115,8 +124,11 @@ class PhotoStorageServiceTest {
     void store_createsTheUploadsRootIfMissing() {
         Path nested = root.resolve("not-yet").resolve("there");
         PhotoStorageProperties properties = TestPhotoStorage.properties(nested);
-        PhotoStorageService service =
-                new PhotoStorageService(properties, new PhotoUrlResolver(), new PhotoImageProcessor(properties));
+        PhotoStorageService service = new PhotoStorageService(
+                properties,
+                new PhotoUrlResolver(),
+                new PhotoImageProcessor(properties),
+                new PhotoFileDeleter(properties));
 
         StoredPhoto stored = service.store(upload("a.png", "image/png", pngBytes(10, 10)));
 

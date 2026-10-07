@@ -1,6 +1,7 @@
 package com.iitm.beacon.submission;
 
 import com.iitm.beacon.common.error.SubmissionValidationException;
+import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.config.PhotoStorageProperties;
 import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.testimonial.Photo;
@@ -12,8 +13,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.UUID;
 import java.util.function.Supplier;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -29,19 +28,24 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class PhotoStorageService {
 
-    private static final Logger log = LoggerFactory.getLogger(PhotoStorageService.class);
-
     private final PhotoStorageProperties photoStorageProperties;
     private final PhotoUrlResolver photoUrlResolver;
     private final PhotoImageProcessor photoImageProcessor;
+    private final PhotoFileDeleter photoFileDeleter;
     private final Supplier<String> photoIds;
 
     @Autowired
     public PhotoStorageService(
             PhotoStorageProperties photoStorageProperties,
             PhotoUrlResolver photoUrlResolver,
-            PhotoImageProcessor photoImageProcessor) {
-        this(photoStorageProperties, photoUrlResolver, photoImageProcessor, () -> UUID.randomUUID().toString());
+            PhotoImageProcessor photoImageProcessor,
+            PhotoFileDeleter photoFileDeleter) {
+        this(
+                photoStorageProperties,
+                photoUrlResolver,
+                photoImageProcessor,
+                photoFileDeleter,
+                () -> UUID.randomUUID().toString());
     }
 
     /** @param photoIds names each stored photo's pair of files (a random UUID outside tests) */
@@ -49,10 +53,12 @@ public class PhotoStorageService {
             PhotoStorageProperties photoStorageProperties,
             PhotoUrlResolver photoUrlResolver,
             PhotoImageProcessor photoImageProcessor,
+            PhotoFileDeleter photoFileDeleter,
             Supplier<String> photoIds) {
         this.photoStorageProperties = photoStorageProperties;
         this.photoUrlResolver = photoUrlResolver;
         this.photoImageProcessor = photoImageProcessor;
+        this.photoFileDeleter = photoFileDeleter;
         this.photoIds = photoIds;
     }
 
@@ -100,26 +106,15 @@ public class PhotoStorageService {
     /**
      * Best-effort delete of a photo's full-size file and its thumbnail (a
      * legacy photo has none): never throws, since this must never break
-     * the surrounding save transaction.
+     * the surrounding save transaction. Delegates to {@link PhotoFileDeleter}.
      */
     public void delete(Photo photo) {
-        delete(photo.getFilePath());
-        if (photo.getThumbnailPath() != null) {
-            delete(photo.getThumbnailPath());
-        }
+        photoFileDeleter.delete(photo);
     }
 
     /** Best-effort delete of one root-relative file; never throws if it's already gone. */
     public void delete(String relativePath) {
-        Path target = root().resolve(relativePath);
-        try {
-            boolean deleted = Files.deleteIfExists(target);
-            if (!deleted) {
-                log.debug("Photo file already missing, nothing to delete: {}", relativePath);
-            }
-        } catch (IOException e) {
-            log.warn("Failed to delete photo file {}: {}", relativePath, e.getMessage());
-        }
+        photoFileDeleter.delete(relativePath);
     }
 
     public String urlFor(String relativePath) {

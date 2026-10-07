@@ -57,4 +57,23 @@
     <Field name="requestCache"/>
     <Bug pattern="EI_EXPOSE_REP2"/>
   </Match>
+
+  <!-- Same false positive, same reasoning, on M5's catalogadmin-slice
+       collaborators: constructor-injected, stateless-in-practice Spring
+       beans. Scoped to the exact (class, field) pairs SpotBugs flagged. -->
+  <Match>
+    <Class name="com.iitm.beacon.catalogadmin.CatalogAdminController"/>
+    <Field name="catalogAdminService"/>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+  </Match>
+  <Match>
+    <Class name="com.iitm.beacon.catalogadmin.CatalogAdminViewController"/>
+    <Field name="catalogAdminService"/>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+  </Match>
+  <Match>
+    <Class name="com.iitm.beacon.catalogadmin.CatalogAdminService"/>
+    <Field name="photoFileDeleter"/>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+  </Match>
 </FindBugsFilter>

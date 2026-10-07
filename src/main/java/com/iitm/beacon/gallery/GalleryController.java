@@ -35,11 +35,12 @@ public class GalleryController {
     @GetMapping("/testimonials")
     public PageResponse<TestimonialCardDto> browse(
             @RequestParam(required = false) @Size(min = 2, max = 2) String country,
+            @RequestParam(required = false) List<Long> groupIds,
             @RequestParam(required = false) List<Long> topicIds,
             @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return galleryService.browse(country, topicIds, q, PageRequest.of(page, size));
+        return galleryService.browse(country, groupIds, topicIds, q, PageRequest.of(page, size));
     }
 
     @GetMapping("/testimonials/{id}")

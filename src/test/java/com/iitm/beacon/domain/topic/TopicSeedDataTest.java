@@ -28,6 +28,14 @@ class TopicSeedDataTest extends AbstractRepositoryTest {
     }
 
     @Test
+    void generalSlugConstant_matchesTheSeededStandaloneTopic() {
+        var found = topicRepository.findBySlug(Topic.GENERAL_SLUG);
+
+        assertThat(found).isPresent();
+        assertThat(found.get().getTopicGroup()).isNull();
+    }
+
+    @Test
     void seededTopicGroupCount_isNine() {
         assertThat(topicGroupRepository.count()).isEqualTo(9);
     }

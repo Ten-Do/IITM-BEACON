@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout/shell :: head(${editingId} == null ? 'Add achievement' : 'Edit achievement')}"></head>
+<body>
+<div th:replace="~{layout/header-admin :: header('achievements')}"></div>
+
+<main class="catalog-body catalog-form-body">
+    <a class="catalog-back-link" href="/catalog/achievements">&larr; Achievements</a>
+    <h1 class="catalog-title" th:text="${editingId} == null ? 'Add achievement' : 'Edit achievement'">Add
+        achievement</h1>
+    <p class="catalog-subtitle">One checkbox on the submission form's achievement checklist.</p>
+
+    <form class="catalog-form-card" method="post" th:object="${form}"
+          th:action="${editingId} == null ? @{/catalog/achievements/new} : @{/catalog/achievements/{id}(id=${editingId})}">
+        <div class="catalog-error-banner" role="alert" th:if="${#fields.hasGlobalErrors()}">
+            <span class="catalog-error-mark">!</span>
+            <p class="catalog-error-text" th:each="message : ${#fields.globalErrors()}" th:text="${message}">Error</p>
+        </div>
+
+        <div class="catalog-field">
+            <label class="catalog-field-label" for="label">Label</label>
+            <input class="catalog-field-input" id="label" th:field="*{label}" required="required" maxlength="120"
+                   th:errorclass="catalog-field-input--invalid"/>
+            <span class="catalog-field-error" th:if="${#fields.hasErrors('label')}" th:errors="*{label}">Error</span>
+        </div>
+
+        <div class="catalog-field">
+            <label class="catalog-field-label" for="slug">Slug</label>
+            <input class="catalog-field-input catalog-field-input--mono" id="slug" th:field="*{slug}"
+                   required="required" maxlength="64" th:errorclass="catalog-field-input--invalid"
+                   aria-describedby="slug-help"/>
+            <span class="catalog-field-help" id="slug-help">Lowercase letters a–z, digits and underscores, up to 64
+                characters; unique among achievements.</span>
+            <span class="catalog-field-error" th:if="${#fields.hasErrors('slug')}" th:errors="*{slug}">Error</span>
+        </div>
+
+        <div class="catalog-field">
+            <label class="catalog-field-label" for="displayOrder">Display order</label>
+            <input class="catalog-field-input catalog-field-input--short" id="displayOrder" type="number" min="0"
+                   max="9999" step="1" th:field="*{displayOrder}" required="required"
+                   th:errorclass="catalog-field-input--invalid"/>
+            <span class="catalog-field-error" th:if="${#fields.hasErrors('displayOrder')}"
+                  th:errors="*{displayOrder}">Error</span>
+        </div>
+
+        <div class="catalog-form-actions">
+            <button type="submit" class="catalog-btn catalog-btn-primary"
+                    th:text="${editingId} == null ? 'Add achievement' : 'Save changes'">Save</button>
+            <a class="catalog-btn catalog-btn-ghost" href="/catalog/achievements">Cancel</a>
+        </div>
+    </form>
+</main>
+</body>
+</html>

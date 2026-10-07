@@ -66,6 +66,10 @@ class PagesE2eTest extends E2eTestBase {
 
         data().twoPendingTestimonials();
         phoneScreenshots("/moderation/queue", "moderation-queue");
+
+        phoneScreenshots("/catalog/topics", "catalog-topics");
+        phoneScreenshots("/catalog/achievements", "catalog-achievements");
+        phoneScreenshots("/catalog/topics/new", "catalog-topic-new");
     }
 
     @Test

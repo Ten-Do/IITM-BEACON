@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.iitm.beacon.common.crypto.EmailLookupHashService;
 import com.iitm.beacon.common.error.SubmissionValidationException;
 import com.iitm.beacon.common.error.TestimonialAlreadyExistsException;
+import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.config.PhotoStorageProperties;
 import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
@@ -235,7 +236,10 @@ class SubmissionServiceCreateTest {
                 TestPhotoStorage.properties(uploadsRoot, 1, TestPhotoStorage.DEFAULT_MAX_PHOTO_SIZE_BYTES);
         PhotoStorageService restrictivePhotoStorage =
                 new PhotoStorageService(
-                        restrictiveProperties, new PhotoUrlResolver(), new PhotoImageProcessor(restrictiveProperties));
+                        restrictiveProperties,
+                        new PhotoUrlResolver(),
+                        new PhotoImageProcessor(restrictiveProperties),
+                        new PhotoFileDeleter(restrictiveProperties));
         SubmissionService restrictedService = new SubmissionService(
                 testimonialRepository,
                 topicRepository,

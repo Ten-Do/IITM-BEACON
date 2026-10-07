@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout/shell :: head('Delete ' + ${kindLabel} + '?')}"></head>
+<body>
+<div th:replace="~{layout/header-admin :: header(${navPage})}"></div>
+
+<main class="catalog-body catalog-form-body">
+    <h1 class="catalog-title" th:text="'Delete this ' + ${kindLabel} + '?'">Delete this topic?</h1>
+
+    <div class="catalog-form-card catalog-confirm-card">
+        <p class="catalog-confirm-label" th:text="${preview.label()}">Teaching Quality</p>
+        <p class="catalog-confirm-count"
+           th:text="${preview.affectedTestimonials()} + ' testimonial' + (${preview.affectedTestimonials()} == 1 ? '' : 's') + ' affected'">
+            2 testimonials affected</p>
+
+        <p class="catalog-confirm-text" th:if="${kind == 'topic-group'}">
+            <th:block th:if="${preview.topicCount() > 0}"
+                      th:text="'Deleting it also deletes its ' + ${preview.topicCount()} + ' topic' + (${preview.topicCount()} == 1 ? '' : 's') + ' and every testimonial section written under them, with their photos.'">
+                Deleting it also deletes its topics and every testimonial section written under them.</th:block>
+            <th:block th:if="${preview.topicCount() == 0}">It holds no topics, so no testimonial content goes with
+                it.</th:block>
+        </p>
+        <p class="catalog-confirm-text" th:if="${kind == 'topic'}">Deleting it also deletes every testimonial section
+            written under it, with its photos.</p>
+        <p class="catalog-confirm-text" th:if="${kind == 'achievement'}">Deleting it also removes every tick of it
+            from testimonials.</p>
+        <p class="catalog-confirm-text">This can't be undone. Affected testimonials keep their status and don't go
+            back to moderation. To hide it from everyone instead, deactivate it — that can be reversed.</p>
+
+        <form method="post" th:action="${deleteUrl}" class="catalog-form-actions">
+            <button type="submit" class="catalog-btn catalog-btn-danger"
+                    th:text="'Delete ' + ${kindLabel}">Delete topic</button>
+            <a class="catalog-btn catalog-btn-ghost" th:href="${cancelUrl}">Cancel</a>
+        </form>
+    </div>
+</main>
+</body>
+</html>

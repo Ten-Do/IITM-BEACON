@@ -162,10 +162,10 @@ follows directly from testimonials now being organized into tagged topic section
 decision 17), `moderation`, `catalogadmin`, `adminauth`, and `analytics`, all depending only on
 a shared `domain` package (entities/repositories) and `common` (cross-cutting infra). No slice
 imports classes from another slice directly. `catalogadmin` specifically owns topic-group/
-topic/achievement CRUD (create/rename/reorder/deactivate; `Topic` additionally supports
-re-parenting — decision 11) — kept separate from `moderation` rather than folded into it.
-Deactivating any catalog entry is always non-destructive: it stops being offered as a new pick,
-but existing content referencing it keeps rendering unchanged.
+topic/achievement CRUD (create/rename/reorder/deactivate/delete; `Topic` additionally supports
+re-parenting — decision 11) — kept separate from `moderation` rather than folded into it. How a
+deactivated or deleted catalog entry affects testimonials that already reference it is defined
+in decision 28.
 
 **Rationale:** No slice depending on another's internals is what lets each be built, changed,
 or deleted independently. The boundaries themselves follow the bounded contexts
@@ -209,9 +209,10 @@ dashboard), only top-level entries (groups + standalone topics) are shown; picki
 reveals all of its subtopics as optional input blocks at once. Adding, renaming, reordering,
 deactivating, or re-parenting a topic (moving it between groups, or promoting it to standalone)
 is done through the admin catalog screen (`catalogadmin`, decision 9), not a direct database
-edit — no code change or redeploy required either way. Re-parenting is non-destructive:
-existing `TestimonialSection` rows keep their `topic_id` regardless of the topic's current
-group. The current seed list of topics lives in `use-cases.md` as a first draft, not a fixed
+edit — no code change or redeploy required either way. Re-parenting keeps existing
+`TestimonialSection` rows on their `topic_id` regardless of the topic's current group; such a
+section is shown under the topic's current group (and hidden if that group is inactive —
+decision 28). The current seed list of topics lives in `use-cases.md` as a first draft, not a fixed
 specification.
 
 **Rationale:** Lets the actual topic/question wording be iterated on independently of code
@@ -348,7 +349,8 @@ section (decision 12), so removing the last one is rejected the same way an empt
 would be, independent of the `modified`/short-circuit machinery.
 
 **Short-circuit:** if the testimonial's status was already `APPROVED` before this edit, and
-neither `TestimonialSection.modified` (on any section) nor `identity_modified` is set, the
+neither `TestimonialSection.modified` (on any visible section — decision 28) nor
+`identity_modified` is set, the
 testimonial stays `APPROVED` — it never goes to `PENDING`, regardless of what else changed
 (score, country, achievements, contacts). `SubmissionService` clears `score_modified` itself
 immediately in this case (nothing entered the queue, so nothing needs to stay flagged), without
@@ -356,7 +358,9 @@ touching `reviewed_at` (no human reviewed it). Any edit that touches free-text c
 or identity fields always goes back to `PENDING` for full re-moderation; so does any edit to a
 testimonial that was `PENDING` or `REJECTED` before the edit, regardless of which fields
 changed — it hasn't passed a full review yet, or was explicitly rejected, so any resubmission
-gets one. `ModerationService` clears every flag back to `false` as part of a normal approve.
+gets one. `ModerationService` clears every flag back to `false` as part of a normal approve —
+except `modified` on a section whose topic is currently hidden, which stays set until that
+section has been reviewed (decision 28).
 
 **Rationale:** `scope.md` specifies "approve/reject one at a time" for the MVP; a batch action
 was speculative and isn't backed by any current use case — if a real moderation-volume problem
@@ -442,9 +446,9 @@ one is already scheduled to be resolved by `SubmissionService` (M3).
 
 **Decision:** `GET /submissions/achievements` is a public, unauthenticated endpoint listing
 active `Achievement` entries (`slug`, `label`, ordered by `display_order`) — same pattern as
-`ContactType`'s `GET /submissions/contact-types` (decision 5): seed-only reference data with no
-admin-catalog UI dependency, served dynamically rather than hardcoded on the client, but with no
-write side of its own.
+`ContactType`'s `GET /submissions/contact-types` (decision 5): a read-only listing served
+dynamically rather than hardcoded on the client. The endpoint itself has no write side —
+achievements are written only through the admin catalog (`catalogadmin`, decision 28).
 
 **Rationale:** The submission form's achievement checklist (decision 13) must render in full
 before or without any admin session — `Achievement` management itself stays admin-only
@@ -650,7 +654,7 @@ loses a file.
 
 **Decision:** An unauthenticated request — no session, or an expired one — to a page that needs
 a login is redirected to that role's login page by a `DelegatingAuthenticationEntryPoint` in
-`SecurityConfig`: `/moderation/**` to `/admin/login`, `/submissions/form` and
+`SecurityConfig`: `/moderation/**` and `/catalog/**` to `/admin/login`, `/submissions/form` and
 `/submissions/confirmation` to `/submissions/login`. Every other unauthenticated request — all of
 `/api/**`, and anything that falls through to the `denyAll()` tail — still gets
 `RestAuthenticationEntryPoint`'s JSON 401. The redirect's `Location` is relative
@@ -660,7 +664,7 @@ GETs and nothing else, without a `?continue` marker. After a successful OTP veri
 `common.security.PostLoginRedirect` takes the saved request out of the session (always removing
 it) and redirects to its path and query only if it was a GET, is a well-formed site-relative
 path without dot segments, and lies under one of the role's own pages on a path-segment
-boundary (admin: anything under `/moderation/`; visitor: `/submissions/form`,
+boundary (admin: anything under `/moderation/` or `/catalog/`; visitor: `/submissions/form`,
 `/submissions/confirmation`); otherwise to the role's default page (`/moderation/queue`,
 `/submissions/form`). A form POST is never saved, so a submission sent with an expired session
 lands on the form after the login, and what was typed in it is lost.
@@ -799,3 +803,64 @@ gets through. Its only purpose is to stop other websites (a browser never lets a
 captcha, and no token that could expire on a page left open. It is a POST because browsers send
 `Origin` on every POST, `fetch` and plain form submission alike. Having the script fetch the
 server-rendered card keeps one template for the JavaScript and no-JavaScript paths.
+
+## 28. Catalog admin semantics: cascading visibility, delete, slugs, `general`
+
+**Decision:** `catalogadmin` (decision 9) manages `TopicGroup`, `Topic` and `Achievement` both
+through a REST API (`/api/catalog/**`) and through server-rendered admin pages under
+`/catalog/**` (a `CatalogAdminViewController`, same pattern as decision 21): one list page for
+topic groups + topics (`/catalog/topics`), one for achievements (`/catalog/achievements`), a
+separate form page per create/edit, a one-click Active/Inactive toggle, and a delete
+confirmation page that shows how many testimonials the delete touches. Plain `<form>` posts, no
+JavaScript. Both route families are `ADMIN`-only.
+
+- **Visibility cascades to existing testimonials.** A topic is *visible* when it is active and
+  either standalone or in an active group; an achievement is visible when it is active. A
+  `TestimonialSection` of an invisible topic, and a `TestimonialAchievement` of an invisible
+  achievement, are hidden everywhere: the gallery article, the gallery card preview, keyword
+  search, the topic filter, the moderation queue, and the author's own edit form (and
+  `GET /api/submissions/mine`). The rows stay in the database, so reactivating the topic, its
+  group or the achievement brings them back unchanged. An edit saved by the author leaves hidden
+  sections (with their photos) and hidden achievement ticks untouched. A testimonial left with no
+  visible section is still shown in the gallery, just without sections; the existing
+  at-least-one-section rule applies only when its author next saves an edit.
+- **A hidden edit is never published unreviewed.** Approving a testimonial clears `modified`
+  only on its visible sections; a hidden section keeps its `modified` flag, since the admin
+  could not see it. When a topic becomes visible again — the topic or its group is
+  reactivated, or the topic is moved out of an inactive group — every `APPROVED` testimonial
+  with a `modified` section of that topic goes back to `PENDING` (decision 18), so the edit is
+  reviewed before it shows.
+- **Delete is a hard, cascading delete.** Deleting a topic deletes every `TestimonialSection` of
+  it, with the sections' photos (rows and files on disk); deleting a topic group deletes all of
+  its topics the same way; deleting an achievement deletes every `TestimonialAchievement` of it.
+  Photo files are removed after the transaction commits. A delete never changes a testimonial's
+  status and never triggers re-moderation.
+- **Slugs are editable.** A topic's or achievement's slug can be changed on edit as well as set
+  on create; it must stay unique within its table, and a clash answers **409**.
+- **`general` is protected.** The mandatory catch-all topic (slug `general`, looked up by that
+  slug in code) can't be deactivated, deleted, moved into a group, or have its slug changed —
+  each answers **409**. Its label, guiding prompt and display order stay editable.
+- **Field rules.** Input is trimmed. `slug` matches `^[a-z0-9_]+$`, 1–64 characters; `label`
+  is required, at most 120 characters; `guidingPrompt` is required, at most 500 characters;
+  `displayOrder` is an integer 0–9999, duplicates allowed. A `topicGroupId` that names no
+  existing group answers **400**. No schema migration — the rules are Bean Validation only.
+
+**Rationale:** The admin deactivates or deletes a catalog entry to take it out of the gallery,
+so content filed under it should go with it — a deactivated "old wording" topic still showing
+on every old article would defeat the point. Hiding instead of deleting on deactivation keeps
+the step reversible; delete exists for the cases where it shouldn't be. Editable slugs let the
+admin fix a badly chosen slug without recreating the entry; existing content references topics
+and achievements by id, so nothing stored breaks. `general` is the one entry the submission
+form depends on by slug, so it is the one entry the catalog refuses to break.
+
+## 29. Gallery topic filter: separate `groupIds` and `topicIds`
+
+**Decision:** The gallery's topic filter (`GET /api/gallery/testimonials` and the `/gallery`
+page) takes two parameters: `groupIds` (topic-group ids, each expanded server-side to its
+visible member topics) and `topicIds` (standalone topic ids). A group chip submits `groupIds`, a
+standalone chip `topicIds`. The two are combined with OR, like the chips within one parameter.
+
+**Rationale:** Topic groups and topics have separate id sequences that overlap (group 10 and
+topic 10 both exist once the admin creates a group). With one shared parameter the server had to
+guess which table an id belonged to, so creating a group could silently turn a topic filter into
+a group filter. Two parameters remove the guess.

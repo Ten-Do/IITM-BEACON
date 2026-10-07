@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout/shell :: head(${editingId} == null ? 'Add topic group' : 'Edit topic group')}"></head>
+<body>
+<div th:replace="~{layout/header-admin :: header('catalog')}"></div>
+
+<main class="catalog-body catalog-form-body">
+    <a class="catalog-back-link" href="/catalog/topics">&larr; Topic catalog</a>
+    <h1 class="catalog-title" th:text="${editingId} == null ? 'Add topic group' : 'Edit topic group'">Add topic group</h1>
+    <p class="catalog-subtitle">A group holds several subtopics; on the submission form and in the gallery filter it
+        is offered as one pick.</p>
+
+    <form class="catalog-form-card" method="post" th:object="${form}"
+          th:action="${editingId} == null ? @{/catalog/topic-groups/new} : @{/catalog/topic-groups/{id}(id=${editingId})}">
+        <div class="catalog-error-banner" role="alert" th:if="${#fields.hasGlobalErrors()}">
+            <span class="catalog-error-mark">!</span>
+            <p class="catalog-error-text" th:each="message : ${#fields.globalErrors()}" th:text="${message}">Error</p>
+        </div>
+
+        <div class="catalog-field">
+            <label class="catalog-field-label" for="label">Label</label>
+            <input class="catalog-field-input" id="label" th:field="*{label}" required="required" maxlength="120"
+                   th:errorclass="catalog-field-input--invalid"/>
+            <span class="catalog-field-error" th:if="${#fields.hasErrors('label')}" th:errors="*{label}">Error</span>
+        </div>
+
+        <div class="catalog-field">
+            <label class="catalog-field-label" for="displayOrder">Display order</label>
+            <input class="catalog-field-input catalog-field-input--short" id="displayOrder" type="number" min="0"
+                   max="9999" step="1" th:field="*{displayOrder}" required="required"
+                   th:errorclass="catalog-field-input--invalid" aria-describedby="displayOrder-help"/>
+            <span class="catalog-field-help" id="displayOrder-help">0–9999. Groups and standalone topics share one
+                order on the submission form; lower comes first.</span>
+            <span class="catalog-field-error" th:if="${#fields.hasErrors('displayOrder')}"
+                  th:errors="*{displayOrder}">Error</span>
+        </div>
+
+        <div class="catalog-form-actions">
+            <button type="submit" class="catalog-btn catalog-btn-primary"
+                    th:text="${editingId} == null ? 'Add topic group' : 'Save changes'">Save</button>
+            <a class="catalog-btn catalog-btn-ghost" href="/catalog/topics">Cancel</a>
+        </div>
+    </form>
+</main>
+</body>
+</html>

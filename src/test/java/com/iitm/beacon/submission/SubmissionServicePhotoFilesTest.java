@@ -3,6 +3,7 @@ package com.iitm.beacon.submission;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.iitm.beacon.common.crypto.EmailLookupHashService;
+import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.config.PhotoStorageProperties;
 import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
@@ -92,7 +93,11 @@ class SubmissionServicePhotoFilesTest {
                 contactTypeRepository,
                 countryRepository,
                 emailLookupHashService,
-                new PhotoStorageService(properties, new PhotoUrlResolver(), new PhotoImageProcessor(properties)),
+                new PhotoStorageService(
+                        properties,
+                        new PhotoUrlResolver(),
+                        new PhotoImageProcessor(properties),
+                        new PhotoFileDeleter(properties)),
                 properties,
                 clock,
                 topicGroupRepository,

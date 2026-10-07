@@ -1960,6 +1960,384 @@ input[type="checkbox"].submission-field-input--invalid {
   color: var(--ink-soft);
 }
 
+/* Admin catalog pages (catalogadmin/*.html) — based on
+   ui-design/CatalogTopics.dc.html and CatalogAchievements.dc.html: the two
+   list pages, the form pages, and the delete confirmation. Buttons and form
+   fields follow the moderation and submission pages' look. */
+.catalog-body {
+  padding: var(--space-6);
+  background: var(--sand);
+}
+
+.catalog-form-body {
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.catalog-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 var(--space-1) 0;
+}
+
+.catalog-subtitle {
+  font-size: 14px;
+  color: var(--ink-soft);
+  margin: 0 0 var(--space-5) 0;
+  line-height: 1.5;
+  max-width: 760px;
+}
+
+.catalog-back-link {
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+}
+
+.catalog-notice {
+  margin: 0 0 var(--space-5) 0;
+  padding: var(--space-3);
+  border: 1px solid var(--olive);
+  border-radius: var(--radius-sm);
+  background: var(--olive-soft);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.catalog-error-banner {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  background: var(--red-soft);
+  border: 1px solid var(--red);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.catalog-error-mark {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.catalog-error-text {
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.catalog-section {
+  margin-bottom: var(--space-7);
+}
+
+.catalog-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.catalog-section-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.catalog-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  text-decoration: none;
+}
+
+.catalog-btn:hover {
+  text-decoration: none;
+}
+
+.catalog-btn-primary,
+.catalog-btn-primary:hover {
+  background: var(--maroon);
+  color: var(--paper);
+}
+
+.catalog-btn-ghost,
+.catalog-btn-ghost:hover {
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1.5px solid var(--line);
+}
+
+.catalog-btn-danger,
+.catalog-btn-danger:hover {
+  background: var(--red);
+  color: var(--paper);
+}
+
+.catalog-table-wrap {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.catalog-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.catalog-table th {
+  text-align: left;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-soft);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--sand);
+}
+
+.catalog-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.catalog-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.catalog-table td.catalog-empty {
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+.catalog-slug {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.catalog-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* Visually hidden, still read out (the actions column's header). */
+.catalog-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.catalog-toggle-form {
+  margin: 0;
+}
+
+.catalog-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 26px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  border: 1.5px solid var(--line);
+  background: var(--paper);
+  color: var(--ink-soft);
+  cursor: pointer;
+  text-wrap: nowrap;
+}
+
+.catalog-pill--active {
+  border-color: var(--gold-dark);
+  color: var(--gold-dark);
+  background: var(--gold-soft);
+}
+
+.catalog-pill--locked {
+  cursor: default;
+}
+
+.catalog-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: currentcolor;
+}
+
+.catalog-row-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.catalog-btn-xs {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  text-decoration: none;
+}
+
+.catalog-btn-xs + .catalog-btn-xs {
+  margin-left: var(--space-2);
+}
+
+.catalog-btn-xs:hover {
+  text-decoration: none;
+}
+
+.catalog-btn-xs-ghost,
+.catalog-btn-xs-ghost:hover {
+  border: 1.5px solid var(--line);
+  color: var(--ink-soft);
+}
+
+.catalog-btn-xs-danger,
+.catalog-btn-xs-danger:hover {
+  border: 1.5px solid var(--red);
+  color: var(--red);
+}
+
+.catalog-form-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-5);
+}
+
+.catalog-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+}
+
+.catalog-field-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.catalog-field-input,
+.catalog-field-select {
+  height: 44px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-3);
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  width: 100%;
+}
+
+.catalog-field-input--short {
+  max-width: 160px;
+}
+
+.catalog-field-input--mono {
+  font-family: ui-monospace, monospace;
+  font-size: 14px;
+}
+
+.catalog-field-input[readonly] {
+  background: var(--sand);
+  color: var(--ink-soft);
+}
+
+.catalog-field-textarea {
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  min-height: 100px;
+  line-height: 1.6;
+  resize: vertical;
+  width: 100%;
+}
+
+.catalog-field-input--invalid,
+.catalog-field-input--invalid:focus {
+  border-color: var(--red);
+  background: var(--red-soft);
+}
+
+.catalog-field-help {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.catalog-field-error {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--red);
+}
+
+.catalog-readonly-value {
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+
+.catalog-form-actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin: var(--space-2) 0 0 0;
+}
+
+.catalog-confirm-label {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 var(--space-1) 0;
+  overflow-wrap: anywhere;
+}
+
+.catalog-confirm-count {
+  display: inline-block;
+  margin: 0 0 var(--space-4) 0;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.catalog-confirm-text {
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 var(--space-3) 0;
+}
+
 /* Fullscreen photo viewer — static/js/photo-viewer.js on PhotoSwipe 5; the
    look follows ui-design/PhotoViewer.dc.html. PhotoSwipe's stylesheet loads
    after this one, so every override of its classes is scoped to
@@ -2324,6 +2702,95 @@ input[type="checkbox"].submission-field-input--invalid {
   /* At 16px the placeholder alone takes three lines. */
   .moderation-reject-reason textarea {
     min-height: 96px;
+  }
+
+  /* -- Admin catalog: each table row becomes a card, its cells label: value
+     lines (the column name from data-label), so nothing scrolls sideways. -- */
+  .catalog-body {
+    padding: var(--space-4);
+  }
+
+  .catalog-btn {
+    height: 44px;
+  }
+
+  .catalog-section-head .catalog-btn,
+  .catalog-form-actions .catalog-btn {
+    flex: 1 1 100%;
+  }
+
+  .catalog-table-wrap {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    overflow: visible;
+  }
+
+  .catalog-table thead {
+    display: none;
+  }
+
+  .catalog-table,
+  .catalog-table tbody,
+  .catalog-table tr,
+  .catalog-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .catalog-table tr {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    padding: var(--space-2) var(--space-4);
+    margin-bottom: var(--space-3);
+  }
+
+  .catalog-table td,
+  .catalog-table tbody tr:last-child td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--line);
+    text-align: right;
+  }
+
+  .catalog-table td > * {
+    min-width: 0;
+  }
+
+  .catalog-table td[data-label]::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--ink-soft);
+    text-align: left;
+  }
+
+  .catalog-table td.catalog-row-actions {
+    justify-content: flex-end;
+    border-bottom: none;
+  }
+
+  .catalog-pill,
+  .catalog-btn-xs {
+    height: 36px;
+  }
+
+  .catalog-btn-xs {
+    padding: 0 var(--space-4);
+    font-size: 13px;
+  }
+
+  .catalog-form-card {
+    padding: var(--space-4);
   }
 
   /* -- Login pages and the confirmation page -- */

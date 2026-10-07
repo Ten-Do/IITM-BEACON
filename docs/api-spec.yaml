@@ -35,20 +35,29 @@ paths:
           in: query
           description: Filter by country code (ISO 3166-1 alpha-2, decision 1).
           schema: { type: string, minLength: 2, maxLength: 2 }
+        - name: groupIds
+          in: query
+          description: >
+            Filter by one or more topic groups (decision 11, UC-FILTER-TOPIC). Each group id
+            expands server-side to its visible member topic ids (decision 28). Combined with
+            `topicIds` by OR (decision 29). An unknown or inactive group id matches nothing.
+          schema:
+            type: array
+            items: { type: integer }
         - name: topicIds
           in: query
           description: >
-            Filter by one or more top-level topic-catalog entries — a topic-group id or a
-            standalone topic id (decision 11, UC-FILTER-TOPIC). A group id expands
-            server-side to all of its member topic ids.
+            Filter by one or more standalone topics (decision 11, UC-FILTER-TOPIC). Combined
+            with `groupIds` by OR (decision 29). An unknown or invisible topic id matches
+            nothing.
           schema:
             type: array
             items: { type: integer }
         - name: q
           in: query
           description: >
-            Free-text search over section answer text and the submitter's first/last name
-            (decision 8, decision 10).
+            Free-text search over visible sections' answer text (decision 28) and the
+            submitter's first/last name (decision 8, decision 10).
           schema: { type: string }
         - name: page
           in: query
@@ -79,7 +88,8 @@ paths:
         Never includes contact-method values or the submitter's email (decision 6) — only
         `hasRevealableContact`, telling whether the testimonial has any public contact method
         (the values themselves are revealed only on the article page — decision 27).
-        `displayName` (decision 10) appears only here, never on `TestimonialCard`.
+        `displayName` (decision 10) appears only here, never on `TestimonialCard`. Sections of
+        invisible topics and inactive achievements are left out (decision 28).
       parameters:
         - $ref: "#/components/parameters/TestimonialId"
       responses:
@@ -300,7 +310,10 @@ paths:
       security: [{ visitorSession: [] }]
       responses:
         "200":
-          description: The visitor's existing testimonial, pre-filled into the same shape used to submit it.
+          description: >
+            The visitor's existing testimonial, pre-filled into the same shape used to submit
+            it. Sections of invisible topics and inactive achievements are left out; a later
+            PUT leaves them untouched (decision 28).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/TestimonialSubmission" }
@@ -419,7 +432,8 @@ paths:
         "200":
           description: >
             Paginated list of PENDING testimonials, full detail including decrypted contact
-            methods and email, plus the admin-only diff flags (decision 18).
+            methods and email, plus the admin-only diff flags (decision 18). Sections of
+            invisible topics and inactive achievements are left out (decision 28).
           content:
             application/json:
               schema:
@@ -491,12 +505,14 @@ paths:
       security: [{ adminSession: [] }]
       responses:
         "200":
+          description: Every entry, active or not, ordered by displayOrder, then id.
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/TopicGroup" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [catalogadmin]
       summary: Create a topic group (UC-MANAGE-TOPIC-GROUPS)
@@ -508,16 +524,23 @@ paths:
             schema: { $ref: "#/components/schemas/TopicGroupCreateRequest" }
       responses:
         "201":
+          description: Created.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/TopicGroup" }
+        "400": { $ref: "#/components/responses/CatalogValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /catalog/topic-groups/{id}:
     patch:
       tags: [catalogadmin]
-      summary: Rename, reorder, or deactivate a topic group (UC-MANAGE-TOPIC-GROUPS)
+      summary: Rename, reorder, deactivate, or reactivate a topic group (UC-MANAGE-TOPIC-GROUPS)
       security: [{ adminSession: [] }]
+      description: >
+        Only the fields present are changed. Deactivating a group hides it and all of its topics
+        from new picks, and hides their sections in existing testimonials everywhere; reactivating
+        brings them back (decision 28).
       parameters:
         - $ref: "#/components/parameters/TopicGroupId"
       requestBody:
@@ -527,13 +550,29 @@ paths:
             schema: { $ref: "#/components/schemas/TopicGroupPatchRequest" }
       responses:
         "200":
-          description: >
-            Deactivating a group with active topics under it is non-destructive — the group
-            and its topics stop being offered as new picks, existing content is unaffected.
+          description: The entry after the change.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/TopicGroup" }
+        "400": { $ref: "#/components/responses/CatalogValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [catalogadmin]
+      summary: Delete a topic group with all of its topics (UC-MANAGE-TOPIC-GROUPS)
+      security: [{ adminSession: [] }]
+      description: >
+        Deletes the group, every topic in it, and every testimonial section (with its photos, rows
+        and files) of those topics, for good. Affected testimonials keep their status (decision 28).
+        A group holding the `general` topic can't exist — `general` can't be moved into a group.
+      parameters:
+        - $ref: "#/components/parameters/TopicGroupId"
+      responses:
+        "204":
+          description: Deleted.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /catalog/topics:
@@ -543,12 +582,14 @@ paths:
       security: [{ adminSession: [] }]
       responses:
         "200":
+          description: Every entry, active or not, ordered by displayOrder, then id.
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/Topic" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [catalogadmin]
       summary: Create a topic (UC-MANAGE-TOPICS)
@@ -560,25 +601,27 @@ paths:
             schema: { $ref: "#/components/schemas/TopicCreateRequest" }
       responses:
         "201":
+          description: Created.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Topic" }
-        "400":
-          description: Slug not unique.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "400": { $ref: "#/components/responses/CatalogValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/CatalogConflict" }
 
   /catalog/topics/{id}:
     patch:
       tags: [catalogadmin]
-      summary: Rename, reorder, deactivate, or re-parent a topic (UC-MANAGE-TOPICS)
+      summary: Edit, reorder, deactivate, reactivate, or re-parent a topic (UC-MANAGE-TOPICS)
       security: [{ adminSession: [] }]
       description: >
-        Setting `topicGroupId` to `null` promotes the topic to standalone; setting it to
-        another group's id re-parents it (decision 11) — non-destructive either way, existing
-        `TestimonialSection` rows keep their `topicId` regardless.
+        Only the fields present are changed. `topicGroupId` distinguishes absent (left as is) from
+        an explicit `null`, which promotes the topic to standalone; another group's id re-parents it
+        (decision 11). Existing `TestimonialSection` rows keep their `topicId` either way.
+        Deactivating a topic, or moving it into an inactive group, hides its sections in existing
+        testimonials until it is visible again (decision 28). 409 for a slug already in use, and for
+        any attempt to deactivate, re-parent into a group, or change the slug of `general`.
       parameters:
         - $ref: "#/components/parameters/TopicId"
       requestBody:
@@ -588,11 +631,31 @@ paths:
             schema: { $ref: "#/components/schemas/TopicPatchRequest" }
       responses:
         "200":
+          description: The entry after the change.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Topic" }
+        "400": { $ref: "#/components/responses/CatalogValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/CatalogConflict" }
+    delete:
+      tags: [catalogadmin]
+      summary: Delete a topic (UC-MANAGE-TOPICS)
+      security: [{ adminSession: [] }]
+      description: >
+        Deletes the topic and every testimonial section (with its photos, rows and files) of it, for
+        good. Affected testimonials keep their status (decision 28). `general` can't be deleted (409).
+      parameters:
+        - $ref: "#/components/parameters/TopicId"
+      responses:
+        "204":
+          description: Deleted.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/CatalogConflict" }
 
   /catalog/achievements:
     get:
@@ -601,12 +664,14 @@ paths:
       security: [{ adminSession: [] }]
       responses:
         "200":
+          description: Every entry, active or not, ordered by displayOrder, then id.
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/Achievement" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [catalogadmin]
       summary: Create an achievement (UC-MANAGE-ACHIEVEMENTS)
@@ -618,21 +683,24 @@ paths:
             schema: { $ref: "#/components/schemas/AchievementCreateRequest" }
       responses:
         "201":
+          description: Created.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Achievement" }
-        "400":
-          description: Slug not unique.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "400": { $ref: "#/components/responses/CatalogValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/CatalogConflict" }
 
   /catalog/achievements/{id}:
     patch:
       tags: [catalogadmin]
-      summary: Rename, reorder, or deactivate an achievement (UC-MANAGE-ACHIEVEMENTS)
+      summary: Edit, reorder, deactivate, or reactivate an achievement (UC-MANAGE-ACHIEVEMENTS)
       security: [{ adminSession: [] }]
+      description: >
+        Only the fields present are changed. Deactivating an achievement hides its ticks on existing
+        testimonials everywhere; reactivating brings them back (decision 28). 409 for a slug already
+        in use.
       parameters:
         - $ref: "#/components/parameters/AchievementId"
       requestBody:
@@ -642,10 +710,28 @@ paths:
             schema: { $ref: "#/components/schemas/AchievementPatchRequest" }
       responses:
         "200":
+          description: The entry after the change.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Achievement" }
+        "400": { $ref: "#/components/responses/CatalogValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/CatalogConflict" }
+    delete:
+      tags: [catalogadmin]
+      summary: Delete an achievement (UC-MANAGE-ACHIEVEMENTS)
+      security: [{ adminSession: [] }]
+      description: >
+        Deletes the achievement and every tick of it on testimonials, for good (decision 28).
+      parameters:
+        - $ref: "#/components/parameters/AchievementId"
+      responses:
+        "204":
+          description: Deleted.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /analytics/summary:
@@ -715,6 +801,24 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
+    CatalogValidationError:
+      description: >
+        A catalog field breaks its rule (decision 28) — a blank or over-long `label` (max 120) or
+        `guidingPrompt` (max 500), a `slug` not matching `^[a-z0-9_]+$` or longer than 64, a
+        `displayOrder` outside 0–9999, a missing required field, or a `topicGroupId` naming no
+        existing group. Every broken rule is reported at once, as `field: message` pairs joined
+        into `message`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    CatalogConflict:
+      description: >
+        The change conflicts with existing catalog state (decision 28) — the slug is already used
+        by another entry of the same kind, or the change would deactivate, delete, move into a
+        group, or re-slug the protected `general` topic.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   schemas:
     Country:
@@ -766,34 +870,39 @@ components:
       type: object
       required: [label, displayOrder]
       properties:
-        label: { type: string }
-        displayOrder: { type: integer }
+        label: { type: string, minLength: 1, maxLength: 120, description: "Trimmed; must not be blank." }
+        displayOrder: { type: integer, minimum: 0, maximum: 9999 }
 
     TopicGroupPatchRequest:
+      description: Only the fields present are changed (decision 28).
       type: object
       properties:
-        label: { type: string }
-        displayOrder: { type: integer }
+        label: { type: string, minLength: 1, maxLength: 120, description: "Trimmed; must not be blank." }
+        displayOrder: { type: integer, minimum: 0, maximum: 9999 }
         active: { type: boolean }
 
     TopicCreateRequest:
       type: object
       required: [slug, label, guidingPrompt, displayOrder]
       properties:
-        slug: { type: string }
-        label: { type: string }
-        guidingPrompt: { type: string }
-        displayOrder: { type: integer }
-        topicGroupId: { type: integer, nullable: true, description: "omit or null for a standalone topic" }
+        slug: { type: string, pattern: "^[a-z0-9_]+$", minLength: 1, maxLength: 64, description: "Unique among topics." }
+        label: { type: string, minLength: 1, maxLength: 120, description: "Trimmed; must not be blank." }
+        guidingPrompt: { type: string, minLength: 1, maxLength: 500, description: "Trimmed; must not be blank." }
+        displayOrder: { type: integer, minimum: 0, maximum: 9999 }
+        topicGroupId: { type: integer, nullable: true, description: "omit or null for a standalone topic; must name an existing group" }
 
     TopicPatchRequest:
+      description: >
+        Only the fields present are changed (decision 28). `topicGroupId` absent leaves the
+        group as is; an explicit `null` promotes the topic to standalone.
       type: object
       properties:
-        label: { type: string }
-        guidingPrompt: { type: string }
-        displayOrder: { type: integer }
-        active: { type: boolean }
-        topicGroupId: { type: integer, nullable: true, description: "set to null to promote to standalone" }
+        slug: { type: string, pattern: "^[a-z0-9_]+$", minLength: 1, maxLength: 64, description: "Unique among topics; `general` can't be re-slugged." }
+        label: { type: string, minLength: 1, maxLength: 120, description: "Trimmed; must not be blank." }
+        guidingPrompt: { type: string, minLength: 1, maxLength: 500, description: "Trimmed; must not be blank." }
+        displayOrder: { type: integer, minimum: 0, maximum: 9999 }
+        active: { type: boolean, description: "`general` can't be deactivated." }
+        topicGroupId: { type: integer, nullable: true, description: "set to null to promote to standalone; must name an existing group; `general` stays standalone" }
 
     Achievement:
       type: object
@@ -808,15 +917,17 @@ components:
       type: object
       required: [slug, label, displayOrder]
       properties:
-        slug: { type: string }
-        label: { type: string }
-        displayOrder: { type: integer }
+        slug: { type: string, pattern: "^[a-z0-9_]+$", minLength: 1, maxLength: 64, description: "Unique among achievements." }
+        label: { type: string, minLength: 1, maxLength: 120, description: "Trimmed; must not be blank." }
+        displayOrder: { type: integer, minimum: 0, maximum: 9999 }
 
     AchievementPatchRequest:
+      description: Only the fields present are changed (decision 28).
       type: object
       properties:
-        label: { type: string }
-        displayOrder: { type: integer }
+        slug: { type: string, pattern: "^[a-z0-9_]+$", minLength: 1, maxLength: 64, description: "Unique among achievements." }
+        label: { type: string, minLength: 1, maxLength: 120, description: "Trimmed; must not be blank." }
+        displayOrder: { type: integer, minimum: 0, maximum: 9999 }
         active: { type: boolean }
 
     TopicCatalogEntry:

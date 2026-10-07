@@ -49,7 +49,7 @@ public class AdminAuthViewController {
     private static final String LOGIN_CODE_VIEW = "adminauth/login-code";
     private static final String REDIRECT_TO_LOGIN_EMAIL = "redirect:/admin/login";
     /** The admin's pages a login may return to; anything else falls back to the queue. */
-    private static final Set<String> ADMIN_PAGES = Set.of("/moderation/");
+    private static final Set<String> ADMIN_PAGES = Set.of("/moderation/", "/catalog/");
     private static final String MODERATION_QUEUE = "/moderation/queue";
     private static final String WRONG_CODE_MESSAGE = "That code is wrong or has expired. Try again, or resend.";
     private static final String BLANK_EMAIL_MESSAGE = "Please enter the admin email address.";

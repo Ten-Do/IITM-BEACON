@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout/shell :: head('Topic catalog')}"></head>
+<body>
+<div th:replace="~{layout/header-admin :: header('catalog')}"></div>
+
+<main class="catalog-body">
+    <h1 class="catalog-title">Topic catalog</h1>
+    <p class="catalog-subtitle">Changes here take effect immediately on the submission form, the gallery and the
+        moderation queue — nothing needs a redeploy. Deactivating a topic or a group hides its sections in existing
+        testimonials too, until it is reactivated.</p>
+
+    <th:block th:replace="~{catalogadmin/fragments :: messages}"></th:block>
+
+    <section class="catalog-section">
+        <div class="catalog-section-head">
+            <h2 class="catalog-section-title">Topic groups</h2>
+            <a class="catalog-btn catalog-btn-primary" href="/catalog/topic-groups/new">+ Add topic group</a>
+        </div>
+        <div class="catalog-table-wrap">
+            <table class="catalog-table">
+                <thead>
+                <tr><th>Label</th><th>Order</th><th>Active</th><th><span class="catalog-sr-only">Actions</span></th></tr>
+                </thead>
+                <tbody>
+                <tr th:if="${groups.isEmpty()}">
+                    <td colspan="4" class="catalog-empty">No topic groups yet. Every topic is standalone.</td>
+                </tr>
+                <tr th:each="group : ${groups}">
+                    <td data-label="Label" th:text="${group.label()}">Academics</td>
+                    <td data-label="Order" th:text="${group.displayOrder()}">1</td>
+                    <td data-label="Active">
+                        <form th:replace="~{catalogadmin/fragments :: toggle(@{/catalog/topic-groups/{id}/active(id=${group.id()})}, ${group.active()})}"></form>
+                    </td>
+                    <td class="catalog-row-actions">
+                        <a class="catalog-btn-xs catalog-btn-xs-ghost"
+                           th:href="@{/catalog/topic-groups/{id}(id=${group.id()})}">Edit</a>
+                        <a class="catalog-btn-xs catalog-btn-xs-danger"
+                           th:href="@{/catalog/topic-groups/{id}/delete(id=${group.id()})}">Delete</a>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="catalog-section">
+        <div class="catalog-section-head">
+            <h2 class="catalog-section-title">Topics</h2>
+            <a class="catalog-btn catalog-btn-primary" href="/catalog/topics/new">+ Add topic</a>
+        </div>
+        <div class="catalog-table-wrap">
+            <table class="catalog-table">
+                <thead>
+                <tr><th>Label</th><th>Slug</th><th>Group</th><th>Order</th><th>Active</th>
+                    <th><span class="catalog-sr-only">Actions</span></th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="topic : ${topics}" th:with="general=${topic.slug() == 'general'}">
+                    <td data-label="Label" th:text="${topic.label()}">Teaching Quality</td>
+                    <td data-label="Slug" class="catalog-slug" th:text="${topic.slug()}">academics_teaching</td>
+                    <td data-label="Group">
+                        <span th:text="${topic.topicGroupId() == null} ? 'Standalone' : ${groupLabels[topic.topicGroupId()]}">Academics</span>
+                        <span class="catalog-note"
+                              th:if="${topic.active() and topic.topicGroupId() != null and inactiveGroupIds.contains(topic.topicGroupId())}">Hidden: its group is inactive</span>
+                    </td>
+                    <td data-label="Order" th:text="${topic.displayOrder()}">1</td>
+                    <td data-label="Active">
+                        <th:block th:if="${general}">
+                            <span th:replace="~{catalogadmin/fragments :: lockedPill(${topic.active()})}"></span>
+                        </th:block>
+                        <th:block th:unless="${general}">
+                            <form th:replace="~{catalogadmin/fragments :: toggle(@{/catalog/topics/{id}/active(id=${topic.id()})}, ${topic.active()})}"></form>
+                        </th:block>
+                    </td>
+                    <td class="catalog-row-actions">
+                        <a class="catalog-btn-xs catalog-btn-xs-ghost"
+                           th:href="@{/catalog/topics/{id}(id=${topic.id()})}">Edit</a>
+                        <a class="catalog-btn-xs catalog-btn-xs-danger" th:unless="${general}"
+                           th:href="@{/catalog/topics/{id}/delete(id=${topic.id()})}">Delete</a>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+</body>
+</html>

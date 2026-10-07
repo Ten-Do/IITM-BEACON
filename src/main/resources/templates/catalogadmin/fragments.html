@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- The flash messages a catalog action leaves for the list page it redirects to. -->
+<th:block th:fragment="messages">
+    <p class="catalog-notice" role="status" th:if="${notice}" th:text="${notice}">Saved.</p>
+    <div class="catalog-error-banner" role="alert" th:if="${error}">
+        <span class="catalog-error-mark">!</span>
+        <p class="catalog-error-text" th:text="${error}">Something went wrong.</p>
+    </div>
+</th:block>
+
+<!-- The one-click Active/Inactive pill: a form that sets the opposite state (an explicit
+     state, not a flip, so a double click can't undo itself). -->
+<form th:fragment="toggle(action, active)" method="post" th:action="${action}" class="catalog-toggle-form">
+    <input type="hidden" name="active" th:value="${!active}"/>
+    <button type="submit" class="catalog-pill" th:classappend="${active} ? 'catalog-pill--active' : ''"
+            th:title="${active} ? 'Click to deactivate' : 'Click to activate'">
+        <span class="catalog-pill-dot" aria-hidden="true"></span>
+        <span th:text="${active} ? 'Active' : 'Inactive'">Active</span>
+    </button>
+</form>
+
+<!-- A state that can't be toggled here (the protected general topic). -->
+<span th:fragment="lockedPill(active)" class="catalog-pill catalog-pill--locked"
+      th:classappend="${active} ? 'catalog-pill--active' : ''" title="The general topic can't be deactivated">
+    <span class="catalog-pill-dot" aria-hidden="true"></span>
+    <span th:text="${active} ? 'Active' : 'Inactive'">Active</span>
+</span>
+</body>
+</html>

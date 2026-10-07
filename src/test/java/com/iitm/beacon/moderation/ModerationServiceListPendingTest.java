@@ -21,7 +21,6 @@ import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.domain.topic.Topic;
 import com.iitm.beacon.domain.topic.TopicRepository;
 import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,7 +57,10 @@ class ModerationServiceListPendingTest {
     @BeforeEach
     void setUp() {
         moderationService = new ModerationService(
-                testimonialRepository, mock(NotificationMailer.class), new PhotoUrlResolver(), java.time.Clock.systemUTC());
+                testimonialRepository,
+                mock(NotificationMailer.class),
+                new PhotoUrlResolver(),
+                java.time.Clock.systemUTC());
     }
 
     private Country country(String code) {
@@ -190,7 +192,10 @@ class ModerationServiceListPendingTest {
         // Includes the private contact method too, unlike the public gallery view.
         assertThat(dto.contactMethods()).hasSize(2);
         assertThat(dto.contactMethods())
-                .extracting(ModerationContactMethodViewDto::type, ModerationContactMethodViewDto::value, ModerationContactMethodViewDto::isPublic)
+                .extracting(
+                        ModerationContactMethodViewDto::type,
+                        ModerationContactMethodViewDto::value,
+                        ModerationContactMethodViewDto::isPublic)
                 .containsExactlyInAnyOrder(
                         org.assertj.core.groups.Tuple.tuple("whatsapp", "+1234567890", false),
                         org.assertj.core.groups.Tuple.tuple("telegram", "@davidj", true));

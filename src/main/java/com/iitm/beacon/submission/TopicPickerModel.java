@@ -1,5 +1,6 @@
 package com.iitm.beacon.submission;
 
+import com.iitm.beacon.domain.topic.Topic;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -26,7 +27,7 @@ import java.util.regex.Pattern;
 final class TopicPickerModel {
 
     /** The standalone topic that is always picked when the form opens (it can still be unpicked). */
-    static final String DEFAULT_TOPIC_SLUG = "general";
+    static final String DEFAULT_TOPIC_SLUG = Topic.GENERAL_SLUG;
 
     private static final String GROUP_KIND = "GROUP";
     private static final Pattern SECTION_FIELD = Pattern.compile("sections\\[(\\d{1,9})](.*)");

@@ -8,7 +8,11 @@ import com.iitm.beacon.common.crypto.EmailLookupHashService;
 import com.iitm.beacon.domain.AbstractRepositoryTest;
 import com.iitm.beacon.domain.country.Country;
 import com.iitm.beacon.domain.country.CountryRepository;
+import com.iitm.beacon.domain.topic.Topic;
+import com.iitm.beacon.domain.topic.TopicRepository;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +30,9 @@ class TestimonialRepositoryTest extends AbstractRepositoryTest {
 
     @Autowired
     private CountryRepository countryRepository;
+
+    @Autowired
+    private TopicRepository topicRepository;
 
     @Autowired
     private TestEntityManager entityManager;
@@ -226,5 +233,52 @@ class TestimonialRepositoryTest extends AbstractRepositoryTest {
         var countries = testimonialRepository.findDistinctCountriesByStatus(TestimonialStatus.APPROVED);
 
         assertThat(countries).isEmpty();
+    }
+
+    // -- findDistinctByStatusAndModifiedSectionTopicIdIn (decision 28: re-pend on reactivation) --
+
+    private Topic topic(String slug) {
+        return topicRepository.saveAndFlush(Topic.builder()
+                .slug(slug)
+                .label(slug)
+                .guidingPrompt(slug + "?")
+                .displayOrder(1)
+                .active(true)
+                .build());
+    }
+
+    /** A testimonial of {@code status} with one section per topic, flagged {@code modified} as mapped. */
+    private Testimonial withSections(String email, TestimonialStatus status, Map<Topic, Boolean> modifiedByTopic) {
+        Testimonial t = validTestimonialBuilder(email).status(status).build();
+        modifiedByTopic.forEach((topic, modified) -> t.getSections().add(TestimonialSection.builder()
+                .testimonial(t)
+                .topic(topic)
+                .answerText("Words.")
+                .modified(modified)
+                .build()));
+        return testimonialRepository.saveAndFlush(t);
+    }
+
+    @Test
+    void findDistinctByStatusAndModifiedSectionTopicIdIn_matchesOnlyThatStatusWithAModifiedSectionAmongTheTopics() {
+        Topic reactivated = topic("repend_reactivated");
+        Topic alsoReactivated = topic("repend_also_reactivated");
+        Topic other = topic("repend_other");
+        Testimonial match = withSections("repend-match@example.com", TestimonialStatus.APPROVED,
+                Map.of(reactivated, true, other, false));
+        Testimonial twoMatchingSections = withSections("repend-two@example.com", TestimonialStatus.APPROVED,
+                Map.of(reactivated, true, alsoReactivated, true));
+        withSections("repend-unmodified@example.com", TestimonialStatus.APPROVED,
+                Map.of(reactivated, false, other, true));
+        withSections("repend-pending@example.com", TestimonialStatus.PENDING, Map.of(reactivated, true));
+        withSections("repend-rejected@example.com", TestimonialStatus.REJECTED, Map.of(reactivated, true));
+        withSections("repend-other-topic@example.com", TestimonialStatus.APPROVED, Map.of(other, true));
+        entityManager.clear();
+
+        List<Testimonial> found = testimonialRepository.findDistinctByStatusAndModifiedSectionTopicIdIn(
+                TestimonialStatus.APPROVED, List.of(reactivated.getId(), alsoReactivated.getId()));
+
+        assertThat(found).extracting(Testimonial::getId)
+                .containsExactlyInAnyOrder(match.getId(), twoMatchingSections.getId());
     }
 }

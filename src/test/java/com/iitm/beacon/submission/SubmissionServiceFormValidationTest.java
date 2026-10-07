@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import com.iitm.beacon.common.crypto.EmailLookupHashService;
 import com.iitm.beacon.common.error.FieldViolation;
 import com.iitm.beacon.common.error.SubmissionValidationException;
+import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.config.PhotoStorageProperties;
 import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
@@ -146,7 +147,11 @@ class SubmissionServiceFormValidationTest {
                 contactTypeRepository,
                 countryRepository,
                 emailLookupHashService,
-                new PhotoStorageService(properties, new PhotoUrlResolver(), new PhotoImageProcessor(properties)),
+                new PhotoStorageService(
+                        properties,
+                        new PhotoUrlResolver(),
+                        new PhotoImageProcessor(properties),
+                        new PhotoFileDeleter(properties)),
                 properties,
                 clock,
                 topicGroupRepository,

@@ -9,6 +9,7 @@ import com.iitm.beacon.common.error.FieldViolation;
 import com.iitm.beacon.common.error.NotFoundException;
 import com.iitm.beacon.common.error.SubmissionValidationException;
 import com.iitm.beacon.common.error.TestimonialAlreadyExistsException;
+import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.config.PhotoStorageProperties;
 import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
@@ -156,7 +157,11 @@ class SubmissionServiceValidationTest {
                 contactTypeRepository,
                 countryRepository,
                 emailLookupHashService,
-                new PhotoStorageService(properties, new PhotoUrlResolver(), new PhotoImageProcessor(properties)),
+                new PhotoStorageService(
+                        properties,
+                        new PhotoUrlResolver(),
+                        new PhotoImageProcessor(properties),
+                        new PhotoFileDeleter(properties)),
                 properties,
                 clock,
                 topicGroupRepository,

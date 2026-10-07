@@ -17,9 +17,11 @@
         </select>
         <div class="gallery-topic-filter-row">
             <label class="gallery-chip-toggle" th:each="entry : ${topics}"
-                   th:with="entryId=${entry.kind() == 'GROUP' ? entry.groupId() : entry.topicId()}">
-                <input type="checkbox" name="topicIds" th:value="${entryId}"
-                       th:checked="${topicIds.contains(entryId)}" class="gallery-chip-checkbox"/>
+                   th:with="isGroup=${entry.kind() == 'GROUP'}">
+                <input type="checkbox" th:name="${isGroup ? 'groupIds' : 'topicIds'}"
+                       th:value="${isGroup ? entry.groupId() : entry.topicId()}"
+                       th:checked="${isGroup ? groupIds.contains(entry.groupId()) : topicIds.contains(entry.topicId())}"
+                       class="gallery-chip-checkbox"/>
                 <span th:text="${entry.label()}">Topic</span>
             </label>
         </div>
@@ -57,12 +59,12 @@
          th:if="${results.size() > 0 and (results.totalElements() > results.size() or results.page() > 0)}"
          th:with="totalPages=${(results.totalElements() + results.size() - 1) / results.size()}">
         <a th:if="${results.page() > 0}"
-           th:href="@{/gallery(page=${results.page() - 1}, country=${country}, q=${q}, topicIds=${topicIds})}"
+           th:href="@{/gallery(page=${results.page() - 1}, country=${country}, q=${q}, groupIds=${groupIds}, topicIds=${topicIds})}"
            class="gallery-pagination-link">Previous</a>
         <span class="gallery-pagination-status"
               th:text="'Page ' + (${results.page()} + 1) + ' of ' + ${totalPages}">Page 1 of 1</span>
         <a th:if="${results.page() + 1 < totalPages}"
-           th:href="@{/gallery(page=${results.page() + 1}, country=${country}, q=${q}, topicIds=${topicIds})}"
+           th:href="@{/gallery(page=${results.page() + 1}, country=${country}, q=${q}, groupIds=${groupIds}, topicIds=${topicIds})}"
            class="gallery-pagination-link">Next</a>
     </nav>
 </main>

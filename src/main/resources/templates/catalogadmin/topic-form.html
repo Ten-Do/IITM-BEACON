@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout/shell :: head(${editingId} == null ? 'Add topic' : 'Edit topic')}"></head>
+<body>
+<div th:replace="~{layout/header-admin :: header('catalog')}"></div>
+
+<main class="catalog-body catalog-form-body">
+    <a class="catalog-back-link" href="/catalog/topics">&larr; Topic catalog</a>
+    <h1 class="catalog-title" th:text="${editingId} == null ? 'Add topic' : 'Edit topic'">Add topic</h1>
+    <p class="catalog-subtitle" th:unless="${general}">Each topic is one answer block on the submission form, with
+        its guiding prompt as the question.</p>
+    <p class="catalog-subtitle" th:if="${general}">This is the mandatory catch-all topic: its slug and group can't
+        change, and it can't be deactivated or deleted. Its label, prompt and order can.</p>
+
+    <form class="catalog-form-card" method="post" th:object="${form}"
+          th:action="${editingId} == null ? @{/catalog/topics/new} : @{/catalog/topics/{id}(id=${editingId})}">
+        <div class="catalog-error-banner" role="alert" th:if="${#fields.hasGlobalErrors()}">
+            <span class="catalog-error-mark">!</span>
+            <p class="catalog-error-text" th:each="message : ${#fields.globalErrors()}" th:text="${message}">Error</p>
+        </div>
+
+        <div class="catalog-field">
+            <label class="catalog-field-label" for="label">Label</label>
+            <input class="catalog-field-input" id="label" th:field="*{label}" required="required" maxlength="120"
+                   th:errorclass="catalog-field-input--invalid"/>
+            <span class="catalog-field-error" th:if="${#fields.hasErrors('label')}" th:errors="*{label}">Error</span>
+        </div>
+
+        <div class="catalog-field">
+            <label class="catalog-field-label" for="slug">Slug</label>
+            <input class="catalog-field-input catalog-field-input--mono" id="slug" th:field="*{slug}"
+                   required="required" maxlength="64" th:readonly="${general}"
+                   th:errorclass="catalog-field-input--invalid" aria-describedby="slug-help"/>
+            <span class="catalog-field-help" id="slug-help">Lowercase letters a–z, digits and underscores, up to 64
+                characters; unique among topics.</span>
+            <span class="catalog-field-error" th:if="${#fields.hasErrors('slug')}" th:errors="*{slug}">Error</span>
+        </div>
+
+        <div class="catalog-field">
+            <label class="catalog-field-label" for="guidingPrompt">Guiding prompt</label>
+            <textarea class="catalog-field-textarea" id="guidingPrompt" th:field="*{guidingPrompt}"
+                      required="required" maxlength="500" th:errorclass="catalog-field-input--invalid"></textarea>
+            <span class="catalog-field-error" th:if="${#fields.hasErrors('guidingPrompt')}"
+                  th:errors="*{guidingPrompt}">Error</span>
+        </div>
+
+        <div class="catalog-field" th:unless="${general}">
+            <label class="catalog-field-label" for="topicGroupId">Group</label>
+            <select class="catalog-field-select" id="topicGroupId" th:field="*{topicGroupId}"
+                    th:errorclass="catalog-field-input--invalid">
+                <option value="">Standalone</option>
+                <option th:each="group : ${groups}" th:value="${group.id()}"
+                        th:text="${group.active()} ? ${group.label()} : ${group.label()} + ' (inactive)'">Academics</option>
+            </select>
+            <span class="catalog-field-help">A topic in an inactive group stays hidden until the group is
+                reactivated.</span>
+            <span class="catalog-field-error" th:if="${#fields.hasErrors('topicGroupId')}"
+                  th:errors="*{topicGroupId}">Error</span>
+        </div>
+        <div class="catalog-field" th:if="${general}">
+            <span class="catalog-field-label">Group</span>
+            <span class="catalog-readonly-value">Standalone</span>
+            <input type="hidden" name="topicGroupId" value=""/>
+        </div>
+
+        <div class="catalog-field">
+            <label class="catalog-field-label" for="displayOrder">Display order</label>
+            <input class="catalog-field-input catalog-field-input--short" id="displayOrder" type="number" min="0"
+                   max="9999" step="1" th:field="*{displayOrder}" required="required"
+                   th:errorclass="catalog-field-input--invalid" aria-describedby="displayOrder-help"/>
+            <span class="catalog-field-help" id="displayOrder-help">0–9999. Within a group, its subtopics' order; for
+                a standalone topic, its place among the groups.</span>
+            <span class="catalog-field-error" th:if="${#fields.hasErrors('displayOrder')}"
+                  th:errors="*{displayOrder}">Error</span>
+        </div>
+
+        <div class="catalog-form-actions">
+            <button type="submit" class="catalog-btn catalog-btn-primary"
+                    th:text="${editingId} == null ? 'Add topic' : 'Save changes'">Save</button>
+            <a class="catalog-btn catalog-btn-ghost" href="/catalog/topics">Cancel</a>
+        </div>
+    </form>
+</main>
+</body>
+</html>

@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.iitm.beacon.domain.AbstractRepositoryTest;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -73,5 +76,31 @@ class AchievementRepositoryTest extends AbstractRepositoryTest {
                 .build());
 
         assertThat(saved.isActive()).isTrue();
+    }
+
+    // -- findAllByOrderByDisplayOrderAscIdAsc: the admin catalog list (display order, then id) --
+
+    @Test
+    void findAllOrdered_sortsByDisplayOrder_thenBreaksTiesById() {
+        Achievement late = achievementRepository.saveAndFlush(achievement("fixture_order_late", 9999, true));
+        Achievement tieFirst = achievementRepository.saveAndFlush(achievement("fixture_order_tie_a", 0, true));
+        Achievement tieSecond = achievementRepository.saveAndFlush(achievement("fixture_order_tie_b", 0, true));
+        Set<Long> fixtureIds = Set.of(late.getId(), tieFirst.getId(), tieSecond.getId());
+
+        List<Achievement> all = achievementRepository.findAllByOrderByDisplayOrderAscIdAsc();
+
+        assertThat(all).isSortedAccordingTo(
+                Comparator.comparing(Achievement::getDisplayOrder).thenComparing(Achievement::getId));
+        assertThat(all.stream().map(Achievement::getId).filter(fixtureIds::contains))
+                .containsExactly(tieFirst.getId(), tieSecond.getId(), late.getId());
+    }
+
+    private static Achievement achievement(String slug, int displayOrder, boolean active) {
+        return Achievement.builder()
+                .slug(slug)
+                .label("Fixture " + slug)
+                .displayOrder(displayOrder)
+                .active(active)
+                .build();
     }
 }

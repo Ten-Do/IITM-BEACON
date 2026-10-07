@@ -113,11 +113,13 @@ forcing a renumbering pass across every file that cites one.
 ## NFR-CATALOG-CONFIGURABILITY: Topic/achievement content configurability
 - **Source:** Admin, via the catalog screen (UC-MANAGE-TOPIC-GROUPS, UC-MANAGE-TOPICS,
   UC-MANAGE-ACHIEVEMENTS)
-- **Stimulus:** adds, renames, reorders, deactivates, or (topics only) re-parents a `Topic`,
-  `TopicGroup`, or `Achievement` row
+- **Stimulus:** adds, renames, reorders, deactivates, deletes, or (topics only) re-parents a
+  `Topic`, `TopicGroup`, or `Achievement` row
 - **Environment:** any environment, no application redeploy involved
 - **Artifact:** `Topic`, `TopicGroup`, and `Achievement` reference tables
-- **Response:** the change is reflected on the live submission form and gallery filters
+- **Response:** the change is reflected on the live submission form and gallery filters, and —
+  for a deactivation or delete — in the gallery articles, moderation queue and edit forms of
+  testimonials that already reference the entry (decision 28)
 - **Response Measure:** takes effect immediately — these tables are read per request, with no
   application-level caching to invalidate, so no code change or redeploy is ever required
 

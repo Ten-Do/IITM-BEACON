@@ -12,6 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -95,6 +97,18 @@ class LoginReturnFlowTest {
         mockMvc.perform(get("/moderation/queue?page=2").session(session))
                 .andExpect(status().isOk())
                 .andExpect(view().name("moderation/queue"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/catalog/topics", "/catalog/achievements", "/catalog/topics/5",
+        "/catalog/topic-groups/new", "/catalog/achievements/3/delete"})
+    void adminLogin_afterAnUnauthenticatedCatalogPage_returnsToIt(String page) throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        expectRedirectToLogin(session, page, "/admin/login");
+
+        adminLogin(session).andExpect(status().isFound()).andExpect(redirectedUrl(page));
+
+        assertThat(hasSavedRequest(session)).isFalse();
     }
 
     @Test

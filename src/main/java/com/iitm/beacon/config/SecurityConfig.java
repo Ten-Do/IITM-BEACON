@@ -43,8 +43,9 @@ public class SecurityConfig {
 
     private static final PathPatternRequestMatcher.Builder PATHS = PathPatternRequestMatcher.withDefaults();
 
-    /** The admin's HTML pages. */
-    private static final RequestMatcher ADMIN_PAGES = PATHS.matcher("/moderation/**");
+    /** The admin's HTML pages: the moderation queue and the catalog (decision 28). */
+    private static final RequestMatcher ADMIN_PAGES =
+            new OrRequestMatcher(PATHS.matcher("/moderation/**"), PATHS.matcher("/catalog/**"));
 
     /** The public gallery's pages: home (a redirect), the list, and one article. */
     private static final String[] GALLERY_PAGES = {"/", "/gallery", "/gallery/*"};
@@ -117,6 +118,8 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/api/moderation/**")
                         .hasRole("ADMIN")
+                        .requestMatchers("/api/catalog/**")
+                        .hasRole("ADMIN")
                         // The public gallery pages — the list and one article — are read-only.
                         .requestMatchers(HttpMethod.GET, GALLERY_PAGES)
                         .permitAll()
@@ -134,6 +137,8 @@ public class SecurityConfig {
                         .requestMatchers("/submissions/form", "/submissions/confirmation")
                         .hasRole("VISITOR")
                         .requestMatchers("/moderation/**")
+                        .hasRole("ADMIN")
+                        .requestMatchers("/catalog/**")
                         .hasRole("ADMIN")
                         .anyRequest()
                         .denyAll())

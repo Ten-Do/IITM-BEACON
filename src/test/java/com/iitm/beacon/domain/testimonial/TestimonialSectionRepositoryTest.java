@@ -11,6 +11,7 @@ import com.iitm.beacon.domain.country.CountryRepository;
 import com.iitm.beacon.domain.topic.Topic;
 import com.iitm.beacon.domain.topic.TopicRepository;
 import java.time.Instant;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -129,5 +130,78 @@ class TestimonialSectionRepositoryTest extends AbstractRepositoryTest {
                 testimonialSectionRepository.findDistinctTopicIdsByTestimonialStatus(TestimonialStatus.APPROVED);
 
         assertThat(found).isEmpty();
+    }
+
+    // -- countDistinctTestimonialsByTopicIdIn: the catalog delete confirmation page --
+
+    @Test
+    void countDistinctTestimonials_oneTestimonialWithSeveralMatchingSections_countsOnce() {
+        Topic first = fixtureTopic("fixture_count_first");
+        Topic second = fixtureTopic("fixture_count_second");
+        section(testimonial, first);
+        section(testimonial, second);
+
+        long count = testimonialSectionRepository.countDistinctTestimonialsByTopicIdIn(
+                Set.of(first.getId(), second.getId()));
+
+        assertThat(count).isEqualTo(1);
+    }
+
+    @Test
+    void countDistinctTestimonials_countsEveryStatus_andIgnoresOtherTopics() {
+        Topic target = fixtureTopic("fixture_count_target");
+        Topic other = fixtureTopic("fixture_count_other");
+        Testimonial approved = fixtureTestimonial("section-count-approved@example.com", TestimonialStatus.APPROVED);
+        Testimonial rejected = fixtureTestimonial("section-count-rejected@example.com", TestimonialStatus.REJECTED);
+        Testimonial unrelated = fixtureTestimonial("section-count-unrelated@example.com", TestimonialStatus.APPROVED);
+        section(testimonial, target);
+        section(approved, target);
+        section(rejected, target);
+        section(unrelated, other);
+
+        long count = testimonialSectionRepository.countDistinctTestimonialsByTopicIdIn(Set.of(target.getId()));
+
+        assertThat(count).isEqualTo(3);
+    }
+
+    @Test
+    void countDistinctTestimonials_topicsWithoutSections_isZero() {
+        Topic unused = fixtureTopic("fixture_count_unused");
+
+        assertThat(testimonialSectionRepository.countDistinctTestimonialsByTopicIdIn(Set.of(unused.getId())))
+                .isZero();
+    }
+
+    private Topic fixtureTopic(String slug) {
+        return topicRepository.saveAndFlush(Topic.builder()
+                .slug(slug)
+                .label("Fixture " + slug)
+                .guidingPrompt("A fixture guiding prompt?")
+                .displayOrder(1)
+                .build());
+    }
+
+    private Testimonial fixtureTestimonial(String email, TestimonialStatus status) {
+        return testimonialRepository.saveAndFlush(Testimonial.builder()
+                .firstName("Fixture")
+                .lastName("Author")
+                .rollNumber("GE26Z001")
+                .admissionYear(2024)
+                .email(email)
+                .emailLookupHash(hashService.hash(email))
+                .country(testimonial.getCountry())
+                .recommendationScore(7)
+                .dataProcessingConsent(true)
+                .status(status)
+                .createdAt(Instant.parse("2026-01-02T00:00:00Z"))
+                .build());
+    }
+
+    private TestimonialSection section(Testimonial owner, Topic sectionTopic) {
+        return testimonialSectionRepository.saveAndFlush(TestimonialSection.builder()
+                .testimonial(owner)
+                .topic(sectionTopic)
+                .answerText("Fixture answer.")
+                .build());
     }
 }

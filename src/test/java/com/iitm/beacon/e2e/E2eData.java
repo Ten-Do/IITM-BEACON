@@ -25,6 +25,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -40,6 +42,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  * (the queue prints the id); each seeded testimonial's {@code createdAt}
  * (the queue prints and orders by it) is 2026-09-01T09:00Z plus one minute
  * per testimonial seeded since. Photos are flat-colour synthetic pictures.
+ * It also puts the topic groups, topics and achievements back exactly as
+ * seeded (rows the catalog admin created are deleted, changed seed rows
+ * restored, ids restarted), so a catalog change never leaks into the next
+ * test.
  *
  * <p>Registered only in the e2e tests' context, through {@code @Import} on
  * {@link E2eTestBase}.
@@ -67,6 +73,11 @@ public class E2eData {
     private final TransactionTemplate transaction;
     private final JdbcTemplate jdbc;
     private int seededSinceClear;
+    // Static, so a second Spring context in the same run (sharing the one
+    // database) can't snapshot a catalog an earlier test already changed.
+    private static List<Map<String, Object>> seededGroups;
+    private static List<Map<String, Object>> seededTopics;
+    private static List<Map<String, Object>> seededAchievements;
 
     public E2eData(
             TestimonialRepository testimonials,
@@ -104,6 +115,55 @@ public class E2eData {
         photos.forEach(photoStorage::delete);
         jdbc.execute("ALTER TABLE testimonial ALTER COLUMN id RESTART WITH 1");
         seededSinceClear = 0;
+        restoreCatalog();
+    }
+
+    /**
+     * Takes a snapshot of the seeded catalog the first time, and every time
+     * after puts it back. Runs after the testimonials are gone, so nothing
+     * references a row it deletes.
+     */
+    private void restoreCatalog() {
+        if (seededGroups == null) {
+            seededGroups = jdbc.queryForList("SELECT id, label, display_order, active FROM topic_group");
+            seededTopics = jdbc.queryForList(
+                    "SELECT id, topic_group_id, slug, label, guiding_prompt, display_order, active FROM topic");
+            seededAchievements = jdbc.queryForList("SELECT id, slug, label, display_order, active FROM achievement");
+            return;
+        }
+        jdbc.update("DELETE FROM topic WHERE id NOT IN (" + ids(seededTopics) + ")");
+        jdbc.update("DELETE FROM topic_group WHERE id NOT IN (" + ids(seededGroups) + ")");
+        jdbc.update("DELETE FROM achievement WHERE id NOT IN (" + ids(seededAchievements) + ")");
+        // Free every seeded slug first, so restoring one never clashes with
+        // another seed row the test renamed to it.
+        jdbc.update("UPDATE topic SET slug = CONCAT('e2e_restore_', id)");
+        jdbc.update("UPDATE achievement SET slug = CONCAT('e2e_restore_', id)");
+        for (Map<String, Object> row : seededGroups) {
+            jdbc.update("UPDATE topic_group SET label = ?, display_order = ?, active = ? WHERE id = ?",
+                    row.get("label"), row.get("display_order"), row.get("active"), row.get("id"));
+        }
+        for (Map<String, Object> row : seededTopics) {
+            jdbc.update("UPDATE topic SET topic_group_id = ?, slug = ?, label = ?, guiding_prompt = ?,"
+                            + " display_order = ?, active = ? WHERE id = ?",
+                    row.get("topic_group_id"), row.get("slug"), row.get("label"), row.get("guiding_prompt"),
+                    row.get("display_order"), row.get("active"), row.get("id"));
+        }
+        for (Map<String, Object> row : seededAchievements) {
+            jdbc.update("UPDATE achievement SET slug = ?, label = ?, display_order = ?, active = ? WHERE id = ?",
+                    row.get("slug"), row.get("label"), row.get("display_order"), row.get("active"), row.get("id"));
+        }
+        restartIdsAfter("topic_group", seededGroups);
+        restartIdsAfter("topic", seededTopics);
+        restartIdsAfter("achievement", seededAchievements);
+    }
+
+    private static String ids(List<Map<String, Object>> rows) {
+        return rows.stream().map(row -> String.valueOf(row.get("id"))).collect(Collectors.joining(","));
+    }
+
+    private void restartIdsAfter(String table, List<Map<String, Object>> rows) {
+        long next = rows.stream().mapToLong(row -> ((Number) row.get("id")).longValue()).max().orElse(0) + 1;
+        jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN id RESTART WITH " + next);
     }
 
     // -- shared fixtures --

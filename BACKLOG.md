@@ -2,6 +2,26 @@
 
 ## TODO
 
+- **BL-038**: Renaming a topic's or achievement's slug in the catalog (decision 28) while a
+  visitor has the submission form open breaks that visitor's submit: the form posts sections by
+  `topicSlug` and ticks by achievement slug, so the old slug is rejected as "Unknown or inactive
+  topic"/"achievement" and the visitor has to reload the form, losing nothing saved but seeing
+  an error they can't explain. Decide whether to accept it (rare, admin-only action), or make
+  the form post ids instead of slugs (api-spec `TestimonialSubmission` change), or show a
+  "the topic list changed, please reload" message; document and test the chosen behaviour.
+  Found while building the catalog admin (M5).
+
+- **BL-037**: A path id that isn't a number answers 500 on every REST endpoint that takes one —
+  e.g. `DELETE /api/catalog/topics/abc`, `POST /api/moderation/testimonials/abc/approve`, or an
+  id beyond `Long` like `/api/catalog/topics/99999999999999999999`: Spring raises
+  `MethodArgumentTypeMismatchException`, which `GlobalExceptionHandler` has no handler for, so it
+  falls through to the generic 500. The same happens to a non-numeric id in a query-parameter
+  list — `GET /api/gallery/testimonials?topicIds=abc` or `?groupIds=abc` (found while splitting
+  the gallery filter, decision 29). Decide the status (400 for a malformed id, or 404 as for an
+  unknown one), add the handler with a fixed message (the exception's own text names Java types),
+  document it in `api-spec.yaml`, and test it on one endpoint per slice. Found while building the
+  catalog admin API (M5).
+
 - **BL-036**: The gallery list has no defined order: `GalleryService.browse` pages through
   `testimonialRepository.findAll(spec, pageable)` with an unsorted `PageRequest`, so the SQL has
   `LIMIT/OFFSET` but no `ORDER BY`. H2 happens to return the rows in the order of the

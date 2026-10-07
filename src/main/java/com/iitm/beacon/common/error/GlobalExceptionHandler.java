@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -43,6 +44,10 @@ public class GlobalExceptionHandler {
             "The upload is too large or contains too many parts. Send fewer or smaller photos.";
     private static final String MALFORMED_MULTIPART_MESSAGE =
             "The multipart request could not be read. Check the request body and try again.";
+    private static final String UNREADABLE_BODY_MESSAGE =
+            "The request body could not be read. Send valid JSON with the expected field types.";
+    private static final String CATALOG_CONFLICT_FALLBACK_MESSAGE =
+            "The change conflicts with the existing catalog.";
 
     private final Clock clock;
 
@@ -123,6 +128,41 @@ public class GlobalExceptionHandler {
                 HttpStatus.CONFLICT,
                 safeMessage(ex.getMessage(), TESTIMONIAL_NOT_PENDING_FALLBACK_MESSAGE),
                 request);
+    }
+
+    /**
+     * A catalog field rule the service checks itself (decision 28), e.g. a
+     * {@code topicGroupId} naming no existing group. Like {@link
+     * #handleSubmissionValidation}, the message already joins every violation
+     * as {@code field: message} pairs written by the application.
+     */
+    @ExceptionHandler(CatalogValidationException.class)
+    public ResponseEntity<ErrorResponse> handleCatalogValidation(
+            CatalogValidationException ex, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, safeMessage(ex.getMessage(), VALIDATION_FALLBACK_MESSAGE), request);
+    }
+
+    /** A slug already in use, or a change the protected {@code general} topic refuses (decision 28). */
+    @ExceptionHandler(CatalogConflictException.class)
+    public ResponseEntity<ErrorResponse> handleCatalogConflict(
+            CatalogConflictException ex, HttpServletRequest request) {
+        return build(
+                HttpStatus.CONFLICT,
+                safeMessage(ex.getMessage(), CATALOG_CONFLICT_FALLBACK_MESSAGE),
+                request);
+    }
+
+    /**
+     * A JSON body that can't be read — malformed, missing where required, or
+     * with a value of the wrong type (e.g. text for a number). A client
+     * error, not a 500; the parser's own message names internal classes and
+     * echoes the input, so it is only logged.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(
+            HttpMessageNotReadableException ex, HttpServletRequest request) {
+        log.debug("Rejected unreadable request body to {}: {}", request.getRequestURI(), ex.getMessage());
+        return build(HttpStatus.BAD_REQUEST, UNREADABLE_BODY_MESSAGE, request);
     }
 
     /**

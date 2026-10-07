@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.iitm.beacon.domain.AbstractRepositoryTest;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -148,5 +151,32 @@ class TopicRepositoryTest extends AbstractRepositoryTest {
         var found = topicRepository.findByTopicGroupId(emptyGroup.getId());
 
         assertThat(found).isEmpty();
+    }
+
+    // -- findAllByOrderByDisplayOrderAscIdAsc: the admin catalog list (display order, then id) --
+
+    @Test
+    void findAllOrdered_sortsByDisplayOrder_thenBreaksTiesById() {
+        Topic late = topicRepository.saveAndFlush(topic(null, "fixture_order_late", 9999, true));
+        Topic tieFirst = topicRepository.saveAndFlush(topic(null, "fixture_order_tie_a", 0, true));
+        Topic tieSecond = topicRepository.saveAndFlush(topic(null, "fixture_order_tie_b", 0, true));
+        Set<Long> fixtureIds = Set.of(late.getId(), tieFirst.getId(), tieSecond.getId());
+
+        List<Topic> all = topicRepository.findAllByOrderByDisplayOrderAscIdAsc();
+
+        assertThat(all).isSortedAccordingTo(Comparator.comparing(Topic::getDisplayOrder).thenComparing(Topic::getId));
+        assertThat(all.stream().map(Topic::getId).filter(fixtureIds::contains))
+                .containsExactly(tieFirst.getId(), tieSecond.getId(), late.getId());
+    }
+
+    private static Topic topic(TopicGroup group, String slug, int displayOrder, boolean active) {
+        return Topic.builder()
+                .topicGroup(group)
+                .slug(slug)
+                .label("Fixture " + slug)
+                .guidingPrompt("A fixture guiding prompt?")
+                .displayOrder(displayOrder)
+                .active(active)
+                .build();
     }
 }

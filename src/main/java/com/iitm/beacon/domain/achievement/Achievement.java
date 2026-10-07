@@ -46,4 +46,13 @@ public class Achievement {
     @Builder.Default
     @Column(name = "active", nullable = false)
     private boolean active = true;
+
+    /**
+     * Visibility (decision 28): achievements have no group, so this is just
+     * {@code active} — kept as its own predicate for symmetry with {@code
+     * Topic.isVisible()}.
+     */
+    public boolean isVisible() {
+        return active;
+    }
 }

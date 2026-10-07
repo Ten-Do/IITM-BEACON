@@ -119,6 +119,18 @@ class SessionCheckScriptTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"/catalog/topics", "/catalog/achievements", "/catalog/topic-groups/new",
+        "/catalog/topics/new", "/catalog/achievements/new"})
+    void catalogPage_loadsTheScriptOnceDeferredWithTheAdminPingUrl(String path) throws Exception {
+        List<String> tags = sessionCheckScriptTags(get(path).with(authentication(admin())));
+
+        assertThat(tags).singleElement().satisfies(tag -> {
+            assertThat(tag).contains("data-session-url=\"/api/moderation/session\"");
+            assertThat(tag).containsPattern("\\sdefer[\\s>=]");
+        });
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"/submissions/form", "/submissions/confirmation"})
     void visitorProtectedPage_loadsTheScriptOnceDeferredWithTheVisitorPingUrl(String path) throws Exception {
         List<String> tags = sessionCheckScriptTags(get(path).with(authentication(visitor())));

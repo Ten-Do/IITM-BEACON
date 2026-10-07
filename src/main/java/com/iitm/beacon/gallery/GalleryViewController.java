@@ -77,19 +77,22 @@ public class GalleryViewController {
     @GetMapping("/gallery")
     public String list(
             @RequestParam(required = false) String country,
+            @RequestParam(required = false) List<Long> groupIds,
             @RequestParam(required = false) List<Long> topicIds,
             @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "0") int page,
             Model model) {
         int safePage = Math.max(page, 0);
+        List<Long> safeGroupIds = groupIds == null ? List.of() : groupIds;
         List<Long> safeTopicIds = topicIds == null ? List.of() : topicIds;
-        PageResponse<TestimonialCardDto> results =
-                galleryService.browse(country, safeTopicIds, q, PageRequest.of(safePage, PAGE_SIZE));
+        PageResponse<TestimonialCardDto> results = galleryService.browse(
+                country, safeGroupIds, safeTopicIds, q, PageRequest.of(safePage, PAGE_SIZE));
 
         model.addAttribute("results", results);
         model.addAttribute("countries", galleryService.listCountriesWithApproved());
         model.addAttribute("topics", galleryService.listTopicCatalogWithApproved());
         model.addAttribute("country", country);
+        model.addAttribute("groupIds", safeGroupIds);
         model.addAttribute("topicIds", safeTopicIds);
         model.addAttribute("q", q);
         return LIST_VIEW;

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout/shell :: head('Achievements')}"></head>
+<body>
+<div th:replace="~{layout/header-admin :: header('achievements')}"></div>
+
+<main class="catalog-body">
+    <h1 class="catalog-title">Achievements</h1>
+    <p class="catalog-subtitle">Shown as a full checklist on the submission form. Deactivating an achievement also
+        hides its ticks on existing testimonials, until it is reactivated; deleting it removes them for good.</p>
+
+    <th:block th:replace="~{catalogadmin/fragments :: messages}"></th:block>
+
+    <section class="catalog-section">
+        <div class="catalog-section-head">
+            <h2 class="catalog-section-title">All achievements</h2>
+            <a class="catalog-btn catalog-btn-primary" href="/catalog/achievements/new">+ Add achievement</a>
+        </div>
+        <div class="catalog-table-wrap">
+            <table class="catalog-table">
+                <thead>
+                <tr><th>Label</th><th>Slug</th><th>Order</th><th>Active</th>
+                    <th><span class="catalog-sr-only">Actions</span></th></tr>
+                </thead>
+                <tbody>
+                <tr th:if="${achievements.isEmpty()}">
+                    <td colspan="5" class="catalog-empty">No achievements yet. Add one to offer it on the submission
+                        form.</td>
+                </tr>
+                <tr th:each="achievement : ${achievements}">
+                    <td data-label="Label" th:text="${achievement.label()}">Made new friends here</td>
+                    <td data-label="Slug" class="catalog-slug" th:text="${achievement.slug()}">new_friends</td>
+                    <td data-label="Order" th:text="${achievement.displayOrder()}">1</td>
+                    <td data-label="Active">
+                        <form th:replace="~{catalogadmin/fragments :: toggle(@{/catalog/achievements/{id}/active(id=${achievement.id()})}, ${achievement.active()})}"></form>
+                    </td>
+                    <td class="catalog-row-actions">
+                        <a class="catalog-btn-xs catalog-btn-xs-ghost"
+                           th:href="@{/catalog/achievements/{id}(id=${achievement.id()})}">Edit</a>
+                        <a class="catalog-btn-xs catalog-btn-xs-danger"
+                           th:href="@{/catalog/achievements/{id}/delete(id=${achievement.id()})}">Delete</a>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+</body>
+</html>

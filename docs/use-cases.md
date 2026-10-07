@@ -110,13 +110,15 @@ increasingly extreme dissatisfaction — a merely lukewarm experience should rea
 
 ## Topic catalog (used by UC-FILTER-TOPIC, UC-EXPAND-TESTIMONIAL, UC-CREATE-TESTIMONIAL, UC-EDIT-TESTIMONIAL, UC-MANAGE-TOPIC-GROUPS, UC-MANAGE-TOPICS, UC-VIEW-DASHBOARD) — seed data, not a fixed spec
 
-`Topic` is a database-driven reference table (decision 14), organized in two levels: a small set
+`Topic` is a database-driven reference table (decision 11), organized in two levels: a small set
 of top-level **topic groups** (e.g. "OGE / International Office"), each holding several
 subtopics, plus a handful of standalone topics that have no group. Rows below are the seed
 content, loaded once via migration; from then on, groups and topics are managed through the
 admin's catalog screen (UC-MANAGE-TOPIC-GROUPS, UC-MANAGE-TOPICS) — the same screen also manages
 achievements (UC-MANAGE-ACHIEVEMENTS) — no code change or redeploy required to add, rename,
-reorder, deactivate, or re-parent one.
+reorder, deactivate, re-parent, or delete one. A topic is *visible* while it is active and
+either standalone or in an active group; sections of an invisible topic are hidden everywhere,
+including in testimonials submitted earlier (decision 28).
 
 Wherever topics are surfaced to a visitor — the submission/edit picker (UC-CREATE-TESTIMONIAL,
 UC-EDIT-TESTIMONIAL), the gallery's topic filter (UC-FILTER-TOPIC), the homepage dashboard
@@ -126,7 +128,7 @@ just one of them and leave the rest blank); choosing a standalone topic reveals 
 block. Each filled subtopic or standalone topic becomes an optional `TestimonialSection`; a
 testimonial requires at least one filled section overall — a group with none of its subtopics
 filled in doesn't count. `general` is a mandatory standalone catch-all, always present in the
-list.
+list — the catalog screen can't deactivate, delete, re-parent, or re-slug it (decision 28).
 
 | Group | Tag slug | Guiding prompt |
 |---|---|---|
@@ -182,7 +184,7 @@ list.
 
 ## Contact method catalog (used by UC-CREATE-TESTIMONIAL, UC-EDIT-TESTIMONIAL) — seed data, not a fixed spec
 
-Contact type is a database-driven reference table, same pattern as `Topic` (decision 14) — a
+Contact type is a database-driven reference table, same pattern as `Topic` (decision 11) — a
 new type is a database edit, not a code change. Each entry a submitter adds pairs one of these
 types with a value; the value may take any of the shapes its type accepts (a handle, a number,
 or a full link — whichever is convenient), and is checked against that type's own validation
@@ -204,7 +206,7 @@ flag (UC-REVEAL-CONTACT); an entry can only be marked public once it has a value
 
 ## Achievement checklist (used by UC-CREATE-TESTIMONIAL, UC-EDIT-TESTIMONIAL, UC-MANAGE-ACHIEVEMENTS) — seed data, not a fixed spec
 
-Per decision 16, `Achievement` is also database-driven, managed through the same admin catalog
+Per decision 13, `Achievement` is also database-driven, managed through the same admin catalog
 screen as topics (UC-MANAGE-ACHIEVEMENTS). Unlike topics, the full list is shown as checkboxes
 at once, near the end of the submission/edit form (after the contacts block, before the consent
 checkbox) — nothing is picked first. Seed content:
@@ -245,7 +247,7 @@ while here.
 - **Actor:** Visitor
 - **Preconditions:** none.
 - **Main flow:** Visitor enters free text → system returns `APPROVED` testimonials whose
-  section text or submitter name matches, combinable with the country filter
+  visible section text (decision 28) or submitter name matches, combinable with the country filter
   (UC-FILTER-COUNTRY) and the topic-tag filter (UC-FILTER-TOPIC) as AND conditions.
 - **Alternate flows:** No matches → empty state with a clear "no results" message.
 - **Postconditions:** search term persists across pagination within the session.
@@ -256,8 +258,8 @@ while here.
   topic.
 - **Main flow:** Visitor selects one or more top-level entries from the filter — a topic group
   or a standalone topic → system shows `APPROVED` testimonials that have a non-empty section for
-  any subtopic under a selected group, or for a selected standalone topic, combinable with
-  country filter and search.
+  any visible subtopic under a selected group, or for a selected standalone topic, combinable
+  with country filter and search. Only visible topics are offered and matched (decision 28).
 - **Alternate flows:** Selected entry has zero matching approved testimonials → empty state.
 - **Postconditions:** filter selection persists across pagination within the session.
 
@@ -272,8 +274,10 @@ while here.
   own flat entry, same as a group heading. The
   recommendation score is shown with its label. A subtopic or standalone topic changed by the
   most recently approved edit (UC-EDIT-TESTIMONIAL, UC-APPROVE-TESTIMONIAL) carries an "updated"
-  badge.
-- **Alternate flows:** none.
+  badge. Sections of invisible topics and ticks of inactive achievements are not shown
+  (decision 28).
+- **Alternate flows:** no visible section left (every section's topic was deactivated or
+  deleted) → the article renders without sections, the rest of it unchanged.
 - **Postconditions:** expanded state persists until the visitor collapses it.
 
 ## UC-VIEW-PHOTOS-FULLSCREEN: View testimonial photos fullscreen
@@ -385,7 +389,9 @@ while here.
   and the only things that changed are country, recommendation score, achievements, or contact
   methods, it stays `APPROVED` immediately — no re-moderation. Otherwise (section text, photos,
   or identity fields changed; or the testimonial was `PENDING`/`REJECTED` before this edit),
-  status is set to `PENDING` regardless of what it was before, and saves.
+  status is set to `PENDING` regardless of what it was before, and saves. Sections of invisible
+  topics and ticks of inactive achievements are not shown on the form and are left untouched by
+  the save, so they return if the admin reactivates them (decision 28).
 - **Alternate flows:** same validation failures as UC-CREATE-TESTIMONIAL → nothing is saved,
   actionable message per field. If the testimonial was `REJECTED`, editing and resubmitting
   takes it out of the purge path (UC-PURGE-REJECTED), since it's no longer `REJECTED`.
@@ -420,8 +426,8 @@ while here.
 - **Alternate flows:** Wrong code → attempt counter decrements, 401 returned; counter reaches
   the configured max → OTP invalidated outright, admin must restart from UC-ADMIN-OTP-REQUEST.
   Expired OTP → same outcome as exhausted attempts. The admin's session expired (24 hours idle)
-  while they were on a moderation page → reloading it, or coming back to its browser tab, takes
-  them to the login page; after logging in they return to the moderation page they were on
+  while they were on a moderation or catalog page → reloading it, or coming back to its browser
+  tab, takes them to the login page; after logging in they return to the page they were on
   instead of the queue.
 - **Postconditions:** admin may hold sessions on multiple devices at once (no concurrent-session
   cap).
@@ -435,7 +441,8 @@ while here.
   moderates the tags too, and opens fullscreen (UC-VIEW-PHOTOS-FULLSCREEN). On a resubmitted
   edit of a previously-approved testimonial,
   the sections/fields changed since the last approval are visually flagged, so the admin can
-  review just the diff.
+  review just the diff. Sections of invisible topics and ticks of inactive achievements are not
+  shown (decision 28).
 - **Alternate flows:** queue is empty → empty state.
 - **Postconditions:** none (read-only).
 
@@ -447,7 +454,9 @@ while here.
   UC-REVEAL-CONTACT, for the ones marked public). If this was a resubmitted edit, the modified
   flags on its changed sections/fields clear and those parts show as "updated" in the public
   view (UC-EXPAND-TESTIMONIAL).
-- **Alternate flows:** none.
+- **Alternate flows:** a changed section whose topic is currently hidden (decision 28) keeps
+  its modified flag; once the topic is visible again, the testimonial returns to `PENDING` for
+  review of that section.
 - **Postconditions:** testimonial leaves the pending queue.
 
 ## UC-REJECT-TESTIMONIAL: Reject a testimonial
@@ -475,36 +484,55 @@ while here.
 - **Actor:** Admin
 - **Preconditions:** admin authenticated (UC-ADMIN-OTP-VERIFY).
 - **Main flow:** Admin opens the catalog screen → creates a new topic group (label, display
-  order), or renames, reorders, or deactivates an existing one → the change is reflected
-  immediately on the next submission/edit form (UC-CREATE-TESTIMONIAL, UC-EDIT-TESTIMONIAL) and
-  gallery filter (UC-FILTER-TOPIC) load — same immediacy guarantee as
-  NFR-CATALOG-CONFIGURABILITY.
-- **Alternate flows:** deactivating a group that still has active topics under it → the group
-  and its topics stop being offered as new picks, but content already submitted under them is
-  unaffected and keeps rendering (UC-EXPAND-TESTIMONIAL) — nothing is deleted.
+  order), or renames, reorders, deactivates, reactivates, or deletes an existing one → the
+  change is reflected immediately on the next submission/edit form (UC-CREATE-TESTIMONIAL,
+  UC-EDIT-TESTIMONIAL), gallery filter (UC-FILTER-TOPIC), gallery article
+  (UC-EXPAND-TESTIMONIAL) and moderation queue (UC-VIEW-PENDING-QUEUE) load — same immediacy
+  guarantee as NFR-CATALOG-CONFIGURABILITY.
+- **Alternate flows:** deactivating a group → the group and all its topics stop being offered as
+  new picks, and sections already submitted under its topics are hidden everywhere (decision
+  28); nothing is deleted, so reactivating the group brings them back — an approved testimonial
+  whose section under it was edited while hidden returns to `PENDING` instead. Deleting a group →
+  confirmation page showing how many testimonials have sections under it → on confirm, the group,
+  all its topics, and every section (with its photos) under them are deleted for good; affected
+  testimonials keep their status. Invalid input (blank or over-long label, display order outside
+  0–9999) → form re-shown with a message per field, nothing saved.
 - **Postconditions:** none beyond the catalog change itself.
 
 ## UC-MANAGE-TOPICS: Manage topics
 - **Actor:** Admin
 - **Preconditions:** admin authenticated (UC-ADMIN-OTP-VERIFY).
 - **Main flow:** Admin creates a new topic (slug, label, guiding prompt, display order),
-  assigning it to an existing group or leaving it standalone; or renames, reorders, deactivates,
-  or re-parents (moves to a different group, or promotes to standalone) an existing topic → the
-  change is reflected immediately, same as UC-MANAGE-TOPIC-GROUPS.
-- **Alternate flows:** deactivating a topic → stops being offered as a new pick, same
-  non-destructive handling as UC-MANAGE-TOPIC-GROUPS; a new or renamed slug must stay unique.
+  assigning it to an existing group or leaving it standalone; or edits an existing topic's
+  slug, label, guiding prompt, or display order, deactivates or reactivates it, re-parents it
+  (moves to a different group, or promotes to standalone), or deletes it → the change is
+  reflected immediately, same as UC-MANAGE-TOPIC-GROUPS.
+- **Alternate flows:** deactivating a topic → stops being offered as a new pick, and its
+  sections in existing testimonials are hidden until it is reactivated (decision 28). Moving a
+  topic into an inactive group hides it the same way. When it becomes visible again, an
+  approved testimonial whose section for it was edited while hidden returns to `PENDING`. Deleting a topic → confirmation page
+  showing how many testimonials have a section for it → on confirm, the topic and every section
+  (with its photos) for it are deleted for good. A new or changed slug must stay unique → 409,
+  form re-shown with the error. The `general` topic can't be deactivated, deleted, moved into a
+  group, or re-slugged → 409; its label, guiding prompt and display order stay editable. Invalid
+  input → form re-shown with a message per field, nothing saved.
 - **Postconditions:** none beyond the catalog change itself.
 
 ## UC-MANAGE-ACHIEVEMENTS: Manage achievements
 - **Actor:** Admin
 - **Preconditions:** admin authenticated (UC-ADMIN-OTP-VERIFY).
 - **Main flow:** Admin opens the catalog screen → creates a new achievement (slug, label,
-  display order), or renames, reorders, or deactivates an existing one → the change is
-  reflected immediately on the next submission/edit form (UC-CREATE-TESTIMONIAL,
-  UC-EDIT-TESTIMONIAL) load — same immediacy guarantee as NFR-CATALOG-CONFIGURABILITY.
-- **Alternate flows:** deactivating an achievement → stops being offered as a new pick, same
-  non-destructive handling as UC-MANAGE-TOPIC-GROUPS/UC-MANAGE-TOPICS (already-ticked instances
-  on existing testimonials are unaffected); a new or renamed slug must stay unique.
+  display order), or edits an existing one's slug, label, or display order, deactivates or
+  reactivates it, or deletes it → the change is reflected immediately on the next
+  submission/edit form (UC-CREATE-TESTIMONIAL, UC-EDIT-TESTIMONIAL), gallery article
+  (UC-EXPAND-TESTIMONIAL) and moderation queue (UC-VIEW-PENDING-QUEUE) load — same immediacy
+  guarantee as NFR-CATALOG-CONFIGURABILITY.
+- **Alternate flows:** deactivating an achievement → stops being offered as a new pick, and
+  ticks of it on existing testimonials are hidden until it is reactivated (decision 28).
+  Deleting an achievement → confirmation page showing how many testimonials ticked it → on
+  confirm, the achievement and every tick of it are deleted for good. A new or changed slug must
+  stay unique → 409, form re-shown with the error. Invalid input → form re-shown with a message
+  per field, nothing saved.
 - **Postconditions:** none beyond the catalog change itself.
 
 ## UC-VIEW-DASHBOARD: View homepage analytics dashboard

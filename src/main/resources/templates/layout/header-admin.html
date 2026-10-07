@@ -11,6 +11,8 @@
     <button th:replace="~{layout/nav-toggle :: toggle('admin-nav')}"></button>
     <nav class="header-nav" id="admin-nav" aria-label="Main">
         <a href="/moderation/queue" th:classappend="${activePage == 'queue'} ? 'active' : ''">Queue</a>
+        <a href="/catalog/topics" th:classappend="${activePage == 'catalog'} ? 'active' : ''">Catalog</a>
+        <a href="/catalog/achievements" th:classappend="${activePage == 'achievements'} ? 'active' : ''">Achievements</a>
     </nav>
     <!-- Every page with this header needs the admin login, so each gets the session check.
          The admin login pages use their own inline header instead, and must never get it. -->

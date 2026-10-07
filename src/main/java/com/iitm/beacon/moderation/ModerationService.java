@@ -5,6 +5,8 @@ import com.iitm.beacon.common.error.TestimonialNotPendingException;
 import com.iitm.beacon.common.web.PageResponse;
 import com.iitm.beacon.config.NotificationMailer;
 import com.iitm.beacon.config.PhotoUrlResolver;
+import com.iitm.beacon.domain.achievement.Achievement;
+import com.iitm.beacon.domain.achievement.TestimonialAchievement;
 import com.iitm.beacon.domain.testimonial.PhotoTag;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
@@ -86,9 +88,10 @@ public class ModerationService {
     }
 
     /**
-     * Approves a pending testimonial (UC-APPROVE-TESTIMONIAL): clears every
-     * diff flag back to {@code false}, since nothing is left un-reviewed
-     * once approved (decision 18).
+     * Approves a pending testimonial (UC-APPROVE-TESTIMONIAL): clears the
+     * diff flags of everything the admin reviewed (decision 18). A section
+     * of a hidden topic was not on the admin's screen, so it keeps its
+     * {@code modified} flag until it has been reviewed (decision 28).
      */
     @Transactional
     public void approve(Long id) {
@@ -97,7 +100,9 @@ public class ModerationService {
         testimonial.setReviewedAt(Instant.now(clock));
         testimonial.setIdentityModified(false);
         testimonial.setScoreModified(false);
-        testimonial.getSections().forEach(section -> section.setModified(false));
+        testimonial.getSections().stream()
+                .filter(section -> section.getTopic().isVisible())
+                .forEach(section -> section.setModified(false));
     }
 
     /**
@@ -136,13 +141,31 @@ public class ModerationService {
                 + ". Please log in to review and resubmit it.";
     }
 
-    private ModerationTestimonialDetailDto toDetail(Testimonial testimonial) {
-        List<ModerationSectionViewDto> sections = testimonial.getSections().stream()
+    /**
+     * The sections the admin reviews, in catalog order: only those of
+     * visible topics (decision 28) — a hidden section, with its photos and
+     * diff flag, stays out of the queue until its topic is visible again.
+     */
+    private List<ModerationSectionViewDto> visibleSections(Testimonial testimonial) {
+        return testimonial.getSections().stream()
+                .filter(section -> section.getTopic().isVisible())
                 .sorted(SECTION_ORDER)
                 .map(this::toSectionView)
                 .toList();
-        List<String> achievementSlugs = testimonial.getAchievements().stream()
-                .map(ta -> ta.getAchievement().getSlug())
+    }
+
+    /** The achievement ticks the admin sees: only those of visible achievements (decision 28). */
+    private static List<Achievement> visibleAchievements(Testimonial testimonial) {
+        return testimonial.getAchievements().stream()
+                .map(TestimonialAchievement::getAchievement)
+                .filter(Achievement::isVisible)
+                .toList();
+    }
+
+    private ModerationTestimonialDetailDto toDetail(Testimonial testimonial) {
+        List<ModerationSectionViewDto> sections = visibleSections(testimonial);
+        List<String> achievementSlugs = visibleAchievements(testimonial).stream()
+                .map(Achievement::getSlug)
                 .toList();
         List<ModerationContactMethodViewDto> contactMethods = testimonial.getContactMethods().stream()
                 .map(cm -> new ModerationContactMethodViewDto(
@@ -166,13 +189,9 @@ public class ModerationService {
     }
 
     private ModerationQueueCardDto toQueueCard(Testimonial testimonial) {
-        List<ModerationSectionViewDto> sections = testimonial.getSections().stream()
-                .sorted(SECTION_ORDER)
-                .map(this::toSectionView)
-                .toList();
-        List<ModerationAchievementViewDto> achievements = testimonial.getAchievements().stream()
-                .map(ta -> new ModerationAchievementViewDto(
-                        ta.getAchievement().getSlug(), ta.getAchievement().getLabel()))
+        List<ModerationSectionViewDto> sections = visibleSections(testimonial);
+        List<ModerationAchievementViewDto> achievements = visibleAchievements(testimonial).stream()
+                .map(achievement -> new ModerationAchievementViewDto(achievement.getSlug(), achievement.getLabel()))
                 .toList();
         List<ModerationContactMethodViewDto> contactMethods = testimonial.getContactMethods().stream()
                 .map(cm -> new ModerationContactMethodViewDto(

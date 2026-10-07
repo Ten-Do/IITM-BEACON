@@ -105,7 +105,7 @@ class GalleryServiceBrowseTest {
         testimonialRepository.saveAndFlush(rejected);
 
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse(null, null, null, PageRequest.of(0, 20));
+                galleryService.browse(null, null, null, null, PageRequest.of(0, 20));
 
         assertThat(result.content()).extracting(TestimonialCardDto::id).containsExactly(approved.getId());
         assertThat(result.totalElements()).isEqualTo(1);
@@ -126,7 +126,7 @@ class GalleryServiceBrowseTest {
         testimonialRepository.saveAndFlush(usTestimonial);
 
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse("IN", null, null, PageRequest.of(0, 20));
+                galleryService.browse("IN", null, null, null, PageRequest.of(0, 20));
 
         assertThat(result.content()).extracting(TestimonialCardDto::id).containsExactly(inTestimonial.getId());
     }
@@ -140,7 +140,7 @@ class GalleryServiceBrowseTest {
         testimonialRepository.saveAndFlush(inTestimonial);
 
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse("in", null, null, PageRequest.of(0, 20));
+                galleryService.browse("in", null, null, null, PageRequest.of(0, 20));
 
         assertThat(result.content()).extracting(TestimonialCardDto::id).containsExactly(inTestimonial.getId());
     }
@@ -154,7 +154,7 @@ class GalleryServiceBrowseTest {
         testimonialRepository.saveAndFlush(approved);
 
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse("  ", List.of(), "   ", PageRequest.of(0, 20));
+                galleryService.browse("  ", List.of(), List.of(), "   ", PageRequest.of(0, 20));
 
         assertThat(result.content()).extracting(TestimonialCardDto::id).containsExactly(approved.getId());
     }
@@ -175,13 +175,13 @@ class GalleryServiceBrowseTest {
 
         Long academicsTeachingId = topic("academics_teaching").getId();
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse(null, List.of(academicsTeachingId), null, PageRequest.of(0, 20));
+                galleryService.browse(null, null, List.of(academicsTeachingId), null, PageRequest.of(0, 20));
 
         assertThat(result.content()).extracting(TestimonialCardDto::id).containsExactly(withTopic.getId());
     }
 
     @Test
-    void browse_topicFilterWithGroupId_expandsToMemberTopics() {
+    void browse_groupIdsFilter_expandsToMemberTopics() {
         Testimonial withGroupMember = testimonial("browse-topic-group@example.com", india())
                 .status(TestimonialStatus.APPROVED)
                 .build();
@@ -198,7 +198,7 @@ class GalleryServiceBrowseTest {
 
         Long academicsGroupId = topic("academics_difficulty").getTopicGroup().getId();
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse(null, List.of(academicsGroupId), null, PageRequest.of(0, 20));
+                galleryService.browse(null, List.of(academicsGroupId), null, null, PageRequest.of(0, 20));
 
         assertThat(result.content())
                 .extracting(TestimonialCardDto::id)
@@ -216,19 +216,15 @@ class GalleryServiceBrowseTest {
         Long generalTopicId = topic("general").getId();
         Long bogusId = 999_999L;
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse(null, List.of(generalTopicId, bogusId), null, PageRequest.of(0, 20));
+                galleryService.browse(null, null, List.of(generalTopicId, bogusId), null, PageRequest.of(0, 20));
 
         assertThat(result.content()).extracting(TestimonialCardDto::id).containsExactly(withTopic.getId());
     }
 
     @Test
-    void browse_topicFilterWithOnlyUnmatchedIds_isTreatedAsNoTopicFilterAtAll() {
-        // Per the documented contract, an id matching neither a topic nor a
-        // topic-group is silently dropped during expansion; if every
-        // requested id is unmatched, the expanded list is empty and
-        // hasAnyTopic(...) becomes a no-op (null), not a "matches nothing"
-        // filter -- the topic filter behaves as if it had never been
-        // supplied, same as an explicitly empty topicIds list.
+    void browse_topicFilterWithOnlyUnmatchedIds_matchesNothing() {
+        // api-spec.yaml: an unknown topic id matches nothing (decision 29) --
+        // a topic filter whose every id is unknown is not "no filter".
         Testimonial withTopic = testimonial("browse-topic-only-unmatched@example.com", india())
                 .status(TestimonialStatus.APPROVED)
                 .build();
@@ -236,9 +232,10 @@ class GalleryServiceBrowseTest {
         testimonialRepository.saveAndFlush(withTopic);
 
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse(null, List.of(999_999L), null, PageRequest.of(0, 20));
+                galleryService.browse(null, null, List.of(999_999L), null, PageRequest.of(0, 20));
 
-        assertThat(result.content()).extracting(TestimonialCardDto::id).containsExactly(withTopic.getId());
+        assertThat(result.content()).isEmpty();
+        assertThat(result.totalElements()).isZero();
     }
 
     @Test
@@ -256,7 +253,7 @@ class GalleryServiceBrowseTest {
         testimonialRepository.saveAndFlush(notMatching);
 
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse(null, null, "food", PageRequest.of(0, 20));
+                galleryService.browse(null, null, null, "food", PageRequest.of(0, 20));
 
         assertThat(result.content()).extracting(TestimonialCardDto::id).containsExactly(matching.getId());
     }
@@ -278,7 +275,7 @@ class GalleryServiceBrowseTest {
         testimonialRepository.saveAndFlush(other);
 
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse(null, null, "zuba", PageRequest.of(0, 20));
+                galleryService.browse(null, null, null, "zuba", PageRequest.of(0, 20));
 
         assertThat(result.content()).extracting(TestimonialCardDto::id).containsExactly(byLastName.getId());
     }
@@ -307,7 +304,7 @@ class GalleryServiceBrowseTest {
 
         Long topicId = topic("academics_teaching").getId();
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse("IN", List.of(topicId), "superb", PageRequest.of(0, 20));
+                galleryService.browse("IN", null, List.of(topicId), "superb", PageRequest.of(0, 20));
 
         assertThat(result.content()).extracting(TestimonialCardDto::id).containsExactly(matchesAll.getId());
     }
@@ -315,7 +312,7 @@ class GalleryServiceBrowseTest {
     @Test
     void browse_zeroMatches_returnsEmptyPageWithZeroTotal() {
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse("IN", null, "no-such-keyword-anywhere", PageRequest.of(0, 20));
+                galleryService.browse("IN", null, null, "no-such-keyword-anywhere", PageRequest.of(0, 20));
 
         assertThat(result.content()).isEmpty();
         assertThat(result.totalElements()).isZero();
@@ -332,9 +329,9 @@ class GalleryServiceBrowseTest {
         }
 
         PageResponse<TestimonialCardDto> firstPage =
-                galleryService.browse(null, null, null, PageRequest.of(0, 2));
+                galleryService.browse(null, null, null, null, PageRequest.of(0, 2));
         PageResponse<TestimonialCardDto> secondPage =
-                galleryService.browse(null, null, null, PageRequest.of(1, 2));
+                galleryService.browse(null, null, null, null, PageRequest.of(1, 2));
 
         assertThat(firstPage.content()).hasSize(2);
         assertThat(secondPage.content()).hasSize(1);
@@ -353,7 +350,7 @@ class GalleryServiceBrowseTest {
         testimonialRepository.saveAndFlush(t);
 
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse(null, null, null, PageRequest.of(5, 20));
+                galleryService.browse(null, null, null, null, PageRequest.of(5, 20));
 
         assertThat(result.content()).isEmpty();
         assertThat(result.totalElements()).isEqualTo(1);
@@ -380,7 +377,7 @@ class GalleryServiceBrowseTest {
         testimonialRepository.saveAndFlush(t);
 
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse(null, null, null, PageRequest.of(0, 20));
+                galleryService.browse(null, null, null, null, PageRequest.of(0, 20));
 
         TestimonialCardDto card = result.content().stream()
                 .filter(c -> c.id().equals(t.getId()))
@@ -411,7 +408,9 @@ class GalleryServiceBrowseTest {
         t.getSections().add(general);
         testimonialRepository.saveAndFlush(t);
 
-        TestimonialCardDto card = galleryService.browse(null, null, null, PageRequest.of(0, 20)).content().stream()
+        TestimonialCardDto card = galleryService.browse(null, null, null, null, PageRequest.of(0, 20))
+                .content()
+                .stream()
                 .filter(c -> c.id().equals(t.getId()))
                 .findFirst()
                 .orElseThrow();
@@ -428,7 +427,7 @@ class GalleryServiceBrowseTest {
         testimonialRepository.saveAndFlush(t);
 
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse(null, null, null, PageRequest.of(0, 20));
+                galleryService.browse(null, null, null, null, PageRequest.of(0, 20));
 
         TestimonialCardDto card = result.content().stream()
                 .filter(c -> c.id().equals(t.getId()))
@@ -447,7 +446,7 @@ class GalleryServiceBrowseTest {
         testimonialRepository.saveAndFlush(t);
 
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse(null, null, null, PageRequest.of(0, 20));
+                galleryService.browse(null, null, null, null, PageRequest.of(0, 20));
 
         TestimonialCardDto card = result.content().stream()
                 .filter(c -> c.id().equals(t.getId()))
@@ -466,7 +465,7 @@ class GalleryServiceBrowseTest {
         testimonialRepository.saveAndFlush(t);
 
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse(null, null, null, PageRequest.of(0, 20));
+                galleryService.browse(null, null, null, null, PageRequest.of(0, 20));
 
         TestimonialCardDto card = result.content().stream()
                 .filter(c -> c.id().equals(t.getId()))
@@ -486,7 +485,7 @@ class GalleryServiceBrowseTest {
         testimonialRepository.saveAndFlush(t);
 
         PageResponse<TestimonialCardDto> result =
-                galleryService.browse(null, null, null, PageRequest.of(0, 20));
+                galleryService.browse(null, null, null, null, PageRequest.of(0, 20));
 
         // TestimonialCardDto has no name-derived component at all (decision
         // 10) -- this is enforced by the record's shape at compile time; this

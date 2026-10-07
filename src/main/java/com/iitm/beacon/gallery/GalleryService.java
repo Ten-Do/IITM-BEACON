@@ -3,6 +3,8 @@ package com.iitm.beacon.gallery;
 import com.iitm.beacon.common.error.NotFoundException;
 import com.iitm.beacon.common.web.PageResponse;
 import com.iitm.beacon.config.PhotoUrlResolver;
+import com.iitm.beacon.domain.achievement.Achievement;
+import com.iitm.beacon.domain.achievement.TestimonialAchievement;
 import com.iitm.beacon.domain.country.Country;
 import com.iitm.beacon.domain.testimonial.ContactMethod;
 import com.iitm.beacon.domain.testimonial.Photo;
@@ -22,6 +24,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
@@ -73,15 +76,17 @@ public class GalleryService {
 
     /**
      * Lists approved testimonials matching every supplied filter (decision
-     * 8), combined with AND semantics. A requested topic-group id expands
-     * server-side to all of its member topic ids (decision 11).
+     * 8), combined with AND semantics. The topic filter takes topic-group
+     * ids and topic ids as separate lists (decision 29), combined with OR;
+     * each group id expands server-side to its visible member topics
+     * (decisions 11, 28). Search matches only visible sections' text.
      */
-    public PageResponse<TestimonialCardDto> browse(String country, List<Long> topicIds, String q, Pageable pageable) {
-        List<Long> expandedTopicIds = expandTopicIds(topicIds);
+    public PageResponse<TestimonialCardDto> browse(
+            String country, List<Long> groupIds, List<Long> topicIds, String q, Pageable pageable) {
         Specification<Testimonial> spec = Specification.allOf(
                 TestimonialSpecifications.statusIs(TestimonialStatus.APPROVED),
                 TestimonialSpecifications.countryIs(country),
-                TestimonialSpecifications.hasAnyTopic(expandedTopicIds),
+                topicFilter(groupIds, topicIds),
                 TestimonialSpecifications.matchesQuery(q));
 
         Page<Testimonial> page = testimonialRepository.findAll(spec, pageable);
@@ -91,32 +96,43 @@ public class GalleryService {
     }
 
     /**
-     * Expands each requested top-level pick (decision 11) into concrete
-     * topic ids: a topic-group id expands to all of its member topics, a
-     * plain topic id is kept as-is, and any id matching neither is silently
-     * dropped (not an error — an unmatched filter value simply contributes
-     * nothing).
+     * The topic filter, or {@code null} (no filter) when neither list names
+     * any id. Once any id is given, a testimonial must have a section of one
+     * of the visible topics they resolve to — an unknown or invisible id
+     * resolves to nothing, so a filter of only such ids matches nothing
+     * (api-spec.yaml).
      */
-    private List<Long> expandTopicIds(List<Long> requested) {
-        if (requested == null || requested.isEmpty()) {
-            return List.of();
+    private Specification<Testimonial> topicFilter(List<Long> groupIds, List<Long> topicIds) {
+        Set<Long> requestedGroupIds = nonNullIds(groupIds);
+        Set<Long> requestedTopicIds = nonNullIds(topicIds);
+        if (requestedGroupIds.isEmpty() && requestedTopicIds.isEmpty()) {
+            return null;
         }
-        List<Long> expanded = new ArrayList<>();
-        for (Long id : requested) {
-            if (id == null) {
-                continue;
-            }
-            if (topicGroupRepository.existsById(id)) {
-                topicRepository.findByTopicGroupId(id).forEach(topic -> expanded.add(topic.getId()));
-            } else if (topicRepository.existsById(id)) {
-                expanded.add(id);
-            }
+        Set<Long> visibleTopicIds = new HashSet<>();
+        for (Long groupId : requestedGroupIds) {
+            topicGroupRepository.findById(groupId)
+                    .filter(TopicGroup::isActive)
+                    .ifPresent(group -> topicRepository.findByTopicGroupId(group.getId()).stream()
+                            .filter(Topic::isVisible)
+                            .forEach(topic -> visibleTopicIds.add(topic.getId())));
         }
-        return expanded;
+        for (Long topicId : requestedTopicIds) {
+            topicRepository.findById(topicId)
+                    .filter(Topic::isVisible)
+                    .ifPresent(topic -> visibleTopicIds.add(topic.getId()));
+        }
+        return TestimonialSpecifications.hasAnyTopic(visibleTopicIds);
+    }
+
+    private static Set<Long> nonNullIds(List<Long> ids) {
+        if (ids == null) {
+            return Set.of();
+        }
+        return ids.stream().filter(Objects::nonNull).collect(Collectors.toSet());
     }
 
     private TestimonialCardDto toCard(Testimonial testimonial) {
-        List<TestimonialSection> ordered = sectionsInDisplayOrder(testimonial);
+        List<TestimonialSection> ordered = visibleSectionsInDisplayOrder(testimonial);
         TestimonialSection first = ordered.isEmpty() ? null : ordered.get(0);
         String previewText = first == null ? "" : truncate(first.getAnswerText());
         String thumbnailUrl = first == null ? null : firstPhotoUrl(first);
@@ -170,6 +186,16 @@ public class GalleryService {
                 .toList();
     }
 
+    /**
+     * {@link #sectionsInDisplayOrder}, leaving out sections whose topic is
+     * not visible (decision 28) — the only sections the public ever sees.
+     */
+    private List<TestimonialSection> visibleSectionsInDisplayOrder(Testimonial testimonial) {
+        return sectionsInDisplayOrder(testimonial).stream()
+                .filter(section -> section.getTopic().isVisible())
+                .toList();
+    }
+
     private int topLevelOrder(TestimonialSection section) {
         Topic topic = section.getTopic();
         return topic.getTopicGroup() != null ? topic.getTopicGroup().getDisplayOrder() : topic.getDisplayOrder();
@@ -197,9 +223,11 @@ public class GalleryService {
 
     private TestimonialDetailDto toDetail(Testimonial testimonial) {
         List<TestimonialSectionViewDto> sections =
-                sectionsInDisplayOrder(testimonial).stream().map(this::toSectionView).toList();
+                visibleSectionsInDisplayOrder(testimonial).stream().map(this::toSectionView).toList();
         List<String> achievementSlugs = testimonial.getAchievements().stream()
-                .map(ta -> ta.getAchievement().getSlug())
+                .map(TestimonialAchievement::getAchievement)
+                .filter(Achievement::isVisible)
+                .map(Achievement::getSlug)
                 .toList();
         boolean hasRevealableContact =
                 testimonial.getContactMethods().stream().anyMatch(ContactMethod::isPublic);
@@ -276,11 +304,11 @@ public class GalleryService {
     }
 
     /**
-     * Active top-level topic-catalog entries (decision 11) with at least
-     * one APPROVED-testimonial section — groups nest only their qualifying
-     * subtopics; a group left with zero qualifying subtopics (or an
-     * inactive group) is dropped entirely; a standalone topic appears only
-     * if it directly qualifies and is active.
+     * Visible top-level topic-catalog entries (decisions 11, 28) with at
+     * least one APPROVED-testimonial section — groups nest only their
+     * qualifying visible subtopics; a group left with zero qualifying
+     * subtopics (or an inactive group) is dropped entirely; a standalone
+     * topic appears only if it directly qualifies and is visible.
      */
     public List<TopicCatalogEntryDto> listTopicCatalogWithApproved() {
         Set<Long> qualifyingTopicIds = new HashSet<>(
@@ -298,7 +326,7 @@ public class GalleryService {
                 continue;
             }
             List<TopicPickDto> subtopics = topicsByGroupId.getOrDefault(group.getId(), List.of()).stream()
-                    .filter(Topic::isActive)
+                    .filter(Topic::isVisible)
                     .filter(t -> qualifyingTopicIds.contains(t.getId()))
                     .sorted(Comparator.comparing(Topic::getDisplayOrder))
                     .map(t -> new TopicPickDto(t.getId(), t.getSlug(), t.getLabel(), t.getGuidingPrompt()))
@@ -309,7 +337,7 @@ public class GalleryService {
         }
 
         for (Topic topic : allTopics) {
-            if (topic.getTopicGroup() != null || !topic.isActive() || !qualifyingTopicIds.contains(topic.getId())) {
+            if (topic.getTopicGroup() != null || !topic.isVisible() || !qualifyingTopicIds.contains(topic.getId())) {
                 continue;
             }
             entries.add(new OrderedEntry(topic.getDisplayOrder(), TopicCatalogEntryDto.standalone(topic)));

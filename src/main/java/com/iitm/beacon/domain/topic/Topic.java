@@ -31,6 +31,13 @@ import lombok.Setter;
 @EqualsAndHashCode(of = "id")
 public class Topic {
 
+    /**
+     * Slug of the mandatory standalone catch-all topic: pre-picked on the
+     * submission form and protected from deactivation, deletion, regrouping
+     * and slug changes in the catalog (decision 28).
+     */
+    public static final String GENERAL_SLUG = "general";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
@@ -55,4 +62,13 @@ public class Topic {
     @Builder.Default
     @Column(name = "active", nullable = false)
     private boolean active = true;
+
+    /**
+     * Cascaded visibility (decision 28): a topic is shown only when it is
+     * active itself and its group, if any, is active too. Hidden topics keep
+     * their data and reappear once reactivated.
+     */
+    public boolean isVisible() {
+        return active && (topicGroup == null || topicGroup.isActive());
+    }
 }

@@ -35,8 +35,10 @@ is out of scope for this gallery — see "Out of scope" below.
   reference data, requiring no code change or redeploy to add/rename/reorder/deactivate an
   entry.
 - Admin catalog screen: a dedicated admin UI for creating, renaming, reordering, deactivating,
-  and re-parenting topic groups and topics (moving a topic between groups, or promoting it to
-  standalone), and for creating, renaming, reordering, and deactivating achievements.
+  deleting, and re-parenting topic groups and topics (moving a topic between groups, or
+  promoting it to standalone), and for creating, renaming, reordering, deactivating, and
+  deleting achievements. Deactivating hides the entry's content in existing testimonials too,
+  reversibly; deleting removes that content for good.
 - Contact methods: a submitter may list 0–N ways to reach them (email, WhatsApp, Telegram,
   Instagram, Twitter/X, ...), each given as a number, handle, or link, whichever is convenient,
   and validated against the accepted formats of its type from a database-driven contact-type

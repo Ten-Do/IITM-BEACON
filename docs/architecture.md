@@ -75,7 +75,7 @@ C4Component
         Component(gallery, "gallery", "Controller+Service", "Public browse/filter/search/reveal-contact")
         Component(submission, "submission", "Controller+Service", "Visitor login (OTP/session), create/edit-testimonial flow incl. photo validation/conversion and modified-flag computation")
         Component(moderation, "moderation", "Controller+Service", "Admin pending queue, approve/reject one at a time, retention job")
-        Component(catalogadmin, "catalogadmin", "Controller+Service", "Admin CRUD for topic groups, topics (incl. re-parenting), and achievements")
+        Component(catalogadmin, "catalogadmin", "Controller+Service", "Admin CRUD (incl. delete) for topic groups, topics (incl. re-parenting), and achievements")
         Component(adminauth, "adminauth", "Controller+Service", "Admin OTP request/verify, session establishment")
         Component(analytics, "analytics", "Controller+Service", "Homepage dashboard: country map + stat cards")
         Component(domain, "domain", "Entities+Repositories", "Testimonial, TestimonialSection, Photo, PhotoTag, Achievement, Country, TopicGroup, Topic, ContactType, ContactMethod")
@@ -119,7 +119,9 @@ com.iitm.beacon
 │                      §7; also registers SameOriginInterceptor). OtpMailer and
 │                      NotificationMailer (each a Smtp*/Logging*, prod/non-prod profile pair —
 │                      decision 21), PhotoUrlResolver (shared `/uploads/`-URL builder used by
-│                      submission/gallery/moderation — decision 21).
+│                      submission/gallery/moderation — decision 21), PhotoFileDeleter (shared
+│                      best-effort delete of a photo's files, used by submission and
+│                      catalogadmin — decision 28).
 ├── domain/
 │   ├── testimonial/   Testimonial, TestimonialSection, Photo, PhotoTag, ContactMethod
 │   │                  entities, TestimonialStatus enum, their repositories.
@@ -157,9 +159,11 @@ com.iitm.beacon
 │                      ModerationQueueCardDto; ModerationViewController;
 │                      RejectedTestimonialCleanupJob (@Scheduled, planned for M7).
 ├── catalogadmin/      Admin CRUD for topic groups, topics (incl. re-parenting), and
-│                      achievements (decision 9). Not yet built.
-│                      CatalogAdminController, CatalogAdminService, TopicGroupDto, TopicDto,
-│                      AchievementDto.
+│                      achievements, incl. cascading delete (decisions 9, 28), as REST
+│                      (`api-spec.yaml`) and as pages under `/catalog/**`.
+│                      CatalogAdminController, CatalogAdminService, CatalogAdminViewController;
+│                      TopicGroupDto, TopicDto, AchievementDto; *CreateRequest/*PatchRequest
+│                      (REST) and *Form (pages).
 ├── adminauth/         Admin OTP request/verify, session establishment (decision 4), as REST
 │                      (`api-spec.yaml`) and as a page (decision 21).
 │                      AdminAuthController, OtpService (in-memory, single admin; owns its own
@@ -296,24 +300,25 @@ Seeded once, in full, via migration (decision 1) — not grown from submissions.
 | id | PK | |
 | label | varchar, not null | shown as the group heading on the form and in the article view |
 | display_order | int, not null | ordering among top-level picks |
-| active | boolean, not null, default true | hides the group (and, by extension, its topics) from new picks without breaking FK history |
+| active | boolean, not null, default true | false hides the group and, by extension, all its topics — from new picks and from existing testimonials (decision 28) |
 
 Database-driven reference data, managed via the `catalogadmin` catalog screen (decision 9) —
-no code change or redeploy required to add/rename/reorder/deactivate one.
+no code change or redeploy required to add/rename/reorder/deactivate/delete one.
 
 ### Topic
 | column | type | notes |
 |---|---|---|
 | id | PK | |
 | topic_group_id | FK -> TopicGroup, nullable | `null` = standalone topic (decision 11) |
-| slug | varchar, unique, not null | e.g. `academics_teaching` |
+| slug | varchar, unique, not null | e.g. `academics_teaching`; editable via `catalogadmin`, except `general` (decision 28) |
 | label | varchar, not null | shown as the section subheading |
 | guiding_prompt | text, not null | shown as placeholder/help text on the form |
 | display_order | int, not null | ordering on the form and in the article view |
-| active | boolean, not null, default true | hides from the form without breaking FK history |
+| active | boolean, not null, default true | false hides the topic from the form and its sections from existing testimonials (decision 28) |
 
 Database-driven reference data (decision 11), managed via `catalogadmin`, including
-re-parenting (moving a topic between groups, or promoting it to standalone).
+re-parenting (moving a topic between groups, or promoting it to standalone). A topic is
+*visible* (`Topic.isVisible()`) when it is active and either standalone or in an active group.
 
 ### ContactType
 | column | type | notes |
@@ -334,10 +339,10 @@ edit, same treatment as `Country`.
 | column | type | notes |
 |---|---|---|
 | id | PK | |
-| slug | varchar, unique, not null | |
+| slug | varchar, unique, not null | editable via `catalogadmin` |
 | label | varchar, not null | checkbox label |
 | display_order | int, not null | |
-| active | boolean, not null, default true | |
+| active | boolean, not null, default true | false hides the achievement from the form and its ticks from existing testimonials (decision 28) |
 
 Same configurability pattern as `Topic` (decision 11), managed via `catalogadmin`.
 
@@ -461,7 +466,8 @@ Behavior is specified as UC-VISITOR-LOGIN in `use-cases.md`.
 - Sessions (both roles, decision 23): one HTTP session per browser, idle timeout 24 hours
   (`server.servlet.session.timeout`, `BEACON_SESSION_TIMEOUT`). A request to a login-protected
   page without a live session is redirected to its role's login page — `/submissions/form` and
-  `/submissions/confirmation` to `/submissions/login`, `/moderation/**` to `/admin/login` —
+  `/submissions/confirmation` to `/submissions/login`, `/moderation/**` and `/catalog/**` to
+  `/admin/login` —
   while the JSON API keeps answering 401. A GET of such a page is saved in the session first
   (`HttpSessionRequestCache`, restricted to exactly those GETs), and the login's verify handler
   sends the user back to it through `common.security.PostLoginRedirect`, which only ever returns
@@ -579,17 +585,29 @@ Behavior is specified as UC-VISITOR-LOGIN in `use-cases.md`.
   existing SMTP relay (same one used for OTP codes) to let them know to log in and fix their
   testimonial, including the admin's reason text in the email when one was given.
 
-## 10. Catalog admin (decision 9)
+## 10. Catalog admin (decisions 9, 28)
 
 - `catalogadmin` is a dedicated slice, separate from `moderation`, covering
-  UC-MANAGE-TOPIC-GROUPS, UC-MANAGE-TOPICS, and UC-MANAGE-ACHIEVEMENTS.
-- `TopicGroup`, `Topic`, and `Achievement` all support create / rename / reorder / deactivate;
-  `Topic` additionally supports re-parenting — changing its `topic_group_id`, including to/from
-  `null` (standalone).
-- Deactivation is always non-destructive: an inactive row stops being offered as a new pick
-  (submission form, gallery filter, dashboard), but any `TestimonialSection` or
-  `TestimonialAchievement` row already referencing it is unaffected and keeps rendering
-  (NFR-CATALOG-CONFIGURABILITY).
+  UC-MANAGE-TOPIC-GROUPS, UC-MANAGE-TOPICS, and UC-MANAGE-ACHIEVEMENTS, as REST
+  (`/api/catalog/**`) and as pages (`/catalog/**`, §17).
+- `TopicGroup`, `Topic`, and `Achievement` all support create / edit (label, display order,
+  and — for topics and achievements — slug) / deactivate / reactivate / delete; `Topic`
+  additionally supports re-parenting — changing its `topic_group_id`, including to/from `null`
+  (standalone). Slugs are unique per table; a clash answers 409.
+- **Visibility cascades.** `Topic.isVisible()` (active, and standalone or in an active group)
+  and `Achievement.isVisible()` (active) are the one predicate every slice uses. Sections of
+  invisible topics and ticks of invisible achievements are hidden from the gallery (article,
+  card preview, search, topic filter), the moderation queue, and the author's edit form —
+  while their rows stay in the database, so reactivation restores them. `SubmissionService.edit`
+  leaves hidden sections and hidden achievement ticks untouched.
+- **Delete cascades for good.** `CatalogAdminService` deletes a topic's `TestimonialSection` rows
+  through the owning `Testimonial.sections` collection (`orphanRemoval` takes their photos and
+  tags with them) and a deleted achievement's `TestimonialAchievement` rows the same way;
+  deleting a group deletes all its topics like that. Photo files are deleted by
+  `config.PhotoFileDeleter` after the transaction commits, so a rollback never loses a file.
+  Testimonial status is never changed by a catalog delete.
+- **`general` is protected:** no deactivate, delete, move into a group, or slug change (409) —
+  `Topic.GENERAL_SLUG` is how the submission form finds it.
 - No caching layer sits in front of these tables — they're read per request, so a catalog
   change takes effect immediately, with no redeploy (NFR-CATALOG-CONFIGURABILITY).
 - `ContactType` (decision 5) is deliberately **not** managed here — no use case calls for an
@@ -610,11 +628,13 @@ endpoint, so it has no `api-spec.yaml` entry.
 ## 12. Search & filtering (decision 8)
 
 - Country filter, free-text search, and the topic filter combine as AND conditions. The topic
-  filter now operates on top-level picks — groups and standalone topics (decision 11):
-  selecting a group expands to its member `topic_id`s, conceptually:
+  filter operates on top-level picks — groups and standalone topics (decision 11), sent as
+  separate `groupIds` and `topicIds` (decision 29): each group expands to its visible member
+  `topic_id`s, conceptually:
   `WHERE status = APPROVED [AND country_code = :country] [AND EXISTS (section WHERE topic_id
-  IN :topicIds)] [AND (section.answer_text ILIKE %:q% OR first_name ILIKE %:q% OR last_name
-  ILIKE %:q%)]`
+  IN :visibleTopicIds)] [AND (EXISTS (visible section WHERE answer_text ILIKE %:q%) OR
+  first_name ILIKE %:q% OR last_name ILIKE %:q%)]` — a section is visible when its topic is
+  (decision 28).
 - Implemented via a Spring Data JPA query method or `Specification`, paginated
   (`Pageable`/`Page<T>`).
 - Indexes: `(status, country_code)` on `Testimonial`, and `topic_id` on `TestimonialSection`
@@ -710,13 +730,14 @@ architecture level because they're time-based or easy to get subtly wrong withou
 
 ## 17. View layer: Thymeleaf pages alongside the REST API (decision 21)
 
-`gallery`, `submission`, `moderation`, and `adminauth` each expose their functionality twice:
+`gallery`, `submission`, `moderation`, `catalogadmin`, and `adminauth` each expose their functionality twice:
 once as the JSON REST API `api-spec.yaml` already specifies, and once as server-rendered HTML
 pages. Both are built on the same `Service` class per slice — the page-rendering
 `XxxViewController` (`@Controller`) calls the exact same `GalleryService`/`SubmissionService`/
-`ModerationService`/`OtpService` methods the REST `XxxController` (`@RestController`) does, as a
-plain in-process Java call. Neither controller depends on the other, and the REST contract is
-unchanged. `catalogadmin` and `analytics` have no page yet, since neither slice is built yet.
+`ModerationService`/`CatalogAdminService`/`OtpService` methods the REST `XxxController`
+(`@RestController`) does, as a plain in-process Java call. Neither controller depends on the
+other, and the REST contract is unchanged. `analytics` has no page yet, since the slice is not
+built yet.
 
 **Routing.** View routes are plain paths, not `/api/**`:
 
@@ -728,6 +749,7 @@ unchanged. `catalogadmin` and `analytics` have no page yet, since neither slice 
 | `/submissions/form`, `/submissions/confirmation` | submission | `VISITOR` session; without one → redirect to `/submissions/login` |
 | `/admin/login` (email step), `/admin/login/code` (code step), `/admin/login/**` | adminauth | public |
 | `/moderation/**` | moderation | `ADMIN` session; without one → redirect to `/admin/login` |
+| `/catalog/**` — `/catalog/topics`, `/catalog/achievements` (lists); `/catalog/{topic-groups,topics,achievements}/new` and `/{id}` (form pages, GET + POST); `/{id}/active` (POST toggle); `/{id}/delete` (GET confirmation, POST delete) | catalogadmin | `ADMIN` session; without one → redirect to `/admin/login` |
 
 `SecurityConfig` enumerates every one of these (and every `/api/**` route) as its own explicit
 matcher; the catch-all tail is `.anyRequest().denyAll()`, not `.authenticated()` — a route this

@@ -3,7 +3,6 @@ package com.iitm.beacon.submission;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.iitm.beacon.common.error.TooManyRequestsException;

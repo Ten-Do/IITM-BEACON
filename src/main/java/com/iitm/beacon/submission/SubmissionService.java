@@ -139,10 +139,10 @@ public class SubmissionService {
         return PhotoUploadLimits.from(photoStorageProperties);
     }
 
-    /** Active achievements for the submission form's checklist (decision 20). */
+    /** Visible achievements for the submission form's checklist (decisions 20, 28). */
     public List<AchievementView> listActiveAchievements() {
         return achievementRepository.findAll().stream()
-                .filter(Achievement::isActive)
+                .filter(Achievement::isVisible)
                 .sorted(Comparator.comparing(Achievement::getDisplayOrder))
                 .map(a -> new AchievementView(a.getSlug(), a.getLabel()))
                 .toList();
@@ -164,7 +164,7 @@ public class SubmissionService {
     }
 
     /**
-     * Every active top-level topic-catalog entry (decision 11) for the
+     * Every visible top-level topic-catalog entry (decisions 11, 28) for the
      * submission form's topic picker — deliberately unfiltered by
      * approved-testimonial existence, unlike {@code
      * GalleryService#listTopicCatalogWithApproved}: a visitor must be able to
@@ -187,7 +187,7 @@ public class SubmissionService {
                 continue;
             }
             List<TopicPickDto> subtopics = topicsByGroupId.getOrDefault(group.getId(), List.of()).stream()
-                    .filter(Topic::isActive)
+                    .filter(Topic::isVisible)
                     .sorted(Comparator.comparing(Topic::getDisplayOrder))
                     .map(t -> new TopicPickDto(t.getId(), t.getSlug(), t.getLabel(), t.getGuidingPrompt()))
                     .toList();
@@ -198,7 +198,7 @@ public class SubmissionService {
         }
 
         for (Topic topic : allTopics) {
-            if (topic.getTopicGroup() != null || !topic.isActive()) {
+            if (topic.getTopicGroup() != null || !topic.isVisible()) {
                 continue;
             }
             entries.add(new OrderedCatalogEntry(topic.getDisplayOrder(), TopicCatalogEntryDto.standalone(topic)));
@@ -323,8 +323,15 @@ public class SubmissionService {
         return toView(testimonial);
     }
 
+    /**
+     * The author's own testimonial as the edit form and {@code GET
+     * /submissions/mine} show it: only sections of visible topics and ticks
+     * of visible achievements (decision 28) — {@link #edit} leaves the
+     * hidden ones untouched.
+     */
     private TestimonialSubmissionView toView(Testimonial testimonial) {
         List<TestimonialSubmissionView.SectionView> sections = testimonial.getSections().stream()
+                .filter(SubmissionService::isVisible)
                 .map(section -> new TestimonialSubmissionView.SectionView(
                         section.getTopic().getSlug(),
                         section.getAnswerText(),
@@ -337,7 +344,9 @@ public class SubmissionService {
                                 .toList()))
                 .toList();
         List<String> achievementSlugs = testimonial.getAchievements().stream()
-                .map(ta -> ta.getAchievement().getSlug())
+                .map(TestimonialAchievement::getAchievement)
+                .filter(Achievement::isVisible)
+                .map(Achievement::getSlug)
                 .toList();
         List<TestimonialSubmissionView.ContactMethodView> contactMethods = testimonial.getContactMethods().stream()
                 .map(cm -> new TestimonialSubmissionView.ContactMethodView(
@@ -386,9 +395,17 @@ public class SubmissionService {
         List<FieldViolation> violations = new ArrayList<>();
         ValidatedRefs refs = validateCommonRules(req, violations);
 
+        // Sections of invisible topics are not on the visitor's form, so they
+        // are neither diffed nor removed: they are kept exactly as they are,
+        // photos and `modified` flag included (decision 28).
+        List<TestimonialSection> hiddenSections = new ArrayList<>();
         Map<Long, TestimonialSection> existingSectionsByTopicId = new LinkedHashMap<>();
         Map<Long, Set<String>> currentPhotoUrlsByTopicId = new LinkedHashMap<>();
         for (TestimonialSection section : testimonial.getSections()) {
+            if (!isVisible(section)) {
+                hiddenSections.add(section);
+                continue;
+            }
             existingSectionsByTopicId.put(section.getTopic().getId(), section);
             currentPhotoUrlsByTopicId.put(
                     section.getTopic().getId(),
@@ -430,7 +447,8 @@ public class SubmissionService {
         // existing one being diffed; whatever's left in
         // existingSectionsByTopicId afterward was left out of the request
         // entirely, and is removed without setting `modified` on anything
-        // (decision 18).
+        // (decision 18). Hidden sections were never in that map, and are
+        // put back unchanged.
         List<TestimonialSection> resultSections = new ArrayList<>();
         for (Map.Entry<Long, SectionInput> entry : incomingByTopicId.entrySet()) {
             SectionInput incoming = entry.getValue();
@@ -451,6 +469,7 @@ public class SubmissionService {
 
         testimonial.getSections().clear();
         testimonial.getSections().addAll(resultSections);
+        testimonial.getSections().addAll(hiddenSections);
 
         testimonial.getContactMethods().clear();
         int contactOrder = 0;
@@ -475,8 +494,7 @@ public class SubmissionService {
         testimonial.setDataProcessingConsent(req.dataProcessingConsent());
 
         boolean wasApproved = testimonial.getStatus() == TestimonialStatus.APPROVED;
-        boolean anySectionModified =
-                testimonial.getSections().stream().anyMatch(TestimonialSection::isModified);
+        boolean anySectionModified = resultSections.stream().anyMatch(TestimonialSection::isModified);
 
         if (wasApproved && !identityModified && !anySectionModified) {
             testimonial.setStatus(TestimonialStatus.APPROVED);
@@ -634,11 +652,14 @@ public class SubmissionService {
      * instance for an achievement that is already selected would share the id
      * of the old row still in the persistence context and fail the flush
      * ({@code NonUniqueObjectException}). Only deselected rows are removed
-     * (via {@code orphanRemoval}), and only newly selected ones are added.
+     * (via {@code orphanRemoval}), and only newly selected ones are added. A
+     * tick of an invisible achievement is not on the visitor's form, so it is
+     * kept as it is (decision 28).
      */
     private void syncAchievements(Testimonial testimonial, List<Achievement> selected) {
         Set<Long> selectedIds = selected.stream().map(Achievement::getId).collect(Collectors.toSet());
-        testimonial.getAchievements().removeIf(ta -> !selectedIds.contains(ta.getAchievement().getId()));
+        testimonial.getAchievements().removeIf(ta -> ta.getAchievement().isVisible()
+                && !selectedIds.contains(ta.getAchievement().getId()));
         Set<Long> presentIds = testimonial.getAchievements().stream()
                 .map(ta -> ta.getAchievement().getId())
                 .collect(Collectors.toSet());
@@ -711,7 +732,7 @@ public class SubmissionService {
             }
             achievementRepository
                     .findBySlug(slug)
-                    .filter(Achievement::isActive)
+                    .filter(Achievement::isVisible)
                     .ifPresentOrElse(
                             result::add,
                             () -> violations.add(new FieldViolation(
@@ -806,7 +827,7 @@ public class SubmissionService {
             if (isBlank(section.topicSlug())) {
                 continue;
             }
-            Optional<Topic> topic = topicRepository.findBySlug(section.topicSlug()).filter(Topic::isActive);
+            Optional<Topic> topic = topicRepository.findBySlug(section.topicSlug()).filter(Topic::isVisible);
             if (topic.isEmpty()) {
                 violations.add(new FieldViolation(
                         path + ".topicSlug", "Unknown or inactive topic: " + section.topicSlug()));
@@ -849,6 +870,11 @@ public class SubmissionService {
         if (!violations.isEmpty()) {
             throw new SubmissionValidationException(violations);
         }
+    }
+
+    /** Whether the section's topic is visible (decision 28) — the only sections the visitor sees and edits. */
+    private static boolean isVisible(TestimonialSection section) {
+        return section.getTopic().isVisible();
     }
 
     private static boolean isBlank(String value) {

@@ -52,8 +52,10 @@ present only as seeded data (no catalog UI yet). No homepage dashboard yet. Expl
 ready at this point: `catalogadmin`, `analytics`, `RejectedTestimonialCleanupJob`.
 
 - **M5 — Catalog admin** (target 2026-10-16)
-  `catalogadmin`: create/rename/reorder/deactivate/re-parent for topic groups, topics, and
-  achievements. Covers UC-MANAGE-TOPIC-GROUPS, UC-MANAGE-TOPICS, UC-MANAGE-ACHIEVEMENTS.
+  `catalogadmin`: create/rename/reorder/deactivate/re-parent/delete for topic groups, topics,
+  and achievements, with deactivation and delete cascading to existing testimonials (decision
+  28), and the gallery's separate `groupIds`/`topicIds` filter (decision 29). Covers
+  UC-MANAGE-TOPIC-GROUPS, UC-MANAGE-TOPICS, UC-MANAGE-ACHIEVEMENTS.
 
 - **M6 — Analytics dashboard** (target 2026-10-23)
   `analytics`: country map + achievement/score/topic-group stat cards. Covers UC-VIEW-DASHBOARD.
