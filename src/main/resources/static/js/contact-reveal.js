@@ -13,7 +13,11 @@
  * answers with the contact card alone; that card replaces the one holding
  * the form, in place — no navigation, no scrolling — and takes the focus
  * the removed button had. The server only answers requests from this site's
- * own pages (Origin / Sec-Fetch-Site), which a same-origin fetch satisfies.
+ * own pages (Origin / Sec-Fetch-Site), which a same-origin fetch satisfies,
+ * and, like every POST, only with the CSRF token: the request carries the
+ * token from the XSRF-TOKEN cookie in the X-XSRF-TOKEN header, and the
+ * form's own fields — its hidden _csrf token among them — as the body, which
+ * the server reads only when there is no header.
  *
  * While the request runs the button shows a spinner and is marked busy and
  * disabled (aria-busy, aria-disabled — not the disabled attribute, which
@@ -43,6 +47,23 @@
             errorLine.textContent = message;
             errorLine.hidden = !message;
         }
+    }
+
+    // The CSRF token as the server last set it in its cookie, or '' if there
+    // is none. Always current: a login in another tab renews the token, which
+    // the one rendered into this page's form can't know.
+    function csrfCookie() {
+        var match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+        return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    function requestHeaders() {
+        var headers = {'X-Requested-With': 'fetch', 'Accept': 'text/html'};
+        var token = csrfCookie();
+        if (token) {
+            headers['X-XSRF-TOKEN'] = token;
+        }
+        return headers;
     }
 
     // The card in the server's answer, or null if the answer is anything else.
@@ -77,7 +98,8 @@
                 method: 'POST',
                 credentials: 'same-origin',
                 cache: 'no-store',
-                headers: {'X-Requested-With': 'fetch', 'Accept': 'text/html'}
+                headers: requestHeaders(),
+                body: new URLSearchParams(new FormData(form))
             }).then(function (response) {
                 if (response.status === 404) {
                     failure = UNAVAILABLE;

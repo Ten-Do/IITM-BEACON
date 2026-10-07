@@ -1,5 +1,6 @@
 package com.iitm.beacon.adminauth;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfHeader;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
@@ -54,7 +55,7 @@ class AdminAuthControllerExpiredOtpTest {
 
     @Test
     void verifyAfterTtlElapses_returns401() throws Exception {
-        mockMvc.perform(post("/api/admin/auth/otp/request")
+        mockMvc.perform(post("/api/admin/auth/otp/request").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpRequestRequest(ADMIN_EMAIL))))
                 .andExpect(status().isAccepted());
@@ -65,7 +66,7 @@ class AdminAuthControllerExpiredOtpTest {
 
         mutableClock.advanceBy(Duration.ofMinutes(5).plusSeconds(1));
 
-        mockMvc.perform(post("/api/admin/auth/otp/verify")
+        mockMvc.perform(post("/api/admin/auth/otp/verify").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpVerifyRequest(ADMIN_EMAIL, code))))
                 .andExpect(status().isUnauthorized());

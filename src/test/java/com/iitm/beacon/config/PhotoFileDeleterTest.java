@@ -12,11 +12,16 @@ import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Best-effort removal of photo files from the uploads root, shared by every
  * slice that deletes photos (submission edits, catalog deletes — decision
- * 28). Real temp directories, no mocks.
+ * 28 — and the rejected-testimonial purge, decision 3). It never throws, and
+ * reports whether every file was there and is now gone, so the purge can
+ * flag a file that was already missing. Real temp directories, no mocks.
  */
 class PhotoFileDeleterTest {
 
@@ -30,53 +35,128 @@ class PhotoFileDeleterTest {
     // -- delete(Photo) --
 
     @Test
-    void deletePhoto_removesBothTheFullSizeFileAndTheThumbnail() throws Exception {
+    void deletePhoto_removesBothTheFullSizeFileAndTheThumbnail_andReportsSuccess() throws Exception {
         Files.writeString(root.resolve("a.webp"), "x");
         Files.writeString(root.resolve("a-thumb.webp"), "x");
 
-        deleter().delete(photo("a.webp", "a-thumb.webp"));
+        boolean deleted = deleter().delete(photo("a.webp", "a-thumb.webp"));
 
+        assertThat(deleted).isTrue();
         assertThat(rootContents()).isEmpty();
     }
 
     @Test
-    void deletePhoto_legacyPhotoWithoutThumbnail_removesItsFile() throws Exception {
+    void deletePhoto_legacyPhotoWithoutThumbnail_removesItsFile_andReportsSuccess() throws Exception {
         Files.writeString(root.resolve("legacy.jpeg"), "x");
 
-        deleter().delete(photo("legacy.jpeg", null));
+        boolean deleted = deleter().delete(photo("legacy.jpeg", null));
 
+        assertThat(deleted).isTrue();
         assertThat(rootContents()).isEmpty();
     }
 
     @Test
-    void deletePhoto_bothFilesAlreadyGone_doesNotThrow() {
+    void deletePhoto_bothFilesAlreadyGone_reportsFailure_andDoesNotThrow() {
         PhotoFileDeleter deleter = deleter();
 
-        assertThatCode(() -> deleter.delete(photo("never.webp", "never-thumb.webp"))).doesNotThrowAnyException();
+        assertThatCode(() -> assertThat(deleter.delete(photo("never.webp", "never-thumb.webp"))).isFalse())
+                .doesNotThrowAnyException();
     }
 
     @Test
-    void deletePhoto_fullSizeFileCannotBeDeleted_stillRemovesTheThumbnail_andDoesNotThrow() throws Exception {
+    void deletePhoto_onlyTheThumbnailAlreadyGone_stillRemovesTheFullSizeFile_andReportsFailure() throws Exception {
+        Files.writeString(root.resolve("half.webp"), "x");
+
+        boolean deleted = deleter().delete(photo("half.webp", "half-thumb.webp"));
+
+        assertThat(deleted).isFalse();
+        assertThat(rootContents()).isEmpty();
+    }
+
+    @Test
+    void deletePhoto_onlyTheFullSizeFileAlreadyGone_stillRemovesTheThumbnail_andReportsFailure() throws Exception {
+        Files.writeString(root.resolve("half-thumb.webp"), "x");
+
+        boolean deleted = deleter().delete(photo("half.webp", "half-thumb.webp"));
+
+        assertThat(deleted).isFalse();
+        assertThat(rootContents()).isEmpty();
+    }
+
+    @Test
+    void deletePhoto_legacyPhotoWhoseFileIsAlreadyGone_reportsFailure() {
+        assertThat(deleter().delete(photo("gone.jpeg", null))).isFalse();
+    }
+
+    @Test
+    void deletePhoto_fullSizeFileCannotBeDeleted_stillRemovesTheThumbnail_reportsFailure_andDoesNotThrow()
+            throws Exception {
         // A non-empty directory under the file's name makes deleteIfExists fail with an IOException.
         Files.createDirectories(root.resolve("stuck.webp").resolve("inner"));
         Files.writeString(root.resolve("stuck-thumb.webp"), "x");
         PhotoFileDeleter deleter = deleter();
 
-        assertThatCode(() -> deleter.delete(photo("stuck.webp", "stuck-thumb.webp"))).doesNotThrowAnyException();
+        assertThatCode(() -> assertThat(deleter.delete(photo("stuck.webp", "stuck-thumb.webp"))).isFalse())
+                .doesNotThrowAnyException();
 
         assertThat(rootContents()).containsExactly("stuck.webp");
+    }
+
+    @Test
+    void deletePhoto_fullSizePathIsNotAValidPath_stillRemovesTheThumbnail_reportsFailure_andDoesNotThrow()
+            throws Exception {
+        Files.writeString(root.resolve("odd-thumb.webp"), "x");
+        PhotoFileDeleter deleter = deleter();
+
+        assertThatCode(() -> assertThat(deleter.delete(photo("odd\0.webp", "odd-thumb.webp"))).isFalse())
+                .doesNotThrowAnyException();
+
+        assertThat(rootContents()).isEmpty();
     }
 
     // -- delete(String) --
 
     @Test
-    void deletePath_removesOnlyThatFile() throws Exception {
+    void deletePath_removesOnlyThatFile_andReportsSuccess() throws Exception {
         Files.writeString(root.resolve("a.webp"), "x");
         Files.writeString(root.resolve("a-thumb.webp"), "x");
 
-        deleter().delete("a.webp");
+        boolean deleted = deleter().delete("a.webp");
 
+        assertThat(deleted).isTrue();
         assertThat(rootContents()).containsExactly("a-thumb.webp");
+    }
+
+    @Test
+    void deletePath_fileAlreadyGone_reportsFailure() {
+        assertThat(deleter().delete("never.webp")).isFalse();
+    }
+
+    @Test
+    void deletePath_fileCannotBeDeleted_reportsFailure_andDoesNotThrow() throws Exception {
+        Files.createDirectories(root.resolve("stuck.webp").resolve("inner"));
+        PhotoFileDeleter deleter = deleter();
+
+        assertThatCode(() -> assertThat(deleter.delete("stuck.webp")).isFalse()).doesNotThrowAnyException();
+    }
+
+    /** A NUL character can't appear in a file name: {@code Path.resolve} rejects it with an unchecked exception. */
+    @Test
+    void deletePath_notAValidPath_reportsFailure_andDoesNotThrow() {
+        PhotoFileDeleter deleter = deleter();
+
+        assertThatCode(() -> assertThat(deleter.delete("bad\0name.webp")).isFalse()).doesNotThrowAnyException();
+    }
+
+    /** An empty path would resolve to the uploads root itself, which must never be deleted. */
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = "   ")
+    void deletePath_blank_reportsFailure_andLeavesTheEmptyUploadsRootInPlace(String blank) {
+        boolean deleted = deleter().delete(blank);
+
+        assertThat(deleted).isFalse();
+        assertThat(root).isDirectory();
     }
 
     private static Photo photo(String filePath, String thumbnailPath) {

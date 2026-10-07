@@ -13,6 +13,11 @@
         <a href="/moderation/queue" th:classappend="${activePage == 'queue'} ? 'active' : ''">Queue</a>
         <a href="/catalog/topics" th:classappend="${activePage == 'catalog'} ? 'active' : ''">Catalog</a>
         <a href="/catalog/achievements" th:classappend="${activePage == 'achievements'} ? 'active' : ''">Achievements</a>
+        <!-- Every page with this header needs the admin login, so it always offers to log out. Inside the
+             nav, so on phones it is in the burger menu. A POST form, so th:action adds the CSRF token. -->
+        <form class="header-nav-form" method="post" th:action="@{/logout}">
+            <button type="submit" class="header-nav-button">Log out</button>
+        </form>
     </nav>
     <!-- Every page with this header needs the admin login, so each gets the session check.
          The admin login pages use their own inline header instead, and must never get it. -->

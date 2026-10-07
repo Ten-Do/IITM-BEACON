@@ -334,26 +334,35 @@ document.addEventListener('alpine:init', () => {
   /*
    * One contact row: "Show publicly" is disabled — and unchecked — while the
    * row's value is blank, since a public contact needs a value. A pre-filled
-   * row (edit mode) starts enabled with its saved choice.
+   * row (edit mode) starts enabled with its saved choice; once cleared, the
+   * box stays unticked when a value is typed again, so going public is always
+   * the visitor's own new choice.
    */
-  Alpine.data('contactRow', () => ({
-    hasValue: false,
+  Alpine.data('contactRow', () => {
+    // The row itself. Not this.$el: update() also runs from the value input's
+    // x-on:input, where $el is that input, which holds no checkbox.
+    let row = null;
 
-    init() {
-      this.update(this.$el.querySelector('input[type="text"]').value);
-    },
+    return {
+      hasValue: false,
 
-    refresh(event) {
-      this.update(event.target.value);
-    },
+      init() {
+        row = this.$el;
+        this.update(row.querySelector('input[type="text"]').value);
+      },
 
-    update(value) {
-      this.hasValue = !isBlank(value);
-      if (!this.hasValue) {
-        this.$el.querySelector('input[type="checkbox"]').checked = false;
-      }
-    },
-  }));
+      refresh(event) {
+        this.update(event.target.value);
+      },
+
+      update(value) {
+        this.hasValue = !isBlank(value);
+        if (!this.hasValue) {
+          row.querySelector('input[type="checkbox"]').checked = false;
+        }
+      },
+    };
+  });
 
   /*
    * Recommendation score slider: keeps the number, its colour and the one

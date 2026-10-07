@@ -1,5 +1,7 @@
 package com.iitm.beacon.analytics;
 
+import static com.iitm.beacon.testsupport.ClientErrors.assertHtmlErrorPage;
+import static com.iitm.beacon.testsupport.Csrf.csrfField;
 import static com.iitm.beacon.testsupport.HtmlSnippets.attribute;
 import static com.iitm.beacon.testsupport.HtmlSnippets.elements;
 import static com.iitm.beacon.testsupport.HtmlSnippets.openingTags;
@@ -22,6 +24,7 @@ import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.topic.Topic;
 import com.iitm.beacon.domain.topic.TopicGroupRepository;
 import com.iitm.beacon.domain.topic.TopicRepository;
+import com.iitm.beacon.testsupport.AssetUrls;
 import com.iitm.beacon.testsupport.CatalogVisibilityFixture;
 import com.iitm.beacon.testsupport.CatalogVisibilityFixture.IdClash;
 import java.util.List;
@@ -187,17 +190,24 @@ class AnalyticsViewControllerTest {
                 .andExpect(view().name("analytics/dashboard"));
     }
 
+    /** Only GET and HEAD are served here: any other method is the security chain's HTML 404 page, never JSON. */
     @ParameterizedTest
     @ValueSource(strings = {"POST", "PUT", "PATCH", "DELETE"})
-    void anonymousWrite_isRefusedWith401(String method) throws Exception {
-        mockMvc.perform(request(HttpMethod.valueOf(method), HOME)).andExpect(status().isUnauthorized());
+    void anonymousWrite_isRefusedWithTheHtml404Page(String method) throws Exception {
+        assertHtmlErrorPage(
+                mockMvc.perform(request(HttpMethod.valueOf(method), HOME).with(csrfField())).andReturn().getResponse(),
+                404);
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"POST", "PUT", "PATCH", "DELETE"})
-    void visitorWrite_isRefusedWith403(String method) throws Exception {
-        mockMvc.perform(request(HttpMethod.valueOf(method), HOME).with(authentication(visitor())))
-                .andExpect(status().isForbidden());
+    void visitorWrite_isRefusedWithTheHtml404Page(String method) throws Exception {
+        assertHtmlErrorPage(
+                mockMvc.perform(request(HttpMethod.valueOf(method), HOME).with(csrfField())
+                                .with(authentication(visitor())))
+                        .andReturn()
+                        .getResponse(),
+                404);
     }
 
     // -- hero and heading levels --
@@ -431,7 +441,7 @@ class AnalyticsViewControllerTest {
         // 3 approved; (8 + 9 + 5) / 3 = 7.33 -> "7.3" in score-7's colour; 2 countries; 2 of 3 score 6+ -> 67 %.
         assertThat(html).containsPattern(">3</span>\\s*<span class=\"dashboard-stat-label\">Approved testimonials<");
         assertThat(html).containsPattern(
-                "<span class=\"dashboard-stat-number\" style=\"color: var\\(--score-7\\)\">7\\.3</span>\\s*"
+                "<span class=\"dashboard-stat-number score-7\">7\\.3</span>\\s*"
                         + "<span class=\"dashboard-stat-label\">Average recommendation score<");
         assertThat(html).containsPattern(">2</span>\\s*<span class=\"dashboard-stat-label\">Countries represented<");
         assertThat(html).containsPattern(
@@ -570,7 +580,7 @@ class AnalyticsViewControllerTest {
         List<String> scripts = openingTags(home(), "script");
 
         assertThat(scripts).singleElement().satisfies(tag ->
-                assertThat(attribute(tag, "src")).contains("/js/nav-toggle.js"));
+                assertThat(attribute(tag, "src").map(AssetUrls::plain)).contains("/js/nav-toggle.js"));
     }
 
     @Test
@@ -578,7 +588,7 @@ class AnalyticsViewControllerTest {
         List<String> scripts = openingTags(home(), "script");
 
         assertThat(scripts).singleElement().satisfies(tag ->
-                assertThat(attribute(tag, "src")).contains("/js/nav-toggle.js"));
+                assertThat(attribute(tag, "src").map(AssetUrls::plain)).contains("/js/nav-toggle.js"));
     }
 
     @Test

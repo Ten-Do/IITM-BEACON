@@ -17,3 +17,13 @@ beacon:
 
 admin:
   email: ${ADMIN_EMAIL}
+
+server:
+  servlet:
+    session:
+      cookie:
+        # Production is served over https by a reverse proxy, while the app
+        # itself sees http: JSESSIONID and XSRF-TOKEN must be Secure regardless
+        # (application.yml). Set BEACON_COOKIE_SECURE=false only for a
+        # deployment browsers reach over plain http.
+        secure: ${BEACON_COOKIE_SECURE:true}

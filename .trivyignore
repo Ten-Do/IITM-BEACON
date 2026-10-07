@@ -1,0 +1,15 @@
+# Known findings `make cve-scan` (Trivy) accepts, each with why it doesn't apply
+# and a date by which it is reviewed again (Trivy reports it again after that
+# date). Analysis: docs/security-review.md §4–5. Never add a finding here
+# without that analysis.
+
+# spring-webmvc 6.2.x: SSRF/RCE through XsltView. The app renders only
+# Thymeleaf views and never uses XsltView. Fixed only in Spring Framework 7.x;
+# goes away with the Spring Boot upgrade that brings it.
+CVE-2026-47884 exp:2027-01-31
+
+# libssl3 (Ubuntu 22.04 base image): DTLS information disclosure. The JVM uses
+# its own TLS stack, not the system OpenSSL, and the app speaks no DTLS. The
+# fixed package isn't in eclipse-temurin:21-jre-jammy yet; `--pull` picks it
+# up once it is.
+CVE-2026-84782 exp:2026-11-30

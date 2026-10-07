@@ -12,7 +12,36 @@ info:
     (decision 27). See ../use-cases.md for the scenarios behind each endpoint,
     ../decisions.md for the design decisions behind each schema shape, and ../nfr.md for the
     quality attributes they must meet.
-  version: "0.4.0"
+
+
+    **CSRF (decision 32).** Every POST, PUT, PATCH and DELETE — the unauthenticated OTP
+    request/verify endpoints included — must send the header `X-XSRF-TOKEN` with the value of
+    the `XSRF-TOKEN` cookie; otherwise it is refused with 403 `Forbidden`. The server sets that
+    cookie on any response to a request that didn't carry it, so any GET hands a client its
+    token. The cookie has path `/`, `SameSite=Lax`, is readable by scripts (not `HttpOnly`) and
+    is `Secure` only when the request itself came over HTTPS. A blank header is refused even
+    with a valid form field, and the masked token a server-rendered page carries in its hidden
+    `_csrf` field is not accepted in the header (pages post that field instead).
+
+
+    **Sessions.** The session cookie `JSESSIONID` is `HttpOnly` and `SameSite=Lax`. A
+    successful OTP verify rotates the session id (a new `JSESSIONID`) and renews the CSRF token
+    (the old `XSRF-TOKEN` is cleared with `Max-Age=0` and a new one set in the same response);
+    clients must use the new values. A failed verify changes neither.
+
+
+    **Errors (decision 33).** Every error under `/api` answers the JSON `ErrorResponse`, always
+    as `application/json` whatever the `Accept` header, with a fixed message that never echoes
+    an exception's text. Besides the responses listed per operation, any endpoint may answer
+    405 `MethodNotAllowed` (with `Allow`) for an unsupported method, 406 `NotAcceptable`, and —
+    for an endpoint that reads a body — 415 `UnsupportedMediaType` (with `Accept`); an
+    unexpected failure is a 500 with the message `An unexpected error occurred`. A
+    multipart body sent to any endpoint other than `POST /submissions` and
+    `PUT /submissions/mine` is refused before it is read when it declares more than 16 KB
+    (413, `The request body is too large.`) or no `Content-Length` (411, `The request must
+    state its Content-Length.`). A `page` whose offset `page × size` exceeds 2147483647 is a
+    400 (`page: must be less than or equal to N`).
+  version: "0.6.0"
 
 servers:
   - url: /api
@@ -30,6 +59,10 @@ paths:
     get:
       tags: [gallery]
       summary: List approved testimonials (UC-BROWSE-APPROVED, UC-FILTER-COUNTRY, UC-SEARCH-KEYWORD, UC-FILTER-TOPIC)
+      description: >
+        Ordered newest approval first: `reviewedAt` descending, then `id` descending as the
+        tie-breaker (decision 31). The order is fixed by the server — there is no sort
+        parameter, and a `sort` query parameter is ignored — so paging is stable.
       parameters:
         - name: country
           in: query
@@ -79,6 +112,7 @@ paths:
                   page: { type: integer }
                   size: { type: integer }
                   totalElements: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
 
   /gallery/testimonials/{id}:
     get:
@@ -183,6 +217,7 @@ paths:
             Accepted regardless of whether a testimonial already exists for this email —
             identical response either way, so requesting one never reveals that on its own
             (decision 17, NFR-VISITOR-OTP-BRUTEFORCE).
+        "403": { $ref: "#/components/responses/Forbidden" }
         "429":
           description: Too many OTP requests in a short window, for this email or this IP.
           content:
@@ -224,6 +259,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /submissions/session:
     get:
@@ -289,6 +325,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "409":
           description: A testimonial already exists for this visitor — use PUT /submissions/mine instead.
           content:
@@ -352,6 +389,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404":
           description: No testimonial exists yet for this visitor — use POST /submissions instead.
           content:
@@ -384,6 +422,7 @@ paths:
           description: >
             Accepted regardless of whether the email matched, to avoid revealing which part
             of login failed (decision 4).
+        "403": { $ref: "#/components/responses/Forbidden" }
         "429":
           description: Too many OTP requests in a short window.
           content:
@@ -415,6 +454,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /moderation/testimonials/pending:
     get:
@@ -445,6 +485,7 @@ paths:
                   page: { type: integer }
                   size: { type: integer }
                   totalElements: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /moderation/testimonials/{id}/approve:
@@ -457,6 +498,7 @@ paths:
       responses:
         "204": { description: Status set to APPROVED; every modified flag cleared. }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /moderation/testimonials/{id}/reject:
@@ -481,7 +523,16 @@ paths:
             let them know to log in and fix it; the reason is included in that email when one
             was given.
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "503":
+          description: >
+            The email to the submitter couldn't be sent, so the testimonial was not rejected
+            and stays pending (UC-REJECT-TESTIMONIAL, decision 33) — message "The email to the
+            submitter couldn't be sent, so the testimonial was not rejected. Try again later."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /moderation/session:
     get:
@@ -789,7 +840,38 @@ components:
 
   responses:
     NotFound:
-      description: Resource not found.
+      description: >
+        Resource not found — also for a path id that isn't a number or overflows a 64-bit
+        integer (decision 33), answered `Resource not found`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    BadRequest:
+      description: >
+        A malformed request (decision 33): a query value of the wrong type
+        (`Invalid value for parameter '<name>'.`), a paging parameter out of range
+        (`<param>: <constraint>`, e.g. `size: must be less than or equal to 100`), a missing
+        required parameter (`Required parameter '<name>' is missing.`) or part
+        (`Required part '<name>' is missing.`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    MethodNotAllowed:
+      description: The method isn't supported for this resource; `Allow` lists the ones that are.
+      headers:
+        Allow: { schema: { type: string } }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    NotAcceptable:
+      description: The `Accept` header doesn't allow JSON — every endpoint answers only JSON.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    UnsupportedMediaType:
+      description: The request body's `Content-Type` isn't the one the endpoint reads; `Accept` lists it.
+      headers:
+        Accept: { schema: { type: string } }
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -799,7 +881,11 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
     Forbidden:
-      description: A valid session, but of the other role (e.g. an admin session on a visitor endpoint).
+      description: >
+        A valid session, but of the other role (e.g. an admin session on a visitor endpoint); or,
+        on any POST/PUT/PATCH/DELETE, a missing or invalid CSRF token (decision 32) — the same
+        `"message": "Access denied"` body either way. A refused request has no side effect (a
+        refused OTP verify doesn't use up an attempt).
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }

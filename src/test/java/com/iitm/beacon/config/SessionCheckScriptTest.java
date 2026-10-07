@@ -11,6 +11,7 @@ import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.domain.topic.TopicRepository;
+import com.iitm.beacon.testsupport.LoginCodeSteps;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,7 +46,7 @@ import org.springframework.transaction.annotation.Transactional;
 class SessionCheckScriptTest {
 
     private static final Pattern SESSION_CHECK_SCRIPT =
-            Pattern.compile("<script\\b[^>]*\\bsrc=\"/js/session-check\\.js\"[^>]*>");
+            Pattern.compile("<script\\b[^>]*\\bsrc=\"/js/session-check(-[0-9a-f]{32})?\\.js\"[^>]*>");
 
     @Autowired
     private MockMvc mockMvc;
@@ -146,13 +147,13 @@ class SessionCheckScriptTest {
     @ParameterizedTest
     @ValueSource(strings = {
         "/admin/login",
-        "/admin/login/code?email=a@example.com",
+        "/admin/login/code",
         "/submissions/login",
-        "/submissions/login/code?email=a@example.com",
+        "/submissions/login/code",
         "/gallery",
     })
     void loginAndPublicPages_doNotLoadTheScript(String path) throws Exception {
-        assertThat(sessionCheckScriptTags(get(path))).isEmpty();
+        assertThat(sessionCheckScriptTags(LoginCodeSteps.page(mockMvc, path))).isEmpty();
     }
 
     @Test

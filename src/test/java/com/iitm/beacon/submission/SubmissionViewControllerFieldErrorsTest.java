@@ -1,5 +1,6 @@
 package com.iitm.beacon.submission;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfField;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -121,6 +122,7 @@ class SubmissionViewControllerFieldErrorsTest {
         params.put("dataProcessingConsent", "true");
         params.putAll(overrides);
         MockMultipartHttpServletRequestBuilder builder = multipart("/submissions/form");
+        builder.with(csrfField());
         params.forEach((name, value) -> {
             if (value != null) {
                 builder.param(name, value);

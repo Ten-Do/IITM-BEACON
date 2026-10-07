@@ -15,6 +15,7 @@ import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.domain.topic.TopicRepository;
+import com.iitm.beacon.testsupport.LoginCodeSteps;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -152,10 +153,10 @@ class HeaderNavToggleTest {
         "/gallery",
         "/gallery?q=nothing-matches-this-at-all",
         "/submissions/login",
-        "/submissions/login/code?email=a@example.com",
+        "/submissions/login/code",
     })
     void publicVisitorPages_haveOneCollapsedToggleForTheHeaderNav(String path) throws Exception {
-        assertTogglesTheHeaderNav(html(get(path)), "visitor-nav");
+        assertTogglesTheHeaderNav(html(LoginCodeSteps.page(mockMvc, path)), "visitor-nav");
     }
 
     @Test
@@ -250,15 +251,15 @@ class HeaderNavToggleTest {
 
         assertThat(header).contains("Moderator");
         assertThat(elements(header, "nav").get(0)).contains("href=\"/moderation/queue\"");
-        assertThat(header).contains("src=\"/js/session-check.js\"");
+        assertThat(header).containsPattern("src=\"/js/session-check(-[0-9a-f]{32})?\\.js\"");
     }
 
     // -- admin login pages: inline header, no nav --
 
     @ParameterizedTest
-    @ValueSource(strings = {"/admin/login", "/admin/login/code?email=a@example.com"})
+    @ValueSource(strings = {"/admin/login", "/admin/login/code"})
     void adminLoginPages_haveNoToggleAndNoHeaderNav(String path) throws Exception {
-        String html = html(get(path));
+        String html = html(LoginCodeSteps.page(mockMvc, path));
 
         assertThat(openingTagsWithAttribute(html, "data-nav-toggle")).isEmpty();
         assertThat(html).doesNotContain("nav-toggle\"", "aria-controls");

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<!-- The site's error page (common.error.ErrorPage, ErrorPageRenderer): one fixed title and sentence per
+     HTTP status, never an exception's text. Rendered without a web request context too (the security
+     filter chain uses it), so it must not rely on one: no context-relative link expressions (the
+     shell's are server-relative), no forms. -->
+<head th:replace="~{layout/shell :: head(${title})}"></head>
+<body>
+<div th:replace="~{layout/header-visitor :: header('')}"></div>
+
+<main class="gallery-body">
+    <div class="gallery-empty-state">
+        <h1 class="gallery-empty-title" th:text="${title}">Something went wrong</h1>
+        <p class="gallery-empty-hint" th:text="${message}">An unexpected error occurred on our side.</p>
+        <a class="dashboard-btn dashboard-btn--primary" href="/">Back to homepage</a>
+    </div>
+</main>
+</body>
+</html>

@@ -1,5 +1,6 @@
 package com.iitm.beacon.moderation;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfHeader;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -152,7 +153,7 @@ class ModerationControllerTest {
     void approve_withAdminAuth_returns204AndPersistsApprovedStatus() throws Exception {
         Testimonial saved = pendingTestimonial("controller-approve@example.com");
 
-        mockMvc.perform(post("/api/moderation/testimonials/{id}/approve", saved.getId())
+        mockMvc.perform(post("/api/moderation/testimonials/{id}/approve", saved.getId()).with(csrfHeader())
                         .with(authentication(admin())))
                 .andExpect(status().isNoContent());
 
@@ -165,7 +166,7 @@ class ModerationControllerTest {
     void approve_unauthenticated_returns401() throws Exception {
         Testimonial saved = pendingTestimonial("controller-approve-unauth@example.com");
 
-        mockMvc.perform(post("/api/moderation/testimonials/{id}/approve", saved.getId()))
+        mockMvc.perform(post("/api/moderation/testimonials/{id}/approve", saved.getId()).with(csrfHeader()))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -173,25 +174,26 @@ class ModerationControllerTest {
     void approve_visitorRole_returns403() throws Exception {
         Testimonial saved = pendingTestimonial("controller-approve-visitor@example.com");
 
-        mockMvc.perform(post("/api/moderation/testimonials/{id}/approve", saved.getId())
+        mockMvc.perform(post("/api/moderation/testimonials/{id}/approve", saved.getId()).with(csrfHeader())
                         .with(authentication(visitor())))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     void approve_unknownId_returns404() throws Exception {
-        mockMvc.perform(post("/api/moderation/testimonials/{id}/approve", 999_999).with(authentication(admin())))
+        mockMvc.perform(post("/api/moderation/testimonials/{id}/approve", 999_999).with(csrfHeader())
+                        .with(authentication(admin())))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void approve_alreadyApproved_returns409() throws Exception {
         Testimonial saved = pendingTestimonial("controller-approve-conflict@example.com");
-        mockMvc.perform(post("/api/moderation/testimonials/{id}/approve", saved.getId())
+        mockMvc.perform(post("/api/moderation/testimonials/{id}/approve", saved.getId()).with(csrfHeader())
                         .with(authentication(admin())))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(post("/api/moderation/testimonials/{id}/approve", saved.getId())
+        mockMvc.perform(post("/api/moderation/testimonials/{id}/approve", saved.getId()).with(csrfHeader())
                         .with(authentication(admin())))
                 .andExpect(status().isConflict());
     }
@@ -200,7 +202,7 @@ class ModerationControllerTest {
     void reject_withReasonBody_returns204AndPersistsRejectedStatus() throws Exception {
         Testimonial saved = pendingTestimonial("controller-reject@example.com");
 
-        mockMvc.perform(post("/api/moderation/testimonials/{id}/reject", saved.getId())
+        mockMvc.perform(post("/api/moderation/testimonials/{id}/reject", saved.getId()).with(csrfHeader())
                         .with(authentication(admin()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RejectRequest("Needs more detail."))))
@@ -216,7 +218,7 @@ class ModerationControllerTest {
     void reject_withoutBody_returns204() throws Exception {
         Testimonial saved = pendingTestimonial("controller-reject-no-body@example.com");
 
-        mockMvc.perform(post("/api/moderation/testimonials/{id}/reject", saved.getId())
+        mockMvc.perform(post("/api/moderation/testimonials/{id}/reject", saved.getId()).with(csrfHeader())
                         .with(authentication(admin())))
                 .andExpect(status().isNoContent());
 
@@ -228,7 +230,7 @@ class ModerationControllerTest {
     void reject_unauthenticated_returns401() throws Exception {
         Testimonial saved = pendingTestimonial("controller-reject-unauth@example.com");
 
-        mockMvc.perform(post("/api/moderation/testimonials/{id}/reject", saved.getId()))
+        mockMvc.perform(post("/api/moderation/testimonials/{id}/reject", saved.getId()).with(csrfHeader()))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -236,25 +238,26 @@ class ModerationControllerTest {
     void reject_visitorRole_returns403() throws Exception {
         Testimonial saved = pendingTestimonial("controller-reject-visitor@example.com");
 
-        mockMvc.perform(post("/api/moderation/testimonials/{id}/reject", saved.getId())
+        mockMvc.perform(post("/api/moderation/testimonials/{id}/reject", saved.getId()).with(csrfHeader())
                         .with(authentication(visitor())))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     void reject_unknownId_returns404() throws Exception {
-        mockMvc.perform(post("/api/moderation/testimonials/{id}/reject", 999_999).with(authentication(admin())))
+        mockMvc.perform(post("/api/moderation/testimonials/{id}/reject", 999_999).with(csrfHeader())
+                        .with(authentication(admin())))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void reject_alreadyRejected_returns409() throws Exception {
         Testimonial saved = pendingTestimonial("controller-reject-conflict@example.com");
-        mockMvc.perform(post("/api/moderation/testimonials/{id}/reject", saved.getId())
+        mockMvc.perform(post("/api/moderation/testimonials/{id}/reject", saved.getId()).with(csrfHeader())
                         .with(authentication(admin())))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(post("/api/moderation/testimonials/{id}/reject", saved.getId())
+        mockMvc.perform(post("/api/moderation/testimonials/{id}/reject", saved.getId()).with(csrfHeader())
                         .with(authentication(admin())))
                 .andExpect(status().isConflict());
     }
@@ -281,5 +284,20 @@ class ModerationControllerTest {
         mockMvc.perform(get("/api/moderation/session").with(authentication(visitor())))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.status").value(403));
+    }
+
+    // -- CSRF (BL-004); the token's other variants are in config.CsrfProtectionTest --
+
+    @Test
+    void approve_withoutTheCsrfHeader_isAJson403_andLeavesItPending() throws Exception {
+        Testimonial saved = pendingTestimonial("api-approve-no-csrf@example.com");
+
+        mockMvc.perform(post("/api/moderation/testimonials/{id}/approve", saved.getId())
+                        .with(authentication(admin())))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+
+        assertThat(testimonialRepository.findById(saved.getId()).orElseThrow().getStatus())
+                .isEqualTo(TestimonialStatus.PENDING);
     }
 }

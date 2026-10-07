@@ -5,6 +5,7 @@ import com.iitm.beacon.domain.testimonial.TestimonialSection;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.domain.topic.Topic;
 import com.iitm.beacon.domain.topic.TopicGroup;
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
@@ -16,8 +17,9 @@ import org.springframework.data.jpa.domain.Specification;
 
 /**
  * Static {@link Specification} builders for the public gallery's
- * browse/filter query (decision 8). Combined in {@code GalleryService} via
- * {@link Specification#allOf(Specification[])}, which treats a {@code null}
+ * browse/filter query (decision 8) and its order. Combined in {@code
+ * GalleryService} via {@link Specification#allOf(Specification[])}, which
+ * treats a {@code null}
  * member as a no-op — so every method here returns {@code null} instead of
  * an always-true predicate when its filter isn't active, rather than every
  * caller having to special-case "filter absent".
@@ -25,6 +27,31 @@ import org.springframework.data.jpa.domain.Specification;
 final class TestimonialSpecifications {
 
     private TestimonialSpecifications() {
+    }
+
+    /**
+     * Not a filter but the gallery list's order (BL-036): newest approval
+     * first — {@code reviewedAt} descending, then {@code id} descending as
+     * the tie-breaker, so a page boundary never repeats or skips a card. A
+     * testimonial without a {@code reviewedAt} (one approved through
+     * moderation always has it) comes after every reviewed one, the same on
+     * every database: {@code Sort} can't say "nulls last" for a criteria
+     * query, so the order is set here, as a {@code CASE}. Restricts nothing
+     * ({@code null} predicate); Spring Data drops the order again from the
+     * page's count query. A sorted {@code Pageable} would replace this
+     * order, so the caller must pass an unsorted one.
+     */
+    static Specification<Testimonial> newestApprovalFirst() {
+        return (root, query, cb) -> {
+            Expression<Integer> unreviewedLast = cb.<Integer>selectCase()
+                    .when(cb.isNull(root.get("reviewedAt")), cb.literal(1))
+                    .otherwise(cb.literal(0));
+            query.orderBy(
+                    cb.asc(unreviewedLast),
+                    cb.desc(root.get("reviewedAt")),
+                    cb.desc(root.get("id")));
+            return null;
+        };
     }
 
     static Specification<Testimonial> statusIs(TestimonialStatus status) {

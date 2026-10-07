@@ -35,8 +35,8 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
  * and plain form posts.
  *
  * <p>Like {@code ModerationViewController}, it catches the service's
- * exceptions itself instead of letting {@code GlobalExceptionHandler} (a
- * REST advice) write JSON to a browser: a broken rule or a conflict
+ * exceptions itself instead of letting {@code GlobalExceptionHandler} answer
+ * the browser with the site's generic error page: a broken rule or a conflict
  * re-renders the form with the message next to its field (or above the form
  * when it concerns the change as a whole, e.g. the protected {@code general}
  * topic); an entry that no longer exists, or a toggle or delete the catalog

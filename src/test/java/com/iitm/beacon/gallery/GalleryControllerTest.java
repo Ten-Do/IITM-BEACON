@@ -1,5 +1,6 @@
 package com.iitm.beacon.gallery;
 
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
@@ -104,6 +105,36 @@ class GalleryControllerTest {
                 .andExpect(jsonPath("$.content[?(@.id == " + saved.getId() + ")]").exists())
                 .andExpect(jsonPath("$.page").value(0))
                 .andExpect(jsonPath("$.size").value(20));
+    }
+
+    /** An approved testimonial, as {@link #approvedTestimonialWithPublicContact}, approved at {@code reviewedAt}. */
+    private Testimonial approvedAt(String email, Instant reviewedAt) {
+        Testimonial t = approvedTestimonialWithPublicContact(email);
+        t.setReviewedAt(reviewedAt);
+        return testimonialRepository.saveAndFlush(t);
+    }
+
+    @Test
+    void browse_listsNewestApprovalFirst_whateverSortTheClientAsksFor() throws Exception {
+        int middle = approvedAt("order-middle@example.com", Instant.parse("2026-03-02T00:00:00Z")).getId().intValue();
+        int newest = approvedAt("order-newest@example.com", Instant.parse("2026-03-03T00:00:00Z")).getId().intValue();
+        int oldest = approvedAt("order-oldest@example.com", Instant.parse("2026-03-01T00:00:00Z")).getId().intValue();
+
+        mockMvc.perform(get("/api/gallery/testimonials").param("sort", "id,asc").param("sort", "reviewedAt,asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[*].id").value(contains(newest, middle, oldest)));
+    }
+
+    @Test
+    void browse_secondPageOfOne_isTheSecondNewestApproval() throws Exception {
+        approvedAt("order-page-middle@example.com", Instant.parse("2026-03-02T00:00:00Z"));
+        approvedAt("order-page-newest@example.com", Instant.parse("2026-03-03T00:00:00Z"));
+        Testimonial middleAgain = approvedAt("order-page-tie@example.com", Instant.parse("2026-03-02T00:00:00Z"));
+
+        mockMvc.perform(get("/api/gallery/testimonials").param("page", "1").param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[*].id").value(contains(middleAgain.getId().intValue())))
+                .andExpect(jsonPath("$.totalElements").value(3));
     }
 
     @Test

@@ -1,11 +1,14 @@
 package com.iitm.beacon.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -13,6 +16,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * {@code SecurityConfig}-level tests that don't belong to any single
@@ -23,12 +27,16 @@ import org.springframework.test.web.servlet.MockMvc;
  *       explicitly matched must be blocked outright, even for an
  *       authenticated principal with a real role, rather than falling
  *       through to {@code authenticated()} (which a VISITOR-role session
- *       would satisfy);
+ *       would satisfy). Under {@code /api/**} that is the JSON 401/403
+ *       here; anywhere else the HTML 404 page, covered by {@code
+ *       SecurityConfigUnknownPageTest};
  *   <li>the {@code permitAll()} static-asset route group ({@code /css/**},
  *       {@code /js/**}, {@code /images/**}, {@code /webjars/**}) — no content is served from
  *       these exact paths, so a passing test here only confirms the
  *       security layer lets the request through to Spring MVC's own "no
- *       handler found" 404 instead of blocking it with 401/403. Every other
+ *       resource found" 404 instead of blocking it. The tail answers a 404
+ *       too outside {@code /api/**}, so the test checks that the 404 came
+ *       from Spring MVC's resource handling. Every other
  *       view-layer route group ({@code /}, {@code /gallery/**}, {@code
  *       /submissions/login/**}, {@code /admin/login/**}) now has its own
  *       real controller — see {@code analytics.AnalyticsViewControllerTest},
@@ -60,11 +68,16 @@ class SecurityConfigTest {
                 .andExpect(status().isForbidden());
     }
 
-    @Test
-    void staticAssetRoutes_permitAllButNoContentYet_returns404NotSecurityError() throws Exception {
-        mockMvc.perform(get("/css/app.css")).andExpect(status().isNotFound());
-        mockMvc.perform(get("/js/app.js")).andExpect(status().isNotFound());
-        mockMvc.perform(get("/images/logo.png")).andExpect(status().isNotFound());
-        mockMvc.perform(get("/webjars/no-such-library/dist/missing.js")).andExpect(status().isNotFound());
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/css/app.css", "/js/app.js", "/images/logo.png", "/webjars/no-such-library/dist/missing.js"
+    })
+    void staticAssetRoutes_permitAllButNoContentYet_returnSpringMvcs404_notTheSecurityChains(String path)
+            throws Exception {
+        mockMvc.perform(get(path))
+                .andExpect(status().isNotFound())
+                .andExpect(result -> assertThat(result.getResolvedException())
+                        .as("reached Spring MVC's resource handling")
+                        .isInstanceOf(NoResourceFoundException.class));
     }
 }

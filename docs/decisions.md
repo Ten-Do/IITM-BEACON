@@ -47,7 +47,12 @@ image (NFR-UPLOAD-SPOOFING) by detecting its format from its actual bytes with t
 `ImageIO` readers (`ImageIO.getImageReaders` against an `ImageInputStream`) and then decoding it —
 a file no registered `ImageReader` can decode is rejected, regardless of its declared
 `Content-Type` or filename extension. What is stored is never the uploaded file itself, only the
-app's own re-encoding of it (decision 22).
+app's own re-encoding of it (decision 22). Photo files follow the database transaction that
+stores or removes their rows: files written in a transaction that rolls back are deleted again,
+and files of removed photos are deleted only after the commit (architecture §7), so neither an
+orphan file nor a row pointing at a missing file is left behind. Photo files never change under
+their UUID name, so `/uploads/**` answers `Cache-Control: max-age=31536000, private, immutable`
+(a missing one `no-store`) — `private`, so no shared cache keeps a deleted photo (decision 34).
 
 **Rationale:** Filesystem storage matches a lightweight, containerized deployment target and
 avoids bloating Postgres/H2 with binary data — simpler than external object storage for MVP
@@ -66,12 +71,25 @@ vars, not code, so they can change without a redeploy.
 ## 3. Rejected-testimonial retention
 
 **Decision:** Rejecting a testimonial is a soft delete: status becomes `REJECTED`, immediately
-hidden from the public gallery and the admin pending queue. A scheduled job, running weekly,
-hard-deletes `REJECTED` testimonials (row, sections, and photo files) 30 days after rejection.
+hidden from the public gallery and the admin pending queue. A scheduled job,
+`moderation.RejectedTestimonialCleanupJob`, hard-deletes `REJECTED` testimonials (row, sections,
+photos, tags, contacts, achievement ticks, and photo files) 30 days after rejection:
+- **Schedule:** weekly by default (Sunday 03:00 UTC), as a cron expression from the
+  `BEACON_RETENTION_CRON` env var; `-` switches the job off. The 30-day period is fixed in code.
+- **One transaction per run.** All due testimonials are deleted together; each delete re-checks
+  `status = REJECTED` and the 30 days, so one the visitor resubmitted a moment earlier (or that
+  was resubmitted and rejected again) survives. A `REJECTED` row without a `rejected_at` (never
+  written by the app) is never purged. Photo files are
+  deleted only after the transaction has committed (like the catalog delete, decision 28) — a
+  rollback deletes nothing, and the next run tries again.
+- A photo file already missing on disk is logged as a warning and doesn't stop the run.
 
 **Rationale:** Gives a buffer/audit trail against accidental admin rejects while still
 converging on permanent removal, without manual cleanup. Weekly is frequent enough relative to
-the 30-day window and keeps the job's DB load low.
+the 30-day window and keeps the job's DB load low. One transaction keeps the job simple for the
+few rows a week it handles; deleting files only after the commit means a failed run can never
+leave a row whose photos are gone. The cron is configurable so an operator can move the run to a
+quiet hour or switch it off without a redeploy.
 
 ## 4. Admin authentication
 
@@ -80,7 +98,12 @@ var) — no password, no `User` table. Login is passwordless via a 6-character a
 emailed to `ADMIN_EMAIL` in real environments (logged instead of sent in dev/test); held
 in-memory in a single service bean (code, expiry, remaining attempts) — no DB table; TTL and
 max attempts are both env-configurable; exceeding max attempts invalidates the OTP; no cap on
-concurrent sessions (the admin may be logged in on multiple devices at once).
+concurrent sessions (the admin may be logged in on multiple devices at once). Spring Boot's
+`UserDetailsServiceAutoConfiguration` is excluded, so no in-memory user with a generated password
+exists either (BL-013). In dev/test the code is logged with the recipient masked
+(`j***@example.com`), never the full address. A code that can't be emailed (mail server failure)
+gets exactly the response of a sent one — anything else would reveal that the typed email is the
+admin's — and a WARN naming only the exception type; the code stays issued for a resend.
 
 **Rationale:** Matches actual scope — exactly one real admin. Avoids password storage/reset
 flows or multi-admin management nothing in scope asks for. In-memory OTP state is sufficient
@@ -297,6 +320,10 @@ from the admin's) and looks up whether a testimonial already exists for that ema
 need a _dedicated_ anti-spam/email-verification step: this OTP requirement — every submitter
 must verify their email before they can even open the create/edit form — serves that purpose
 for free.
+
+Between the two login steps the typed email is kept in the session, never in the page
+address, so every email gets the identical redirect to the code step; mail failures get the
+identical response too (decision 4).
 
 **Rationale:** Unlike the single admin (decision 4), many visitors can request/verify OTPs
 concurrently, so a single mutable field isn't safe — a keyed, concurrent-safe map is the
@@ -655,10 +682,13 @@ loses a file.
 **Decision:** An unauthenticated request — no session, or an expired one — to a page that needs
 a login is redirected to that role's login page by a `DelegatingAuthenticationEntryPoint` in
 `SecurityConfig`: `/moderation/**` and `/catalog/**` to `/admin/login`, `/submissions/form` and
-`/submissions/confirmation` to `/submissions/login`. Every other unauthenticated request — all of
-`/api/**`, and anything that falls through to the `denyAll()` tail — still gets
-`RestAuthenticationEntryPoint`'s JSON 401. The redirect's `Location` is relative
-(`/admin/login`), not built from the request's own scheme and host. Before redirecting, a GET of
+`/submissions/confirmation` to `/submissions/login`. Every other unauthenticated request under
+`/api/**` still gets `RestAuthenticationEntryPoint`'s JSON 401; a request outside `/api/**` that
+falls through to the `denyAll()` tail — a path no route serves — gets the HTML 404 page instead
+(decision 33). The redirect's `Location` is relative
+(`/admin/login`), not built from the request's own scheme and host — on the real server too,
+where `server.tomcat.use-relative-redirects: true` stops Tomcat from making it absolute (it did
+until M7, decision 34). Before redirecting, a GET of
 one of those pages is saved in the session: the `HttpSessionRequestCache` saves exactly those
 GETs and nothing else, without a `?continue` marker. After a successful OTP verify,
 `common.security.PostLoginRedirect` takes the saved request out of the session (always removing
@@ -678,6 +708,26 @@ session lives (the ping itself keeps it alive) and the usual JSON 401 (none or e
 (the other role's session) otherwise. On 401 or 403 the script reloads the page, which then goes
 through the login redirect above and comes back. It never runs on the login pages.
 
+A session of the other role on one of those pages — an admin opening `/submissions/form`, a
+visitor opening `/moderation/**` or `/catalog/**` — is handled the same way (BL-033): the
+`DelegatingAccessDeniedHandler` in `SecurityConfig` saves the GET and redirects to that page's
+own login page, where logging in replaces the other role's session; other-role POSTs are
+redirected but not saved. `/api/**` keeps `RestAccessDeniedHandler`'s JSON 403; outside it, the
+`denyAll()` tail answers the HTML 404 page, with a session as without one. A CSRF failure (decision 32) never becomes a login redirect: it is the JSON 403 under
+`/api/**` and the HTML 403 error page on a page (decision 33).
+
+Every successful OTP login, admin or visitor, REST or page, rotates the session id and renews
+the CSRF token (BL-034): `common.security.SessionAuthenticator` applies a
+`CompositeSessionAuthenticationStrategy` of Spring's `ChangeSessionIdAuthenticationStrategy` and
+`CsrfAuthenticationStrategy` before saving the security context — if it fails, nobody is logged
+in. The session's attributes, the saved page included, survive the rotation; a failed verify
+rotates nothing. The pending login email (decision 17) survives it too and is then removed.
+
+Both roles can log out: a "Log out" button in the header (always for the admin; for a visitor
+when logged in) posts `/logout` with the CSRF token. The session is invalidated, `JSESSIONID`
+expired and `XSRF-TOKEN` cleared; an admin lands on `/admin/login`, anyone else on `/`. The old
+session id is dead afterwards. Any other method on `/logout` is a 405 (decision 33).
+
 **Rationale:** An expired session used to show the browser a raw JSON 401 body on the next page
 load, with no way on but typing the login URL, and the 30-minute default logged visitors out
 while they were still writing their testimonial on a phone. The request cache is deliberately
@@ -689,7 +739,11 @@ keeps the return trip from becoming an open redirect or a hop into the other rol
 relative `Location` keeps the browser on `https://` behind a proxy that terminates TLS, where the
 app itself sees plain `http`. Pinging when the user comes back to a tab, instead of polling,
 catches the moment it matters — before they type more into a page whose session is gone — and
-costs nothing while the tab sits idle.
+costs nothing while the tab sits idle. The logins are done by hand after the OTP check, so
+Spring Security's own session-fixation protection never ran: rotating the id at login makes a
+session id planted in a browser before the login useless afterwards. Sending the other role
+to the login page instead of a JSON body gives a way on, and ends the session check's reload
+loop on that body.
 
 ## 24. Fullscreen photo viewer: PhotoSwipe
 
@@ -792,9 +846,15 @@ origin(s), which then replace it — needed behind a reverse proxy, where the ap
 proxy's request. `server.forward-headers-strategy` is deliberately not enabled to derive that
 origin from `X-Forwarded-*` headers: Tomcat would then trust them from the Docker bridge
 network's private addresses, which would also let a client spoof the IP address the per-IP OTP
-request limits count (decisions 4, 17). `SecurityConfig` narrows the gallery to match: only GET
-and HEAD on `/`, `/gallery` and `/gallery/*`, and POST only on `/gallery/*/contact`. CSRF
-protection stays off globally (BL-004); for this endpoint the Origin check is the protection.
+request limits count (decisions 4, 17). Instead, the reverse proxy's own address can be named in
+`BEACON_TRUSTED_PROXIES` (decision 34): only from it are `X-Forwarded-For` and
+`X-Forwarded-Proto` believed, and the default origin then uses the forwarded scheme. `SecurityConfig` narrows the gallery to match: only GET
+and HEAD on `/`, `/gallery` and `/gallery/*`, and POST only on `/gallery/*/contact`. Since
+decision 32 the endpoint also needs the CSRF token, like every POST: `contact-reveal.js` sends
+the form's own fields (with the hidden `_csrf`) and, when the `XSRF-TOKEN` cookie is there, the
+`X-XSRF-TOKEN` header. The Origin check stays on top of it, as the guard against scraping that
+the token alone isn't (anyone can fetch a token); a POST without a valid token gets the 403
+error page (decision 33) before the Origin check runs.
 
 **Rationale:** A public GET per id let anyone harvest every public contact in the gallery with a
 loop over ids. The check is knowingly bypassable — a script that sets a forged `Origin` header
@@ -918,3 +978,148 @@ e2e screenshots stay deterministic. jsvectormap, the MIT library considered firs
 published as a WebJar on Maven Central, and the WebJar that is (jvectormap) is AGPL/commercial
 and needs jQuery; reusing jsvectormap's map data alone avoids both. Shading by count rather than
 one highlight colour shows at a glance where most alumni come from.
+
+## 31. Gallery order: newest approval first
+
+**Decision:** The public gallery list (`/gallery` and `GET /api/gallery/testimonials`) is ordered
+by approval time, newest first — `reviewed_at` descending, then `id` descending as the
+tie-breaker; a testimonial without an approval time (not produced by the app) comes last. The
+order is fixed by the server: there is no sort parameter, and any sort a caller sends is
+ignored. Every filter and the search keep it.
+
+**Rationale:** Without an `ORDER BY`, PostgreSQL may return rows in any order, so a card could
+repeat on, or vanish from, the next page (BL-036). Newest approval first puts fresh testimonials
+in front of returning visitors; a re-approved edit counts as fresh, as it has just been
+reviewed again. The id tie-breaker makes the order total, so paging is stable.
+
+## 32. CSRF protection: cookie-to-header token
+
+**Decision:** CSRF protection is on for every POST, PUT, PATCH and DELETE, pages and `/api/**`
+alike, the unauthenticated login endpoints included (BL-004). The token lives in a cookie, not
+the session: `CookieCsrfTokenRepository.withHttpOnlyFalse()` — cookie `XSRF-TOKEN`, path `/`,
+`SameSite=Lax`, readable by scripts, `Secure` when the request is HTTPS or `BEACON_COOKIE_SECURE`
+is on (the `prod` default, decision 34).
+`config.SpaCsrfTokenRequestHandler` (Spring's documented pattern for script clients) loads the
+deferred token on every request, so the cookie is set on any response to a request that didn't
+carry it; it accepts the raw cookie value in the `X-XSRF-TOKEN` header (REST clients,
+`contact-reveal.js`) and the masked, BREACH-safe token in a form's hidden `_csrf` field, which
+Thymeleaf adds to every `<form method="post">` that uses `th:action` (a guard test keeps every
+form on `th:action`). The masked token is refused in the header, and a blank header is refused
+even with a valid field. The token is renewed at every login (decision 23). A CSRF failure is
+a 403 with no side effect and never a login redirect — the JSON "Access denied" under `/api/**`,
+the HTML error page on a page (decision 33) — with the one exception below. The dev-only H2 console is exempt. `JSESSIONID` is
+`SameSite=Lax` too (`server.servlet.session.cookie.same-site`).
+
+The multipart submission form posts its `_csrf` in the multipart body. Because the CSRF check
+reads `_csrf` from the body, a multipart request would be parsed before it is refused; so
+`config.NonUploadMultipartFilter`, placed before the CSRF check, refuses any multipart request
+other than the three submission endpoints from its headers alone when it declares more than
+`BEACON_NON_UPLOAD_MULTIPART_MAX_SIZE` (16 KB, 413) or no length at all (411) (decision 34). `CsrfFilter` reads it
+before the controller runs, so Tomcat parses the body there; when that fails (over
+`max-part-count` parts or over `max-file-size`), every field — the token too — is lost, and the
+request would get a 403 instead of the redirect back to the form with "Photos you attached were
+not saved". `config.UnreadableFormUploadHandler`, the CSRF-failure handler, turns exactly that
+case — a POST to `/submissions/form`, multipart, no `X-XSRF-TOKEN` header, whose body can't be
+read — into that redirect, with the same flash message (`common.web.UploadFailure`). The request
+is still refused and never reaches a controller.
+
+Tests send tokens through `testsupport.Csrf` (`csrfField()`, `csrfHeader()`), never
+spring-security-test's `csrf()`, which swaps the filter's repository for a session-based one for
+the rest of the cached context; a guard test enforces it.
+
+**Rationale:** The site has real HTML forms posting form-encoded and multipart bodies, which
+another website can submit in a logged-in user's browser — the `application/json`-only
+mitigation of M2 never covered them. A cookie token serves both the server-rendered forms and
+script or REST clients without an extra endpoint and, unlike a session token, outlives an expired
+session, so decision 23's expired-session redirect still works for a form POST. For the
+multipart form every alternative costs something: the token in the action URL leaks into logs,
+history and `Referer` (and Tomcat parses the body anyway); exempting the endpoint drops the token
+check; a `MultipartFilter` before Spring Security parses before authentication and breaks the
+lazy-resolve redirect; re-checking the token in an MVC interceptor is a hand-rolled check that
+fails open if it drifts from the filter. Redirecting an already-refused, unreadable upload keeps
+every check and only changes what that refusal looks like.
+
+## 33. Client errors: the right 4xx, JSON for the API, an HTML page for pages
+
+**Decision:** A request the client got wrong never answers 500 (BL-029, BL-037, BL-014):
+- a path id that isn't a number or overflows `Long` → **404**, as for an unknown id (the gallery
+  detail page, like the contact reveal and the catalog pages, accepts 1–18 digits only);
+- a malformed query or form value (`page=abc`, `topicIds=abc`), a missing required parameter or
+  part, a parameter out of its documented range (gallery and moderation `page`/`size`, now
+  enforced on `/api/moderation/testimonials/pending` too: `page` ≥ 0, `size` 1–100), a page so
+  large that `page × size` overflows (`page: must be less than or equal to N`), or a form field
+  the binder can't read (`sections[256]`) → **400**;
+- a multipart body sent anywhere but the submission endpoints that is too large or of unknown
+  length → **413** / **411** (decision 32);
+- an unsupported method → **405** with `Allow`; an unacceptable `Accept` → **406**; an
+  unsupported `Content-Type` → **415**;
+- an action whose email can't be sent — a reject whose notification to the submitter fails —
+  → **503**, and the action is not carried out (UC-REJECT-TESTIMONIAL);
+- a request outside `/api/**` that reaches Spring Security's `denyAll()` tail — a path no route
+  serves, e.g. `/no-such-page`, `/favicon.ico`, `/gallery/1/extra`, and also a method a public
+  page doesn't take (e.g. `POST /gallery`) — → **404** "Page not found", the HTML error page,
+  anonymous or logged in alike (`common.error.PageNotFoundHandler`); never a login redirect,
+  never saved in the request cache. Under `/api/**` the tail keeps the JSON 401 (no session) /
+  403 (any session). A CSRF failure is checked first and stays a 403.
+
+Messages are fixed strings — at most the name of a parameter or part from our own code — never
+the exception's text, which names Java types and methods; client errors are logged at DEBUG,
+not as server errors. Which representation answers depends on the path alone: `/api/**` gets the
+JSON `ErrorResponse` (always `application/json`), every other path the site's HTML error page with
+the same status — title and one sentence per status (e.g. 404 "Page not found", 400 "Bad
+request", 403 "Access denied", 500 "Something went wrong") and a link back to the homepage. A
+page's expected errors keep their own answers: `/gallery/{bad id}` shows `gallery/not-found`, and
+an unreadable submission-form field redirects back to the form with "The form couldn't be read,
+so nothing was saved. Please check it and send it again." Spring Boot's `/error` dispatch shows
+the same HTML page to browsers.
+
+**Rationale:** NFR-ERROR-TRANSPARENCY asks every error to map to a meaningful status with an
+actionable message; a 500 for a typo in a URL told the client the server was broken and paged
+whoever reads the logs. 404 for a malformed id makes "no such testimonial" one answer however the
+id is spelled; an address no route serves is likewise "not found", and answering so changes
+nothing about what is accessible. Choosing the representation by path, not by `Accept`, gives one predictable rule
+that also covers errors raised before any controller is chosen (405, 406, 415), and keeps the
+JSON API's contract intact for every client; a browser following a bad link or sending a stale
+form gets a page of the site instead of a JSON body.
+
+## 34. Behind a TLS proxy: secure cookies, trusted client address, response headers, caching
+
+**Decision:** Production runs behind a reverse proxy that terminates TLS, so the app itself sees
+plain http. Five settings make that safe (M7 security review, `security-review.md`):
+- **Secure cookies.** `JSESSIONID` and `XSRF-TOKEN` carry `Secure` when `BEACON_COOKIE_SECURE`
+  is on — `true` in the `prod` profile (and forwarded so by compose), `false` in dev and tests —
+  or when the request itself is https. The setting only ever adds `Secure`, never removes it.
+- **Relative redirects.** `server.tomcat.use-relative-redirects: true`: every redirect's
+  `Location` is a path, so the browser stays on https (decision 23).
+- **Trusted proxy.** `BEACON_TRUSTED_PROXIES` names the proxy's exact IP address(es) (no
+  ranges, host names or ports — the app refuses to start). Only requests from those addresses
+  have their `X-Forwarded-For` (the client's address, for the per-IP OTP limits) and
+  `X-Forwarded-Proto` (https, so cookies become `Secure` and the same-origin check expects
+  `https://`) believed, through Tomcat's `RemoteIpValve` (`config.ClientAddressConfig`);
+  `X-Forwarded-Host`/`-Port` never are. Empty by default: nothing is trusted, as before.
+  `server.forward-headers-strategy` stays off (decision 27).
+- **Response headers.** Every response carries a `Content-Security-Policy` — `default-src
+  'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self';
+  connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors
+  'self'` — with `'unsafe-eval'` and `img-src blob:` added only on `/submissions/form` (Alpine's
+  expressions and the photo picker's previews); and `Referrer-Policy: same-origin`. Templates
+  have no inline scripts, styles or event handlers (score colours are `score-N` classes, the
+  no-JavaScript styles `noscript.css`), guarded by a test. The dev-only H2 console has no CSP.
+- **Asset caching.** CSS and JavaScript are linked through content-versioned URLs
+  (`/css/beacon-<md5>.css`, Spring's resource chain; templates use `@{...}`) and WebJars through
+  their versioned paths; those answer `Cache-Control: max-age=31536000, private, immutable`.
+  Plain asset URLs still work with `no-cache`; pages and `/api/**` stay `no-store`. `private`
+  because every response to a cookieless request sets `XSRF-TOKEN`, which a shared cache must
+  never hand to others.
+
+Large multipart bodies are accepted only by the three submission endpoints (decision 32).
+
+**Rationale:** Behind TLS termination the app can't see https by itself: without these,
+cookies went out without `Secure`, redirects were absolute `http://` URLs, and every visitor
+shared the proxy's address, turning the per-IP OTP limit into one limit for the whole site.
+Trusting forwarded headers only from named addresses keeps a client from forging its own
+address. The CSP is a second line of defence against injected markup that costs nothing now
+that no template relies on inline code; `'unsafe-eval'` stays confined to the one page that
+runs Alpine. Versioned, long-cached assets stop phones from re-downloading the stylesheet and
+scripts on every page.
+

@@ -16,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
 import com.iitm.beacon.common.crypto.EmailLookupHashService;
+import com.iitm.beacon.common.web.PageResponse;
 import com.iitm.beacon.domain.achievement.Achievement;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
 import com.iitm.beacon.domain.achievement.TestimonialAchievement;
@@ -32,6 +33,7 @@ import com.iitm.beacon.domain.testimonial.TestimonialSection;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.domain.topic.Topic;
 import com.iitm.beacon.domain.topic.TopicRepository;
+import com.iitm.beacon.testsupport.AssetUrls;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -42,6 +44,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -187,6 +190,50 @@ class GalleryViewControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(
                         allOf(containsString("gallery-pagination-status"), containsString("Next"))));
+    }
+
+    private Testimonial approvedAt(String email, Instant reviewedAt, String answerText) {
+        Testimonial t = approvedTestimonial(email, "IN", "general", answerText);
+        t.setReviewedAt(reviewedAt);
+        return testimonialRepository.saveAndFlush(t);
+    }
+
+    @Test
+    void list_cardsAreInNewestApprovalFirstOrder_whateverSortIsAsked() throws Exception {
+        Testimonial middle = approvedAt("list-order-middle@example.com", Instant.parse("2026-03-02T00:00:00Z"),
+                "Middle story.");
+        Testimonial newest = approvedAt("list-order-newest@example.com", Instant.parse("2026-03-03T00:00:00Z"),
+                "Newest story.");
+        Testimonial oldest = approvedAt("list-order-oldest@example.com", Instant.parse("2026-03-01T00:00:00Z"),
+                "Oldest story.");
+
+        MvcResult result = mockMvc.perform(get("/gallery").param("sort", "id,asc"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        @SuppressWarnings("unchecked")
+        PageResponse<TestimonialCardDto> results =
+                (PageResponse<TestimonialCardDto>) result.getModelAndView().getModel().get("results");
+        assertThat(results.content())
+                .extracting(TestimonialCardDto::id)
+                .containsExactly(newest.getId(), middle.getId(), oldest.getId());
+        String html = result.getResponse().getContentAsString();
+        assertThat(html.indexOf("Newest story.")).isNotNegative().isLessThan(html.indexOf("Middle story."));
+        assertThat(html.indexOf("Middle story.")).isLessThan(html.indexOf("Oldest story."));
+    }
+
+    @Test
+    void list_secondPage_holdsTheOldestApprovalsPastTheFirstTwenty() throws Exception {
+        Instant start = Instant.parse("2026-03-01T00:00:00Z");
+        approvedAt("list-order-page-oldest@example.com", start, "The oldest approval.");
+        for (int i = 1; i <= 20; i++) {
+            approvedAt("list-order-page-" + i + "@example.com", start.plusSeconds(i), "Approval number " + i + ".");
+        }
+
+        mockMvc.perform(get("/gallery").param("page", "1"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("The oldest approval.")))
+                .andExpect(content().string(not(containsString("Approval number"))));
     }
 
     @Test
@@ -513,11 +560,12 @@ class GalleryViewControllerTest {
         String html = detailHtml(saved.getId());
 
         assertThat(openingTags(html, "link"))
-                .filteredOn(tag -> attribute(tag, "href").orElse("").equals("/webjars/photoswipe/dist/photoswipe.css"))
+                .filteredOn(tag -> attribute(tag, "href").map(AssetUrls::plain).orElse("").equals(
+                        "/webjars/photoswipe/dist/photoswipe.css"))
                 .singleElement()
                 .satisfies(tag -> assertThat(attribute(tag, "rel")).contains("stylesheet"));
         assertThat(openingTags(html, "script"))
-                .filteredOn(tag -> attribute(tag, "src").orElse("").equals("/js/photo-viewer.js"))
+                .filteredOn(tag -> attribute(tag, "src").map(AssetUrls::plain).orElse("").equals("/js/photo-viewer.js"))
                 .singleElement()
                 .satisfies(tag -> assertThat(attribute(tag, "type")).contains("module"));
         assertThat(html).doesNotContain("photo-viewer-template");

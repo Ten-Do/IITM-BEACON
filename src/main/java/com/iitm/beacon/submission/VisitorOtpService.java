@@ -15,6 +15,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.HexFormat;
 import java.util.concurrent.atomic.AtomicReference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.mail.MailException;
 import org.springframework.stereotype.Service;
 
 /**
@@ -27,10 +30,17 @@ import org.springframework.stereotype.Service;
  * (moved down from {@code VisitorAuthController}) so any caller — the REST
  * controller today, a Thymeleaf view-controller later — gets the same
  * throttling without duplicating the logic.
+ *
+ * <p>A code that can't be emailed changes nothing the caller sees: {@link
+ * #requestOtp} returns as it does after a sent one, like for every email
+ * (decision 17). The failure is logged as a warning with its type only: its
+ * text can name the recipient. The code stays issued, so "Resend code" just
+ * tries again.
  */
 @Service
 public class VisitorOtpService {
 
+    private static final Logger log = LoggerFactory.getLogger(VisitorOtpService.class);
     private static final String HASH_ALGORITHM = "SHA-256";
     private static final String RATE_LIMIT_EMAIL_KEY = "visitor-otp-request:email";
     private static final String RATE_LIMIT_IP_KEY = "visitor-otp-request:ip";
@@ -61,7 +71,8 @@ public class VisitorOtpService {
 
     /**
      * Enforces the per-email and per-IP OTP request rate limits, then — if
-     * within budget — generates/stores/sends the OTP exactly as before.
+     * within budget — generates/stores/sends the OTP exactly as before. A
+     * code that can't be emailed is only logged (see the class comment).
      *
      * @param ip caller's remote address, used as the per-IP rate-limit key;
      *     may be {@code null} (treated as an opaque, shared key).
@@ -84,7 +95,11 @@ public class VisitorOtpService {
         cache.put(
                 normalized,
                 new VisitorOtpState(hash, clock.instant().plus(otpProperties.ttl()), otpProperties.maxAttempts()));
-        otpMailer.sendOtp(normalized, code);
+        try {
+            otpMailer.sendOtp(normalized, code);
+        } catch (MailException ex) {
+            log.warn("A visitor login code could not be emailed ({})", ex.getClass().getSimpleName());
+        }
     }
 
     public VisitorOtpVerifyResult verify(String rawEmail, String rawCode) {

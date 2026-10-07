@@ -1,5 +1,6 @@
 package com.iitm.beacon.config;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfField;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -38,9 +39,10 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
  * {@code SecurityConfig}'s handling of an unauthenticated request (no
  * session, or an expired one): an HTML page is redirected to its role's
  * login page, and a GET of such a page is saved in the {@link RequestCache}
- * so the login can return to it; everything else — the JSON API, the
- * {@code denyAll()} tail — keeps the JSON 401 and is never saved. The
- * return itself is covered by {@code LoginReturnFlowTest}.
+ * so the login can return to it; the JSON API keeps the JSON 401, and
+ * neither it nor anything else — e.g. a path outside the API that no route
+ * serves, the HTML 404 page ({@code SecurityConfigUnknownPageTest}) — is
+ * ever saved. The return itself is covered by {@code LoginReturnFlowTest}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -59,7 +61,7 @@ class SecurityConfigLoginRedirectTest {
     }
 
     private static MockHttpServletRequestBuilder anonymousFormPost() {
-        return multipart("/submissions/form")
+        return multipart("/submissions/form").with(csrfField())
                 .param("firstName", "David")
                 .param("sections[0].topicSlug", "general")
                 .param("sections[0].answerText", "Text.")
@@ -73,17 +75,18 @@ class SecurityConfigLoginRedirectTest {
                 Arguments.of(get("/moderation/queue"), "/admin/login"),
                 Arguments.of(get("/moderation/queue").param("page", "2"), "/admin/login"),
                 Arguments.of(get("/moderation"), "/admin/login"),
-                Arguments.of(post("/moderation/queue/1/approve"), "/admin/login"),
-                Arguments.of(post("/moderation/queue/1/reject").param("reason", "x"), "/admin/login"),
+                Arguments.of(post("/moderation/queue/1/approve").with(csrfField()), "/admin/login"),
+                Arguments.of(post("/moderation/queue/1/reject").with(csrfField()).param("reason", "x"), "/admin/login"),
                 Arguments.of(get("/catalog/topics"), "/admin/login"),
                 Arguments.of(get("/catalog/achievements"), "/admin/login"),
                 Arguments.of(get("/catalog/topics/5"), "/admin/login"),
                 Arguments.of(get("/catalog/topic-groups/new"), "/admin/login"),
                 Arguments.of(get("/catalog/achievements/3/delete"), "/admin/login"),
                 Arguments.of(get("/catalog"), "/admin/login"),
-                Arguments.of(post("/catalog/topics/new").param("slug", "x"), "/admin/login"),
-                Arguments.of(post("/catalog/topics/5/active").param("active", "false"), "/admin/login"),
-                Arguments.of(post("/catalog/topic-groups/5/delete"), "/admin/login"),
+                Arguments.of(post("/catalog/topics/new").with(csrfField()).param("slug", "x"), "/admin/login"),
+                Arguments.of(post("/catalog/topics/5/active").with(csrfField())
+                        .param("active", "false"), "/admin/login"),
+                Arguments.of(post("/catalog/topic-groups/5/delete").with(csrfField()), "/admin/login"),
                 Arguments.of(get("/submissions/form"), "/submissions/login"),
                 Arguments.of(anonymousFormPost(), "/submissions/login"),
                 Arguments.of(get("/submissions/confirmation"), "/submissions/login"));
@@ -112,7 +115,7 @@ class SecurityConfigLoginRedirectTest {
                 .andExpect(redirectedUrl("/admin/login"));
     }
 
-    // -- everything else keeps the JSON 401 --
+    // -- the JSON API keeps the JSON 401 --
 
     @ParameterizedTest
     @ValueSource(strings = {
@@ -123,14 +126,8 @@ class SecurityConfigLoginRedirectTest {
         "/api/catalog/achievements",
         "/api/submissions/mine",
         "/api/submissions/session",
-        "/favicon.ico",
-        "/submissions/formatted",
-        "/submissions/confirmation/extra",
-        "/moderationx",
-        "/catalogx",
-        "/catalog-topics",
     })
-    void anonymousNonPageRequest_keepsTheJson401(String path) throws Exception {
+    void anonymousApiRequest_keepsTheJson401(String path) throws Exception {
         mockMvc.perform(get(path))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
@@ -184,9 +181,9 @@ class SecurityConfigLoginRedirectTest {
     static Stream<MockHttpServletRequestBuilder> anonymousRequestsNotWorthReturningTo() {
         return Stream.of(
                 anonymousFormPost(),
-                post("/moderation/queue/1/approve"),
-                post("/catalog/topics/5/delete"),
-                post("/catalog/achievements/new").param("slug", "x"),
+                post("/moderation/queue/1/approve").with(csrfField()),
+                post("/catalog/topics/5/delete").with(csrfField()),
+                post("/catalog/achievements/new").with(csrfField()).param("slug", "x"),
                 get("/api/catalog/topics"),
                 get("/api/moderation/testimonials/pending"),
                 get("/api/moderation/session"),

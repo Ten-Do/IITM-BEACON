@@ -38,6 +38,10 @@ Full permission/workflow detail: `docs/scope.md` (actors, constraints) and `docs
   recorded until it's actually decided.
 - `docs/api-spec.yaml` — OpenAPI 3 contract for every endpoint.
 - `docs/architecture.md` — layered+sliced design, C4 diagrams, DB schema, entity relationships.
+- `docs/nfr-verification.md` — evidence that each NFR holds: the tests per Response Measure and
+  the latest `make perf` results.
+- `docs/security-review.md` — the security review's findings, their decisions, and the latest
+  `make cve-scan` result.
 - `BACKLOG.md` — the task backlog. See workflow rules below.
 
 ## Workflow

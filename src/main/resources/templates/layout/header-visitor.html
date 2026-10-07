@@ -12,6 +12,11 @@
         <a href="/" th:classappend="${activePage == 'home'} ? 'active' : ''">Homepage</a>
         <a href="/gallery" th:classappend="${activePage == 'gallery'} ? 'active' : ''">Browse testimonials</a>
         <a href="/submissions/login" th:classappend="${activePage == 'submit'} ? 'active' : ''">Write or edit your testimonial</a>
+        <!-- Only for a logged-in browser, visitor or admin (common.security.LoginStateModelAdvice). Inside the
+             nav, so on phones it is in the burger menu. A POST form, so th:action adds the CSRF token. -->
+        <form class="header-nav-form" method="post" th:if="${loggedIn}" th:action="@{/logout}">
+            <button type="submit" class="header-nav-button">Log out</button>
+        </form>
     </nav>
 </header>
 </body>

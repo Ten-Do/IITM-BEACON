@@ -1,5 +1,6 @@
 package com.iitm.beacon.moderation;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfField;
 import static com.iitm.beacon.testsupport.HtmlSnippets.attribute;
 import static com.iitm.beacon.testsupport.HtmlSnippets.elements;
 import static com.iitm.beacon.testsupport.HtmlSnippets.openingTag;
@@ -28,6 +29,8 @@ import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.domain.topic.TopicRepository;
+import com.iitm.beacon.testsupport.AssetUrls;
+import com.iitm.beacon.testsupport.Csrf;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -312,11 +315,12 @@ class ModerationViewControllerTest {
         String html = queueHtml();
 
         assertThat(openingTags(html, "link"))
-                .filteredOn(tag -> attribute(tag, "href").orElse("").equals("/webjars/photoswipe/dist/photoswipe.css"))
+                .filteredOn(tag -> attribute(tag, "href").map(AssetUrls::plain).orElse("").equals(
+                        "/webjars/photoswipe/dist/photoswipe.css"))
                 .singleElement()
                 .satisfies(tag -> assertThat(attribute(tag, "rel")).contains("stylesheet"));
         assertThat(openingTags(html, "script"))
-                .filteredOn(tag -> attribute(tag, "src").orElse("").equals("/js/photo-viewer.js"))
+                .filteredOn(tag -> attribute(tag, "src").map(AssetUrls::plain).orElse("").equals("/js/photo-viewer.js"))
                 .singleElement()
                 .satisfies(tag -> assertThat(attribute(tag, "type")).contains("module"));
     }
@@ -337,9 +341,10 @@ class ModerationViewControllerTest {
     }
 
     @Test
-    void queue_visitorRole_returns403() throws Exception {
+    void queue_visitorRole_redirectsToAdminLogin() throws Exception {
         mockMvc.perform(get("/moderation/queue").with(authentication(visitor())))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/admin/login"));
     }
 
     @Test
@@ -366,7 +371,7 @@ class ModerationViewControllerTest {
     void approve_withAdminAuth_redirectsToQueueAndPersistsApprovedStatus() throws Exception {
         Testimonial saved = pendingTestimonial("view-approve@example.com");
 
-        mockMvc.perform(post("/moderation/queue/{id}/approve", saved.getId())
+        mockMvc.perform(post("/moderation/queue/{id}/approve", saved.getId()).with(csrfField())
                         .with(authentication(admin())))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/moderation/queue"));
@@ -377,7 +382,7 @@ class ModerationViewControllerTest {
 
     @Test
     void approve_unknownId_redirectsBackToQueueWithoutError() throws Exception {
-        mockMvc.perform(post("/moderation/queue/{id}/approve", 999_999).with(authentication(admin())))
+        mockMvc.perform(post("/moderation/queue/{id}/approve", 999_999).with(csrfField()).with(authentication(admin())))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/moderation/queue"));
     }
@@ -385,13 +390,13 @@ class ModerationViewControllerTest {
     @Test
     void approve_alreadyApproved_secondCallRedirectsBackWithoutError() throws Exception {
         Testimonial saved = pendingTestimonial("view-approve-conflict@example.com");
-        mockMvc.perform(post("/moderation/queue/{id}/approve", saved.getId())
+        mockMvc.perform(post("/moderation/queue/{id}/approve", saved.getId()).with(csrfField())
                         .with(authentication(admin())))
                 .andExpect(status().is3xxRedirection());
 
         // Second admin double-clicking (or a stale page) — must not surface a
         // JSON error body to a browser form POST.
-        mockMvc.perform(post("/moderation/queue/{id}/approve", saved.getId())
+        mockMvc.perform(post("/moderation/queue/{id}/approve", saved.getId()).with(csrfField())
                         .with(authentication(admin())))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/moderation/queue"));
@@ -401,7 +406,7 @@ class ModerationViewControllerTest {
     void approve_unauthenticated_redirectsToAdminLoginWithoutApproving() throws Exception {
         Testimonial saved = pendingTestimonial("view-approve-unauth@example.com");
 
-        mockMvc.perform(post("/moderation/queue/{id}/approve", saved.getId()))
+        mockMvc.perform(post("/moderation/queue/{id}/approve", saved.getId()).with(csrfField()))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/admin/login"));
 
@@ -410,12 +415,15 @@ class ModerationViewControllerTest {
     }
 
     @Test
-    void approve_visitorRole_returns403() throws Exception {
+    void approve_visitorRole_redirectsToAdminLogin_andLeavesItPending() throws Exception {
         Testimonial saved = pendingTestimonial("view-approve-visitor@example.com");
 
-        mockMvc.perform(post("/moderation/queue/{id}/approve", saved.getId())
+        mockMvc.perform(post("/moderation/queue/{id}/approve", saved.getId()).with(csrfField())
                         .with(authentication(visitor())))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/admin/login"));
+        assertThat(testimonialRepository.findById(saved.getId()).orElseThrow().getStatus())
+                .isEqualTo(TestimonialStatus.PENDING);
     }
 
     // -- POST /moderation/queue/{id}/reject --
@@ -424,7 +432,7 @@ class ModerationViewControllerTest {
     void reject_withReason_redirectsToQueueAndPersistsRejectedStatus() throws Exception {
         Testimonial saved = pendingTestimonial("view-reject@example.com");
 
-        mockMvc.perform(post("/moderation/queue/{id}/reject", saved.getId())
+        mockMvc.perform(post("/moderation/queue/{id}/reject", saved.getId()).with(csrfField())
                         .param("reason", "Needs more detail.")
                         .with(authentication(admin())))
                 .andExpect(status().is3xxRedirection())
@@ -438,7 +446,7 @@ class ModerationViewControllerTest {
     void reject_withoutReason_redirectsToQueueAndPersistsRejectedStatus() throws Exception {
         Testimonial saved = pendingTestimonial("view-reject-no-reason@example.com");
 
-        mockMvc.perform(post("/moderation/queue/{id}/reject", saved.getId())
+        mockMvc.perform(post("/moderation/queue/{id}/reject", saved.getId()).with(csrfField())
                         .with(authentication(admin())))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/moderation/queue"));
@@ -451,7 +459,7 @@ class ModerationViewControllerTest {
     void reject_blankReason_treatedSameAsNoReason() throws Exception {
         Testimonial saved = pendingTestimonial("view-reject-blank-reason@example.com");
 
-        mockMvc.perform(post("/moderation/queue/{id}/reject", saved.getId())
+        mockMvc.perform(post("/moderation/queue/{id}/reject", saved.getId()).with(csrfField())
                         .param("reason", "   ")
                         .with(authentication(admin())))
                 .andExpect(status().is3xxRedirection())
@@ -463,7 +471,7 @@ class ModerationViewControllerTest {
 
     @Test
     void reject_unknownId_redirectsBackToQueueWithoutError() throws Exception {
-        mockMvc.perform(post("/moderation/queue/{id}/reject", 999_999).with(authentication(admin())))
+        mockMvc.perform(post("/moderation/queue/{id}/reject", 999_999).with(csrfField()).with(authentication(admin())))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/moderation/queue"));
     }
@@ -471,11 +479,11 @@ class ModerationViewControllerTest {
     @Test
     void reject_alreadyRejected_secondCallRedirectsBackWithoutError() throws Exception {
         Testimonial saved = pendingTestimonial("view-reject-conflict@example.com");
-        mockMvc.perform(post("/moderation/queue/{id}/reject", saved.getId())
+        mockMvc.perform(post("/moderation/queue/{id}/reject", saved.getId()).with(csrfField())
                         .with(authentication(admin())))
                 .andExpect(status().is3xxRedirection());
 
-        mockMvc.perform(post("/moderation/queue/{id}/reject", saved.getId())
+        mockMvc.perform(post("/moderation/queue/{id}/reject", saved.getId()).with(csrfField())
                         .with(authentication(admin())))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/moderation/queue"));
@@ -485,7 +493,8 @@ class ModerationViewControllerTest {
     void reject_unauthenticated_redirectsToAdminLoginWithoutRejecting() throws Exception {
         Testimonial saved = pendingTestimonial("view-reject-unauth@example.com");
 
-        mockMvc.perform(post("/moderation/queue/{id}/reject", saved.getId()).param("reason", "Too short."))
+        mockMvc.perform(post("/moderation/queue/{id}/reject", saved.getId()).with(csrfField())
+                        .param("reason", "Too short."))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/admin/login"));
 
@@ -494,11 +503,40 @@ class ModerationViewControllerTest {
     }
 
     @Test
-    void reject_visitorRole_returns403() throws Exception {
+    void reject_visitorRole_redirectsToAdminLogin_andLeavesItPending() throws Exception {
         Testimonial saved = pendingTestimonial("view-reject-visitor@example.com");
 
-        mockMvc.perform(post("/moderation/queue/{id}/reject", saved.getId())
+        mockMvc.perform(post("/moderation/queue/{id}/reject", saved.getId()).with(csrfField())
                         .with(authentication(visitor())))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/admin/login"));
+        assertThat(testimonialRepository.findById(saved.getId()).orElseThrow().getStatus())
+                .isEqualTo(TestimonialStatus.PENDING);
+    }
+
+    // -- CSRF (BL-004) --
+
+    @Test
+    void queue_approveAndRejectForms_carryTheCsrfToken() throws Exception {
+        pendingTestimonial("view-csrf-forms@example.com");
+
+        String html = mockMvc.perform(get("/moderation/queue").with(authentication(admin())))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Csrf.assertEveryPostFormCarriesTheToken(html, 2);
+    }
+
+    @Test
+    void approve_withoutTheCsrfToken_isRefused_andLeavesItPending() throws Exception {
+        Testimonial saved = pendingTestimonial("view-approve-no-csrf@example.com");
+
+        mockMvc.perform(post("/moderation/queue/{id}/approve", saved.getId()).with(authentication(admin())))
                 .andExpect(status().isForbidden());
+
+        assertThat(testimonialRepository.findById(saved.getId()).orElseThrow().getStatus())
+                .isEqualTo(TestimonialStatus.PENDING);
     }
 }

@@ -1,5 +1,8 @@
 package com.iitm.beacon.gallery;
 
+import static com.iitm.beacon.testsupport.ClientErrors.assertHtmlErrorPage;
+import static com.iitm.beacon.testsupport.Csrf.csrfField;
+import static com.iitm.beacon.testsupport.Csrf.csrfHeader;
 import static com.iitm.beacon.testsupport.HtmlSnippets.attribute;
 import static com.iitm.beacon.testsupport.HtmlSnippets.elements;
 import static com.iitm.beacon.testsupport.HtmlSnippets.openingTag;
@@ -23,6 +26,8 @@ import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.domain.topic.TopicRepository;
+import com.iitm.beacon.testsupport.AssetUrls;
+import com.iitm.beacon.testsupport.Csrf;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -44,13 +49,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * UC-REVEAL-CONTACT on the article page: {@code POST /gallery/{id}/contact},
- * accepted only from this site's own pages (the {@code Origin} header — the
- * only protection, CSRF being off, BL-004). The page's script asks for it
- * with {@code X-Requested-With: fetch} and gets just the contact card to swap
- * in; a plain form POST (no JavaScript) gets the whole article back with the
- * card in place of the button. MockMvc's requests go to {@code
- * http://localhost} (port 80), so that is this site's origin here. Real
- * {@code SecurityConfig}, filters on.
+ * accepted only from this site's own pages (the {@code Origin} header,
+ * decision 27) and, like every POST, only with the CSRF token (BL-004). The
+ * page's script asks for it with {@code X-Requested-With: fetch} and the
+ * token from its cookie in the {@code X-XSRF-TOKEN} header, and gets just
+ * the contact card to swap in; a plain form POST (no JavaScript) sends the
+ * form's hidden token field and gets the whole article back with the card in
+ * place of the button. MockMvc's requests go to {@code http://localhost}
+ * (port 80), so that is this site's origin here. Real {@code
+ * SecurityConfig}, filters on.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -132,9 +139,9 @@ class GalleryContactRevealTest {
 
     // -- requests --
 
-    /** What the page's script sends. */
+    /** What the page's script sends: the CSRF token from its cookie in the header. */
     private static MockHttpServletRequestBuilder fetchContact(Object id) {
-        return post("/gallery/{id}/contact", id)
+        return post("/gallery/{id}/contact", id).with(csrfHeader())
                 .header("Origin", SITE)
                 .header("Sec-Fetch-Site", "same-origin")
                 .header("X-Requested-With", "fetch");
@@ -142,7 +149,7 @@ class GalleryContactRevealTest {
 
     /** What a browser without JavaScript sends when the button's form is submitted. */
     private static MockHttpServletRequestBuilder submitForm(Object id) {
-        return post("/gallery/{id}/contact", id)
+        return post("/gallery/{id}/contact", id).with(csrfField())
                 .header("Origin", SITE)
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED);
     }
@@ -291,7 +298,7 @@ class GalleryContactRevealTest {
     void requestNotFromThisSite_is403_withAShortPlainTextBody_andNoContacts(String[] headers) throws Exception {
         Testimonial saved = withPublicAndPrivateContact(TestimonialStatus.APPROVED);
         for (boolean asFetch : new boolean[] {true, false}) {
-            MockHttpServletRequestBuilder request = post("/gallery/{id}/contact", saved.getId());
+            MockHttpServletRequestBuilder request = post("/gallery/{id}/contact", saved.getId()).with(csrfField());
             for (int i = 0; i < headers.length; i += 2) {
                 request.header(headers[i], headers[i + 1]);
             }
@@ -314,7 +321,7 @@ class GalleryContactRevealTest {
     @Test
     void requestNotFromThisSite_forAnUnknownTestimonial_isAlso403() throws Exception {
         MockHttpServletResponse response =
-                perform(post("/gallery/{id}/contact", 999_999L).header("X-Requested-With", "fetch"));
+                perform(post("/gallery/{id}/contact", 999_999L).with(csrfField()).header("X-Requested-With", "fetch"));
 
         assertThat(response.getStatus()).isEqualTo(403);
     }
@@ -323,7 +330,7 @@ class GalleryContactRevealTest {
     void fetchFromThisSite_withoutSecFetchSite_isAccepted() throws Exception {
         Testimonial saved = withPublicAndPrivateContact(TestimonialStatus.APPROVED);
 
-        mockMvc.perform(post("/gallery/{id}/contact", saved.getId())
+        mockMvc.perform(post("/gallery/{id}/contact", saved.getId()).with(csrfField())
                         .header("Origin", SITE)
                         .header("X-Requested-With", "fetch"))
                 .andExpect(status().isOk());
@@ -463,7 +470,7 @@ class GalleryContactRevealTest {
 
     private static List<String> contactRevealScripts(String html) {
         return openingTags(html, "script").stream()
-                .filter(tag -> attribute(tag, "src").orElse("").equals("/js/contact-reveal.js"))
+                .filter(tag -> attribute(tag, "src").map(AssetUrls::plain).orElse("").equals("/js/contact-reveal.js"))
                 .toList();
     }
 
@@ -517,18 +524,19 @@ class GalleryContactRevealTest {
     void putOnTheContactEndpoint_isBlocked() throws Exception {
         Testimonial saved = withPublicAndPrivateContact(TestimonialStatus.APPROVED);
 
-        MockHttpServletResponse response = perform(put("/gallery/{id}/contact", saved.getId())
+        MockHttpServletResponse response = perform(put("/gallery/{id}/contact", saved.getId()).with(csrfField())
                 .header("Origin", SITE)
                 .header("X-Requested-With", "fetch"));
 
-        assertThat(response.getStatus()).isEqualTo(401);
+        assertHtmlErrorPage(response, 404);
         assertThat(response.getContentAsString()).doesNotContain(PUBLIC_VALUE, PRIVATE_VALUE);
     }
 
+    /** Refused by the security chain's {@code denyAll()} tail before any handler: the HTML 404 page. */
     @ParameterizedTest
     @ValueSource(strings = {"/gallery", "/gallery/1", "/gallery/1/contact/extra", "/gallery/1/other"})
     void postToAnyOtherGalleryPath_isBlockedBySecurity(String path) throws Exception {
-        mockMvc.perform(post(path).header("Origin", SITE)).andExpect(status().isUnauthorized());
+        assertHtmlErrorPage(perform(post(path).with(csrfField()).header("Origin", SITE)), 404);
     }
 
     @Test
@@ -550,5 +558,42 @@ class GalleryContactRevealTest {
     @ValueSource(longs = {0L, Long.MAX_VALUE})
     void idAtTheBoundaries_is404(long id) throws Exception {
         assertThat(perform(fetchContact(id)).getStatus()).isEqualTo(404);
+    }
+
+    // -- CSRF (BL-004) --
+
+    @Test
+    void detail_revealForm_carriesTheCsrfToken() throws Exception {
+        Testimonial saved = withPublicAndPrivateContact(TestimonialStatus.APPROVED);
+
+        Csrf.assertEveryPostFormCarriesTheToken(detailHtml(saved.getId()), 1);
+    }
+
+    @Test
+    void fetchFromThisSite_withoutTheCsrfToken_is403_andShowsNoContacts() throws Exception {
+        Testimonial saved = withPublicAndPrivateContact(TestimonialStatus.APPROVED);
+
+        MockHttpServletResponse response = perform(post("/gallery/{id}/contact", saved.getId())
+                .header("Origin", SITE)
+                .header("Sec-Fetch-Site", "same-origin")
+                .header("X-Requested-With", "fetch"));
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getContentAsString()).doesNotContain(PUBLIC_VALUE, PRIVATE_VALUE);
+    }
+
+    @Test
+    void fetchFromThisSite_withTheTokenOnlyInTheFormFields_isAccepted() throws Exception {
+        // The script's fallback when it can't read the cookie: the form's own fields as the body.
+        Testimonial saved = withPublicAndPrivateContact(TestimonialStatus.APPROVED);
+
+        MockHttpServletResponse response = perform(post("/gallery/{id}/contact", saved.getId()).with(csrfField())
+                .header("Origin", SITE)
+                .header("Sec-Fetch-Site", "same-origin")
+                .header("X-Requested-With", "fetch")
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED));
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getContentAsString()).contains(PUBLIC_VALUE).doesNotContain(PRIVATE_VALUE);
     }
 }

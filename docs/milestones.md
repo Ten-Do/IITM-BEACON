@@ -60,9 +60,14 @@ ready at this point: `catalogadmin`, `analytics`, `RejectedTestimonialCleanupJob
 - **M6 — Analytics dashboard** (target 2026-10-23)
   `analytics`: country map + achievement/score/topic-group stat cards. Covers UC-VIEW-DASHBOARD.
 
-- **M7 — Retention job & hardening** (target 2026-10-30)
+- **M7 — Retention job & hardening** (target 2026-10-30; done 2026-10-08)
   `RejectedTestimonialCleanupJob` (UC-PURGE-REJECTED, decision 3); a full NFR verification pass
-  (performance + security NFRs, see `test_plan.md`); a security review pass.
+  (performance + security NFRs, see `test_plan.md`); a security review pass. Delivered: the
+  retention job; every NFR verified with evidence in `nfr-verification.md` (`make perf`: all
+  four performance NFRs met with p95 at about a tenth of the limit); the security review in
+  `security-review.md` (`make cve-scan`), its accepted fixes (decisions 32–34: CSRF, client-error
+  statuses, TLS-proxy hardening, CSP, logout) and the backlog items picked for M7 (BL-003, 004,
+  013, 014, 017, 029, 030, 033, 034, 036, 037); the rest of the findings in `BACKLOG.md`.
 
 - **M8 — Final polish & submission** (target 2026-11-06)
   Deployment docs, full automated test suite green, buffer for whatever the hardening pass turns

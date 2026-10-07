@@ -1,10 +1,13 @@
 package com.iitm.beacon.submission;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfHeader;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.emptyOrNullString;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -70,7 +73,7 @@ class VisitorAuthControllerTest {
     private OtpMailer otpMailer;
 
     private String requestAndCaptureCode(String email) throws Exception {
-        mockMvc.perform(post("/api/submissions/otp/request")
+        mockMvc.perform(post("/api/submissions/otp/request").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpRequestRequest(email))))
                 .andExpect(status().isAccepted());
@@ -99,7 +102,7 @@ class VisitorAuthControllerTest {
 
     @Test
     void requestReturns202WithEmptyBody() throws Exception {
-        mockMvc.perform(post("/api/submissions/otp/request")
+        mockMvc.perform(post("/api/submissions/otp/request").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpRequestRequest("newvisitor@example.com"))))
                 .andExpect(status().isAccepted())
@@ -111,7 +114,7 @@ class VisitorAuthControllerTest {
         String email = "create-mode@example.com";
         String code = requestAndCaptureCode(email);
 
-        mockMvc.perform(post("/api/submissions/otp/verify")
+        mockMvc.perform(post("/api/submissions/otp/verify").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpVerifyRequest(email, code))))
                 .andExpect(status().isOk())
@@ -125,7 +128,7 @@ class VisitorAuthControllerTest {
         Testimonial existing = persistTestimonialFor(email);
         String code = requestAndCaptureCode(email);
 
-        mockMvc.perform(post("/api/submissions/otp/verify")
+        mockMvc.perform(post("/api/submissions/otp/verify").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpVerifyRequest(email, code))))
                 .andExpect(status().isOk())
@@ -139,12 +142,12 @@ class VisitorAuthControllerTest {
         String newEmail = "no-testimonial@example.com";
         persistTestimonialFor(existingEmail);
 
-        MvcResult existingResult = mockMvc.perform(post("/api/submissions/otp/request")
+        MvcResult existingResult = mockMvc.perform(post("/api/submissions/otp/request").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpRequestRequest(existingEmail))))
                 .andReturn();
 
-        MvcResult newResult = mockMvc.perform(post("/api/submissions/otp/request")
+        MvcResult newResult = mockMvc.perform(post("/api/submissions/otp/request").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpRequestRequest(newEmail))))
                 .andReturn();
@@ -160,7 +163,7 @@ class VisitorAuthControllerTest {
         String email = "session-check@example.com";
         String code = requestAndCaptureCode(email);
 
-        MvcResult result = mockMvc.perform(post("/api/submissions/otp/verify")
+        MvcResult result = mockMvc.perform(post("/api/submissions/otp/verify").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpVerifyRequest(email, code))))
                 .andExpect(status().isOk())
@@ -183,7 +186,7 @@ class VisitorAuthControllerTest {
         String email = "wrong-code@example.com";
         requestAndCaptureCode(email);
 
-        mockMvc.perform(post("/api/submissions/otp/verify")
+        mockMvc.perform(post("/api/submissions/otp/verify").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpVerifyRequest(email, "ZZZZZZ"))))
                 .andExpect(status().isUnauthorized())
@@ -194,7 +197,7 @@ class VisitorAuthControllerTest {
 
     @Test
     void requestWithBlankEmailReturns400() throws Exception {
-        mockMvc.perform(post("/api/submissions/otp/request")
+        mockMvc.perform(post("/api/submissions/otp/request").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"\"}"))
                 .andExpect(status().isBadRequest());
@@ -202,7 +205,7 @@ class VisitorAuthControllerTest {
 
     @Test
     void requestWithMalformedEmailReturns400() throws Exception {
-        mockMvc.perform(post("/api/submissions/otp/request")
+        mockMvc.perform(post("/api/submissions/otp/request").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"not-an-email\"}"))
                 .andExpect(status().isBadRequest());
@@ -210,7 +213,7 @@ class VisitorAuthControllerTest {
 
     @Test
     void verifyWithWrongLengthCodeReturns400() throws Exception {
-        mockMvc.perform(post("/api/submissions/otp/verify")
+        mockMvc.perform(post("/api/submissions/otp/verify").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"someone@example.com\",\"code\":\"123\"}"))
                 .andExpect(status().isBadRequest());
@@ -232,7 +235,7 @@ class VisitorAuthControllerTest {
                 ready.countDown();
                 try {
                     start.await();
-                    int status = mockMvc.perform(post("/api/submissions/otp/verify")
+                    int status = mockMvc.perform(post("/api/submissions/otp/verify").with(csrfHeader())
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .content(objectMapper.writeValueAsString(new OtpVerifyRequest(email, code))))
                             .andReturn()
@@ -258,7 +261,7 @@ class VisitorAuthControllerTest {
 
     private MockHttpSession loggedInVisitorSession(String email) throws Exception {
         String code = requestAndCaptureCode(email);
-        MvcResult result = mockMvc.perform(post("/api/submissions/otp/verify")
+        MvcResult result = mockMvc.perform(post("/api/submissions/otp/verify").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpVerifyRequest(email, code))))
                 .andExpect(status().isOk())
@@ -309,7 +312,20 @@ class VisitorAuthControllerTest {
         var visitor = new UsernamePasswordAuthenticationToken(
                 "ping-post@example.com", null, List.of(new SimpleGrantedAuthority("ROLE_VISITOR")));
 
-        mockMvc.perform(post("/api/submissions/session").with(authentication(visitor)))
+        mockMvc.perform(post("/api/submissions/session").with(csrfHeader()).with(authentication(visitor)))
                 .andExpect(status().isForbidden());
+    }
+
+    // -- CSRF (BL-004); the token's other variants are in config.CsrfProtectionTest --
+
+    @Test
+    void otpRequest_withoutTheCsrfHeader_isAJson403AndSendsNothing() throws Exception {
+        mockMvc.perform(post("/api/submissions/otp/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new OtpRequestRequest("no-csrf@example.com"))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+
+        verify(otpMailer, never()).sendOtp(anyString(), anyString());
     }
 }

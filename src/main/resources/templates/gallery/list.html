@@ -45,7 +45,7 @@
             <div class="gallery-card-body">
                 <div class="gallery-card-top-row">
                     <span class="gallery-card-country" th:text="${card.country().name()}">Country</span>
-                    <span class="gallery-score-badge" th:style="'color: var(--score-' + ${card.recommendationScore()} + ')'">
+                    <span class="gallery-score-badge" th:classappend="|score-${card.recommendationScore()}|">
                         <span class="gallery-score-dot"></span><span th:text="${card.recommendationScore()}">8</span>
                     </span>
                 </div>

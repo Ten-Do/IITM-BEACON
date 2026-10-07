@@ -1,9 +1,8 @@
 package com.iitm.beacon.common.error;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
+import com.iitm.beacon.testsupport.TemplateEngines;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Clock;
 import java.time.Instant;
@@ -14,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.mock.http.MockHttpInputMessage;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 /**
  * {@link GlobalExceptionHandler}'s catalog handlers (decision 28) — 400 for
@@ -24,13 +24,11 @@ class GlobalExceptionHandlerCatalogTest {
 
     private static final Instant FIXED_INSTANT = Instant.parse("2026-01-15T10:00:00Z");
 
-    private final GlobalExceptionHandler handler =
-            new GlobalExceptionHandler(Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC));
+    private final GlobalExceptionHandler handler = new GlobalExceptionHandler(
+            Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC), new ErrorPageRenderer(TemplateEngines.classpathTemplates()));
 
     private static HttpServletRequest requestFor(String uri) {
-        HttpServletRequest request = mock(HttpServletRequest.class);
-        when(request.getRequestURI()).thenReturn(uri);
-        return request;
+        return new MockHttpServletRequest("GET", uri);
     }
 
     @Test
@@ -39,10 +37,10 @@ class GlobalExceptionHandlerCatalogTest {
                 new FieldViolation("topicGroupId", "names no existing topic group"),
                 new FieldViolation("label", "must not be blank")));
 
-        ResponseEntity<ErrorResponse> response = handler.handleCatalogValidation(ex, requestFor("/api/catalog/topics"));
+        ResponseEntity<?> response = handler.handleCatalogValidation(ex, requestFor("/api/catalog/topics"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        ErrorResponse body = response.getBody();
+        ErrorResponse body = body(response);
         assertThat(body).isNotNull();
         assertThat(body.timestamp()).isEqualTo(FIXED_INSTANT);
         assertThat(body.status()).isEqualTo(400);
@@ -54,11 +52,11 @@ class GlobalExceptionHandlerCatalogTest {
     void catalogConflictException_mapsTo409WithItsMessage() {
         CatalogConflictException ex = new CatalogConflictException("slug", "This slug is already in use.");
 
-        ResponseEntity<ErrorResponse> response =
+        ResponseEntity<?> response =
                 handler.handleCatalogConflict(ex, requestFor("/api/catalog/achievements/3"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        ErrorResponse body = response.getBody();
+        ErrorResponse body = body(response);
         assertThat(body).isNotNull();
         assertThat(body.status()).isEqualTo(409);
         assertThat(body.error()).isEqualTo("Conflict");
@@ -73,14 +71,18 @@ class GlobalExceptionHandlerCatalogTest {
                         + " com.fasterxml.jackson.core.JsonParseException",
                 new MockHttpInputMessage(new byte[0]));
 
-        ResponseEntity<ErrorResponse> response = handler.handleUnreadableBody(ex, requestFor("/api/catalog/topics"));
+        ResponseEntity<?> response = handler.handleUnreadableBody(ex, requestFor("/api/catalog/topics"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        ErrorResponse body = response.getBody();
+        ErrorResponse body = body(response);
         assertThat(body).isNotNull();
         assertThat(body.status()).isEqualTo(400);
         assertThat(body.message()).isNotBlank().doesNotContain("Jackson").doesNotContain("jackson")
                 .doesNotContain("JSON parse error").doesNotContain("Source");
         assertThat(body.path()).isEqualTo("/api/catalog/topics");
+    }
+
+    private static ErrorResponse body(ResponseEntity<?> response) {
+        return (ErrorResponse) response.getBody();
     }
 }

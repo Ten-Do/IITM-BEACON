@@ -17,11 +17,17 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionSystemException;
+import org.springframework.transaction.support.AbstractPlatformTransactionManager;
+import org.springframework.transaction.support.DefaultTransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Unit tests with real temp directories and real (not hand-faked) image
@@ -316,6 +322,182 @@ class PhotoStorageServiceTest {
         assertThatCode(() -> service.delete("never-existed.png")).doesNotThrowAnyException();
     }
 
+    // -- inside a transaction: stored files go on rollback, deletes wait for the commit (BL-017) --
+
+    @Test
+    void store_inATransactionThatCommits_keepsBothFiles() throws Exception {
+        PhotoStorageService service = service();
+
+        List<StoredPhoto> stored = new ArrayList<>();
+
+        committed(() -> stored.add(service.store(upload("a.png", "image/png", pngBytes(10, 10)))));
+
+        assertThat(rootContents()).containsExactlyInAnyOrder(stored.get(0).filePath(), stored.get(0).thumbnailPath());
+    }
+
+    @Test
+    void store_inATransactionThatRollsBack_removesBothFiles() throws Exception {
+        PhotoStorageService service = service();
+
+        rolledBack(() -> {
+            StoredPhoto stored = service.store(upload("a.png", "image/png", pngBytes(10, 10)));
+            assertThat(rootContents()).as("kept until the rollback")
+                    .containsExactlyInAnyOrder(stored.filePath(), stored.thumbnailPath());
+        });
+
+        assertThat(rootContents()).isEmpty();
+    }
+
+    @Test
+    void store_severalPhotosInARolledBackTransaction_removesEveryOnesFiles_andNoOtherFile() throws Exception {
+        PhotoStorageService service = service();
+        StoredPhoto earlier = service.store(upload("earlier.png", "image/png", pngBytes(10, 10)));
+        Files.writeString(root.resolve("unrelated.jpeg"), "not ours");
+
+        rolledBack(() -> {
+            service.store(upload("a.png", "image/png", pngBytes(10, 10)));
+            service.store(upload("b.png", "image/png", pngBytes(12, 12)));
+            service.store(upload("c.png", "image/png", pngBytes(14, 14)));
+        });
+
+        assertThat(rootContents())
+                .containsExactlyInAnyOrder(earlier.filePath(), earlier.thumbnailPath(), "unrelated.jpeg");
+    }
+
+    @Test
+    void store_inATransactionWhoseCommitFailsAndIsRolledBack_removesBothFiles() throws Exception {
+        PhotoStorageService service = service();
+        TransactionTemplate failingCommit = new TransactionTemplate(
+                new NoResourceTransactionManager(new IllegalStateException("flush failed at commit")));
+
+        assertThatThrownBy(() -> failingCommit.executeWithoutResult(
+                        status -> service.store(upload("a.png", "image/png", pngBytes(10, 10)))))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(rootContents()).isEmpty();
+    }
+
+    @Test
+    void store_inATransactionWhoseCommitOutcomeIsUnknown_keepsBothFiles() throws Exception {
+        PhotoStorageService service = service();
+        TransactionTemplate unknownOutcome = new TransactionTemplate(
+                new NoResourceTransactionManager(new TransactionSystemException("connection lost during commit")));
+        List<StoredPhoto> stored = new ArrayList<>();
+
+        assertThatThrownBy(() -> unknownOutcome.executeWithoutResult(
+                        status -> stored.add(service.store(upload("a.png", "image/png", pngBytes(10, 10))))))
+                .isInstanceOf(TransactionSystemException.class);
+
+        assertThat(rootContents()).as("the row may have been committed, so its files stay")
+                .containsExactlyInAnyOrder(stored.get(0).filePath(), stored.get(0).thumbnailPath());
+    }
+
+    @Test
+    void store_rolledBackAfterItsFullSizeFileIsAlreadyGone_stillRemovesTheThumbnail() throws Exception {
+        PhotoStorageService service = service();
+
+        rolledBack(() -> {
+            StoredPhoto stored = service.store(upload("a.png", "image/png", pngBytes(10, 10)));
+            Files.delete(root.resolve(stored.filePath()));
+        });
+
+        assertThat(rootContents()).isEmpty();
+    }
+
+    @Test
+    void store_thumbnailWriteFailsInATransaction_removesTheFullSizeFileRightAway() throws Exception {
+        Files.createDirectory(root.resolve("fixed-id-thumb.webp"));
+        PhotoStorageService service = serviceWithFixedId("fixed-id");
+
+        committed(() -> {
+            assertThatThrownBy(() -> service.store(upload("a.png", "image/png", pngBytes(10, 10))))
+                    .isInstanceOf(UncheckedIOException.class);
+            assertThat(Files.exists(root.resolve("fixed-id.webp"))).as("gone before the commit").isFalse();
+        });
+
+        assertThat(Files.isDirectory(root.resolve("fixed-id-thumb.webp"))).as("not ours, left alone").isTrue();
+    }
+
+    @Test
+    void convertLegacy_inATransactionThatRollsBack_removesTheNewPair_andKeepsTheOriginal() throws Exception {
+        Files.write(root.resolve("legacy.png"), pngBytes(10, 10));
+        PhotoStorageService service = service();
+
+        rolledBack(() -> service.convertLegacy("legacy.png"));
+
+        assertThat(rootContents()).containsExactly("legacy.png");
+    }
+
+    @Test
+    void delete_photo_inATransaction_keepsBothFilesUntilTheCommit_thenRemovesThem() throws Exception {
+        Files.writeString(root.resolve("a.webp"), "full");
+        Files.writeString(root.resolve("a-thumb.webp"), "thumb");
+        PhotoStorageService service = service();
+
+        committed(() -> {
+            service.delete(photo("a.webp", "a-thumb.webp"));
+            assertThat(rootContents()).as("kept until the commit").containsExactlyInAnyOrder("a.webp", "a-thumb.webp");
+        });
+
+        assertThat(rootContents()).isEmpty();
+    }
+
+    @Test
+    void delete_photo_inATransactionThatRollsBack_keepsBothFiles() throws Exception {
+        Files.writeString(root.resolve("a.webp"), "full");
+        Files.writeString(root.resolve("a-thumb.webp"), "thumb");
+        PhotoStorageService service = service();
+
+        rolledBack(() -> service.delete(photo("a.webp", "a-thumb.webp")));
+
+        assertThat(rootContents()).containsExactlyInAnyOrder("a.webp", "a-thumb.webp");
+    }
+
+    @Test
+    void delete_photo_inATransaction_removesTheFilesItHadWhenDeleteWasCalled() throws Exception {
+        Files.writeString(root.resolve("a.webp"), "full");
+        Files.writeString(root.resolve("a-thumb.webp"), "thumb");
+        Files.writeString(root.resolve("b.webp"), "other");
+        PhotoStorageService service = service();
+
+        committed(() -> {
+            Photo photo = photo("a.webp", "a-thumb.webp");
+            service.delete(photo);
+            photo.setFilePath("b.webp");
+            photo.setThumbnailPath(null);
+        });
+
+        assertThat(rootContents()).containsExactly("b.webp");
+    }
+
+    @Test
+    void delete_legacyPhotoWithoutThumbnail_inATransaction_removesItsFileAfterTheCommit() throws Exception {
+        Files.writeString(root.resolve("legacy.jpeg"), "x");
+        PhotoStorageService service = service();
+
+        committed(() -> {
+            service.delete(photo("legacy.jpeg", null));
+            assertThat(rootContents()).containsExactly("legacy.jpeg");
+        });
+
+        assertThat(rootContents()).isEmpty();
+    }
+
+    @Test
+    void delete_singleFile_inATransaction_waitsForTheCommit_andIsKeptOnRollback() throws Exception {
+        Files.writeString(root.resolve("a.webp"), "x");
+        Files.writeString(root.resolve("b.webp"), "x");
+        PhotoStorageService service = service();
+
+        rolledBack(() -> service.delete("a.webp"));
+        committed(() -> {
+            service.delete("b.webp");
+            assertThat(rootContents()).containsExactlyInAnyOrder("a.webp", "b.webp");
+        });
+
+        assertThat(rootContents()).containsExactly("a.webp");
+    }
+
     @Test
     void urlFor_prependsUploadsPrefix() {
         assertThat(service().urlFor("abc123.webp")).isEqualTo("/uploads/abc123.webp");
@@ -323,6 +505,70 @@ class PhotoStorageServiceTest {
 
     private static Photo photo(String filePath, String thumbnailPath) {
         return Photo.builder().filePath(filePath).thumbnailPath(thumbnailPath).displayOrder(0).build();
+    }
+
+    /** Runs {@code work} in a transaction that commits. */
+    private static void committed(ThrowingRunnable work) {
+        new TransactionTemplate(new NoResourceTransactionManager(null)).executeWithoutResult(status -> {
+            try {
+                work.run();
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+    }
+
+    /** Runs {@code work} in a transaction that rolls back once it returns. */
+    private static void rolledBack(ThrowingRunnable work) {
+        new TransactionTemplate(new NoResourceTransactionManager(null)).executeWithoutResult(status -> {
+            try {
+                work.run();
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+            status.setRollbackOnly();
+        });
+    }
+
+    @FunctionalInterface
+    private interface ThrowingRunnable {
+        void run() throws Exception;
+    }
+
+    /**
+     * Spring's real commit/rollback and synchronization machinery with no
+     * resource behind it; {@code commitFailure}, if given, is what the commit
+     * throws.
+     */
+    private static final class NoResourceTransactionManager extends AbstractPlatformTransactionManager {
+
+        private final RuntimeException commitFailure;
+
+        NoResourceTransactionManager(RuntimeException commitFailure) {
+            this.commitFailure = commitFailure;
+        }
+
+        @Override
+        protected Object doGetTransaction() {
+            return new Object();
+        }
+
+        @Override
+        protected void doBegin(Object transaction, TransactionDefinition definition) {
+            // nothing to begin
+        }
+
+        @Override
+        protected void doCommit(DefaultTransactionStatus status) {
+            if (commitFailure != null) {
+                throw commitFailure;
+            }
+        }
+
+        @Override
+        protected void doRollback(DefaultTransactionStatus status) {
+            // nothing to roll back
+        }
     }
 
     private List<String> rootContents() throws IOException {

@@ -1,36 +1,57 @@
 package com.iitm.beacon.moderation;
 
 import com.iitm.beacon.common.error.NotFoundException;
+import com.iitm.beacon.common.error.NotificationNotSentException;
 import com.iitm.beacon.common.error.TestimonialNotPendingException;
 import com.iitm.beacon.common.web.PageResponse;
 import com.iitm.beacon.config.NotificationMailer;
+import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.achievement.Achievement;
 import com.iitm.beacon.domain.achievement.TestimonialAchievement;
+import com.iitm.beacon.domain.testimonial.Photo;
 import com.iitm.beacon.domain.testimonial.PhotoTag;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.mail.MailException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * Core service for the {@code moderation} slice (UC-VIEW-PENDING-QUEUE,
- * UC-APPROVE-TESTIMONIAL, UC-REJECT-TESTIMONIAL, decision 18).
+ * UC-APPROVE-TESTIMONIAL, UC-REJECT-TESTIMONIAL, decision 18), and the purge
+ * of long-rejected testimonials behind {@link RejectedTestimonialCleanupJob}
+ * (UC-PURGE-REJECTED, decision 3).
  */
 @Service
 public class ModerationService {
 
+    private static final Logger log = LoggerFactory.getLogger(ModerationService.class);
+
+    /** How long a rejected testimonial is kept before the purge deletes it for good (decision 3). */
+    static final Duration REJECTION_RETENTION = Duration.ofDays(30);
+
     private static final String NO_REASON_BODY =
             "Your IITM Beacon testimonial was not approved. Please log in to review and resubmit it.";
     private static final String REJECT_EMAIL_SUBJECT = "Your IITM Beacon testimonial needs changes";
+    private static final String REJECT_EMAIL_NOT_SENT_MESSAGE =
+            "The email to the submitter couldn't be sent, so the testimonial was not rejected. Try again later.";
 
     /**
      * Orders sections the same way the top-level topic catalog is ordered
@@ -50,16 +71,19 @@ public class ModerationService {
     private final TestimonialRepository testimonialRepository;
     private final NotificationMailer notificationMailer;
     private final PhotoUrlResolver photoUrlResolver;
+    private final PhotoFileDeleter photoFileDeleter;
     private final Clock clock;
 
     public ModerationService(
             TestimonialRepository testimonialRepository,
             NotificationMailer notificationMailer,
             PhotoUrlResolver photoUrlResolver,
+            PhotoFileDeleter photoFileDeleter,
             Clock clock) {
         this.testimonialRepository = testimonialRepository;
         this.notificationMailer = notificationMailer;
         this.photoUrlResolver = photoUrlResolver;
+        this.photoFileDeleter = photoFileDeleter;
         this.clock = clock;
     }
 
@@ -111,15 +135,98 @@ public class ModerationService {
      * {@code modified} untouched — those flags are unrelated to reject
      * (decision 18) — and always emails the submitter, varying the body
      * depending on whether a reason was given.
+     *
+     * <p>The email goes out first: a testimonial is only rejected once its
+     * submitter can be told. If it can't be sent, nothing changes — the
+     * testimonial stays {@code PENDING}, its review timestamps as they were —
+     * a warning is logged with the mail failure's type only (its text can
+     * name the recipient), and {@link NotificationNotSentException} tells
+     * the admin to try again.
+     *
+     * @throws NotificationNotSentException if the email couldn't be sent
      */
     @Transactional
     public void reject(Long id, String reason) {
         Testimonial testimonial = findPendingOrThrow(id);
+        try {
+            notificationMailer.send(testimonial.getEmail(), REJECT_EMAIL_SUBJECT, rejectEmailBody(reason));
+        } catch (MailException ex) {
+            log.warn("Testimonial {} was not rejected: the email to its submitter could not be sent ({})",
+                    id, ex.getClass().getSimpleName());
+            throw new NotificationNotSentException(REJECT_EMAIL_NOT_SENT_MESSAGE);
+        }
         Instant now = Instant.now(clock);
         testimonial.setStatus(TestimonialStatus.REJECTED);
         testimonial.setReviewedAt(now);
         testimonial.setRejectedAt(now);
-        notificationMailer.send(testimonial.getEmail(), REJECT_EMAIL_SUBJECT, rejectEmailBody(reason));
+    }
+
+    /**
+     * Deletes every testimonial rejected more than {@link
+     * #REJECTION_RETENTION} ago (UC-PURGE-REJECTED, decision 3), all in this
+     * one transaction. Each delete re-checks that the testimonial is still
+     * {@code REJECTED} and still due, so one the visitor resubmitted — or that
+     * was rejected again — after it was found is kept; a pending or approved
+     * testimonial whose old {@code rejectedAt} was never cleared is never
+     * due. Its sections, photos, photo tags, contact methods and achievement
+     * ticks go with it. The deleted photos' files are removed only once the
+     * transaction has committed — never on a rollback — and a file already
+     * missing is logged as a warning without stopping the rest.
+     *
+     * @return how many testimonials, and how many of their photos, were deleted
+     */
+    @Transactional
+    public RejectionPurgeResult purgeExpiredRejections() {
+        Instant cutoff = Instant.now(clock).minus(REJECTION_RETENTION);
+        List<Testimonial> due = testimonialRepository.findByStatusAndRejectedAtBeforeOrderByIdAsc(
+                TestimonialStatus.REJECTED, cutoff);
+        // Collected before the first delete, which clears the persistence context.
+        Map<Long, List<Photo>> photosByTestimonialId = new LinkedHashMap<>();
+        due.forEach(testimonial -> photosByTestimonialId.put(testimonial.getId(), photosOf(testimonial)));
+
+        int purgedTestimonials = 0;
+        List<Photo> purgedPhotos = new ArrayList<>();
+        for (Map.Entry<Long, List<Photo>> entry : photosByTestimonialId.entrySet()) {
+            int deleted = testimonialRepository.deleteByIdAndStatusAndRejectedAtBefore(
+                    entry.getKey(), TestimonialStatus.REJECTED, cutoff);
+            if (deleted > 0) {
+                purgedTestimonials++;
+                purgedPhotos.addAll(entry.getValue());
+            } else {
+                log.debug("Retention: testimonial {} changed since it was found, kept", entry.getKey());
+            }
+        }
+        deletePurgedPhotoFilesAfterCommit(purgedPhotos);
+        return new RejectionPurgeResult(purgedTestimonials, purgedPhotos.size());
+    }
+
+    private static List<Photo> photosOf(Testimonial testimonial) {
+        return testimonial.getSections().stream()
+                .flatMap(section -> section.getPhotos().stream())
+                .toList();
+    }
+
+    /**
+     * Deletes the purged photos' files once the surrounding transaction has
+     * committed; never on rollback. A photo with a file already missing (or
+     * not removable) is logged and the rest carry on.
+     */
+    private void deletePurgedPhotoFilesAfterCommit(List<Photo> photos) {
+        if (photos.isEmpty()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                for (Photo photo : photos) {
+                    if (!photoFileDeleter.delete(photo)) {
+                        log.warn("Retention: purged photo {} had a file already missing or not removable"
+                                + " (file {}, thumbnail {})",
+                                photo.getId(), photo.getFilePath(), photo.getThumbnailPath());
+                    }
+                }
+            }
+        });
     }
 
     private Testimonial findPendingOrThrow(Long id) {

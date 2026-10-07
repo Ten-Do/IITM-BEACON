@@ -1,5 +1,6 @@
 package com.iitm.beacon.adminauth;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfHeader;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.emptyOrNullString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -47,7 +48,7 @@ class AdminAuthControllerTest {
     private OtpMailer otpMailer;
 
     private String requestAndCaptureCode() throws Exception {
-        mockMvc.perform(post("/api/admin/auth/otp/request")
+        mockMvc.perform(post("/api/admin/auth/otp/request").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpRequestRequest(ADMIN_EMAIL))))
                 .andExpect(status().isAccepted());
@@ -59,7 +60,7 @@ class AdminAuthControllerTest {
 
     @Test
     void requestReturns202WithEmptyBody() throws Exception {
-        mockMvc.perform(post("/api/admin/auth/otp/request")
+        mockMvc.perform(post("/api/admin/auth/otp/request").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpRequestRequest(ADMIN_EMAIL))))
                 .andExpect(status().isAccepted())
@@ -70,7 +71,7 @@ class AdminAuthControllerTest {
     void verifyWithCorrectCodeReturns200() throws Exception {
         String code = requestAndCaptureCode();
 
-        mockMvc.perform(post("/api/admin/auth/otp/verify")
+        mockMvc.perform(post("/api/admin/auth/otp/verify").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpVerifyRequest(ADMIN_EMAIL, code))))
                 .andExpect(status().isOk())
@@ -81,7 +82,7 @@ class AdminAuthControllerTest {
     void verifySuccessEstablishesSessionWithAdminRoleAndPrincipal() throws Exception {
         String code = requestAndCaptureCode();
 
-        MvcResult result = mockMvc.perform(post("/api/admin/auth/otp/verify")
+        MvcResult result = mockMvc.perform(post("/api/admin/auth/otp/verify").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpVerifyRequest(ADMIN_EMAIL, code))))
                 .andExpect(status().isOk())
@@ -103,7 +104,7 @@ class AdminAuthControllerTest {
     void verifyWithWrongCodeReturns401WithErrorResponseBody() throws Exception {
         requestAndCaptureCode();
 
-        mockMvc.perform(post("/api/admin/auth/otp/verify")
+        mockMvc.perform(post("/api/admin/auth/otp/verify").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpVerifyRequest(ADMIN_EMAIL, "ZZZZZZ"))))
                 .andExpect(status().isUnauthorized())
@@ -114,7 +115,7 @@ class AdminAuthControllerTest {
 
     @Test
     void requestWithBlankEmailReturns400() throws Exception {
-        mockMvc.perform(post("/api/admin/auth/otp/request")
+        mockMvc.perform(post("/api/admin/auth/otp/request").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"\"}"))
                 .andExpect(status().isBadRequest());
@@ -122,7 +123,7 @@ class AdminAuthControllerTest {
 
     @Test
     void requestWithMalformedEmailReturns400() throws Exception {
-        mockMvc.perform(post("/api/admin/auth/otp/request")
+        mockMvc.perform(post("/api/admin/auth/otp/request").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"not-an-email\"}"))
                 .andExpect(status().isBadRequest());
@@ -130,7 +131,7 @@ class AdminAuthControllerTest {
 
     @Test
     void verifyWithWrongLengthCodeReturns400() throws Exception {
-        mockMvc.perform(post("/api/admin/auth/otp/verify")
+        mockMvc.perform(post("/api/admin/auth/otp/verify").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + ADMIN_EMAIL + "\",\"code\":\"123\"}"))
                 .andExpect(status().isBadRequest());
@@ -151,7 +152,7 @@ class AdminAuthControllerTest {
                 ready.countDown();
                 try {
                     start.await();
-                    int status = mockMvc.perform(post("/api/admin/auth/otp/verify")
+                    int status = mockMvc.perform(post("/api/admin/auth/otp/verify").with(csrfHeader())
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .content(objectMapper.writeValueAsString(new OtpVerifyRequest(ADMIN_EMAIL, code))))
                             .andReturn()
@@ -173,4 +174,24 @@ class AdminAuthControllerTest {
         assertThat(successes.get()).isEqualTo(1);
     }
 
+    // -- CSRF (BL-004); the token's other variants are in config.CsrfProtectionTest --
+
+    @Test
+    void verify_withoutTheCsrfHeader_isAJson403_logsNobodyIn_andLeavesTheCodeUsable() throws Exception {
+        String code = requestAndCaptureCode();
+        String body = objectMapper.writeValueAsString(new OtpVerifyRequest(ADMIN_EMAIL, code));
+
+        MvcResult refused = mockMvc.perform(post("/api/admin/auth/otp/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andReturn();
+
+        assertThat(refused.getRequest().getSession(false)).isNull();
+        mockMvc.perform(post("/api/admin/auth/otp/verify").with(csrfHeader())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+    }
 }

@@ -1,5 +1,6 @@
 package com.iitm.beacon.config;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfField;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
@@ -28,10 +29,11 @@ import org.springframework.test.web.servlet.ResultActions;
 
 /**
  * The whole return trip with one real session, as a browser does it: an
- * unauthenticated page request is sent to the login page, the OTP login
- * runs through the real view controllers, and the verify step redirects
- * back to the page originally asked for — or to the role's default page
- * when there is nothing (usable) to return to.
+ * unauthenticated page request — or one made with the other role's session
+ * (BL-033) — is sent to the login page, the OTP login runs through the real
+ * view controllers, and the verify step redirects back to the page
+ * originally asked for — or to the role's default page when there is
+ * nothing (usable) to return to.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -50,7 +52,7 @@ class LoginReturnFlowTest {
     private OtpMailer otpMailer;
 
     private String requestCode(String loginRequestPath, String email, MockHttpSession session) throws Exception {
-        mockMvc.perform(post(loginRequestPath).param("email", email).session(session))
+        mockMvc.perform(post(loginRequestPath).with(csrfField()).param("email", email).session(session))
                 .andExpect(status().isFound());
         ArgumentCaptor<String> code = ArgumentCaptor.forClass(String.class);
         verify(otpMailer, atLeastOnce()).sendOtp(eq(email), code.capture());
@@ -59,16 +61,14 @@ class LoginReturnFlowTest {
 
     private ResultActions adminLogin(MockHttpSession session) throws Exception {
         String code = requestCode("/admin/login/request", ADMIN_EMAIL, session);
-        return mockMvc.perform(post("/admin/login/verify")
-                .param("email", ADMIN_EMAIL)
+        return mockMvc.perform(post("/admin/login/verify").with(csrfField())
                 .param("code", code)
                 .session(session));
     }
 
     private ResultActions visitorLogin(MockHttpSession session) throws Exception {
         String code = requestCode("/submissions/login", VISITOR_EMAIL, session);
-        return mockMvc.perform(post("/submissions/login/code")
-                .param("email", VISITOR_EMAIL)
+        return mockMvc.perform(post("/submissions/login/code").with(csrfField())
                 .param("code", code)
                 .session(session));
     }
@@ -126,16 +126,14 @@ class LoginReturnFlowTest {
         expectRedirectToLogin(session, "/moderation/queue?page=4", "/admin/login");
         String code = requestCode("/admin/login/request", ADMIN_EMAIL, session);
 
-        mockMvc.perform(post("/admin/login/verify")
-                        .param("email", ADMIN_EMAIL)
+        mockMvc.perform(post("/admin/login/verify").with(csrfField())
                         .param("code", "ZZZZZZ")
                         .session(session))
                 .andExpect(status().isOk())
                 .andExpect(view().name("adminauth/login-code"));
         assertThat(hasSavedRequest(session)).isTrue();
 
-        mockMvc.perform(post("/admin/login/verify")
-                        .param("email", ADMIN_EMAIL)
+        mockMvc.perform(post("/admin/login/verify").with(csrfField())
                         .param("code", code)
                         .session(session))
                 .andExpect(status().isFound())
@@ -145,7 +143,7 @@ class LoginReturnFlowTest {
     @Test
     void adminLogin_afterAnUnauthenticatedApprovePost_landsOnTheQueue() throws Exception {
         MockHttpSession session = new MockHttpSession();
-        mockMvc.perform(post("/moderation/queue/1/approve").session(session))
+        mockMvc.perform(post("/moderation/queue/1/approve").with(csrfField()).session(session))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/admin/login"));
 
@@ -173,6 +171,33 @@ class LoginReturnFlowTest {
         visitorLogin(session).andExpect(status().isFound()).andExpect(redirectedUrl("/submissions/form"));
     }
 
+    @Test
+    void adminLogin_afterAVisitorSessionOpenedTheQueue_returnsToItAsTheAdmin() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        visitorLogin(session).andExpect(status().isFound());
+        expectRedirectToLogin(session, "/moderation/queue?page=2", "/admin/login");
+        mockMvc.perform(get("/admin/login").session(session)).andExpect(status().isOk());
+
+        adminLogin(session).andExpect(status().isFound()).andExpect(redirectedUrl("/moderation/queue?page=2"));
+
+        mockMvc.perform(get("/moderation/queue?page=2").session(session))
+                .andExpect(status().isOk())
+                .andExpect(view().name("moderation/queue"));
+        // The admin login replaced the visitor's: the visitor's pages want their own login again.
+        expectRedirectToLogin(session, "/submissions/form", "/submissions/login");
+    }
+
+    @Test
+    void adminLogin_afterAVisitorSessionOpenedACatalogPage_returnsToIt() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        visitorLogin(session).andExpect(status().isFound());
+        expectRedirectToLogin(session, "/catalog/achievements", "/admin/login");
+
+        adminLogin(session).andExpect(status().isFound()).andExpect(redirectedUrl("/catalog/achievements"));
+
+        assertThat(hasSavedRequest(session)).isFalse();
+    }
+
     // -- visitor --
 
     @Test
@@ -194,16 +219,14 @@ class LoginReturnFlowTest {
         expectRedirectToLogin(session, "/submissions/confirmation", "/submissions/login");
         String code = requestCode("/submissions/login", VISITOR_EMAIL, session);
 
-        mockMvc.perform(post("/submissions/login/code")
-                        .param("email", VISITOR_EMAIL)
+        mockMvc.perform(post("/submissions/login/code").with(csrfField())
                         .param("code", "ZZZZZZ")
                         .session(session))
                 .andExpect(status().isOk())
                 .andExpect(view().name("submission/login-code"));
         assertThat(hasSavedRequest(session)).isTrue();
 
-        mockMvc.perform(post("/submissions/login/code")
-                        .param("email", VISITOR_EMAIL)
+        mockMvc.perform(post("/submissions/login/code").with(csrfField())
                         .param("code", code)
                         .session(session))
                 .andExpect(status().isFound())
@@ -214,7 +237,7 @@ class LoginReturnFlowTest {
     void visitorLogin_afterAnUnauthenticatedFormPost_landsOnTheForm() throws Exception {
         // The form's content can't survive a redirect; the visitor fills it in again.
         MockHttpSession session = new MockHttpSession();
-        mockMvc.perform(multipart("/submissions/form")
+        mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .param("sections[0].topicSlug", "general")
                         .param("sections[0].answerText", "Text.")
@@ -223,6 +246,35 @@ class LoginReturnFlowTest {
                 .andExpect(redirectedUrl("/submissions/login"));
 
         visitorLogin(session).andExpect(status().isFound()).andExpect(redirectedUrl("/submissions/form"));
+    }
+
+    @Test
+    void visitorLogin_afterAnAdminSessionOpenedTheForm_returnsToItAsTheVisitor() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        adminLogin(session).andExpect(status().isFound());
+        expectRedirectToLogin(session, "/submissions/form", "/submissions/login");
+        mockMvc.perform(get("/submissions/login").session(session))
+                .andExpect(status().isOk())
+                .andExpect(view().name("submission/login-email"));
+
+        visitorLogin(session).andExpect(status().isFound()).andExpect(redirectedUrl("/submissions/form"));
+
+        mockMvc.perform(get("/submissions/form").session(session))
+                .andExpect(status().isOk())
+                .andExpect(view().name("submission/form"));
+        // The visitor login replaced the admin's: the admin's pages want their own login again.
+        expectRedirectToLogin(session, "/moderation/queue", "/admin/login");
+    }
+
+    @Test
+    void visitorLogin_afterAnAdminSessionOpenedTheConfirmationPage_returnsToIt() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        adminLogin(session).andExpect(status().isFound());
+        expectRedirectToLogin(session, "/submissions/confirmation", "/submissions/login");
+
+        visitorLogin(session).andExpect(status().isFound()).andExpect(redirectedUrl("/submissions/confirmation"));
+
+        assertThat(hasSavedRequest(session)).isFalse();
     }
 
     @Test

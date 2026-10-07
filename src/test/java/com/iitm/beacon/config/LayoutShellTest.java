@@ -17,6 +17,8 @@ import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.domain.topic.TopicRepository;
+import com.iitm.beacon.testsupport.AssetUrls;
+import com.iitm.beacon.testsupport.LoginCodeSteps;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -36,9 +38,9 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * The shared {@code layout/shell.html} {@code head} fragment. Browsers
  * request {@code /favicon.ico} on their own whenever a page declares no icon;
- * that path is (deliberately) caught by {@code SecurityConfig}'s {@code
- * denyAll()} tail, so a logged-in visitor saw a 403 in the console on every
- * page. An inline empty icon stops the request from being made at all.
+ * no route serves that path ({@code SecurityConfig}'s {@code denyAll()} tail
+ * answers it with the HTML 404 page), so every page left a failed request in
+ * the console. An inline empty icon stops the request from being made at all.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -63,18 +65,18 @@ class LayoutShellTest {
 
     @ParameterizedTest
     @ValueSource(
-            strings = {"/", "/gallery", "/submissions/login", "/admin/login", "/admin/login/code?email=a@example.com"})
+            strings = {"/", "/gallery", "/submissions/login", "/admin/login", "/admin/login/code"})
     void anonymousPages_declareAnInlineIcon(String path) throws Exception {
-        mockMvc.perform(get(path))
+        mockMvc.perform(LoginCodeSteps.page(mockMvc, path))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString(INLINE_EMPTY_ICON)));
     }
 
     @ParameterizedTest
     @ValueSource(
-            strings = {"/", "/gallery", "/submissions/login", "/admin/login", "/admin/login/code?email=a@example.com"})
+            strings = {"/", "/gallery", "/submissions/login", "/admin/login", "/admin/login/code"})
     void pagesWithoutInteractiveWidgets_doNotLoadAlpine(String path) throws Exception {
-        mockMvc.perform(get(path))
+        mockMvc.perform(LoginCodeSteps.page(mockMvc, path))
                 .andExpect(status().isOk())
                 .andExpect(content().string(not(containsString("/webjars/alpinejs"))));
     }
@@ -93,12 +95,12 @@ class LayoutShellTest {
                 "/gallery/999999",
                 "/submissions/login",
                 "/admin/login",
-                "/admin/login/code?email=a@example.com"
+                "/admin/login/code"
             })
     void pagesThatOpenNoPhotos_doNotLoadThePhotoViewer(String path) throws Exception {
-        mockMvc.perform(get(path))
+        mockMvc.perform(LoginCodeSteps.page(mockMvc, path))
                 .andExpect(content().string(not(containsString("photoswipe"))))
-                .andExpect(content().string(not(containsString("/js/photo-viewer.js"))));
+                .andExpect(content().string(not(containsString("/js/photo-viewer"))));
     }
 
     @Test
@@ -109,7 +111,7 @@ class LayoutShellTest {
         mockMvc.perform(get("/submissions/form").with(authentication(visitor)))
                 .andExpect(status().isOk())
                 .andExpect(content().string(not(containsString("photoswipe"))))
-                .andExpect(content().string(not(containsString("/js/photo-viewer.js"))));
+                .andExpect(content().string(not(containsString("/js/photo-viewer"))));
     }
 
     @Test
@@ -123,12 +125,12 @@ class LayoutShellTest {
     }
 
     @Test
-    void faviconPath_itselfStaysDeniedForALoggedInVisitor() throws Exception {
-        // The fix is to stop browsers asking, not to open up the path.
+    void faviconPath_itselfStaysUnservedForALoggedInVisitor() throws Exception {
+        // The fix is to stop browsers asking, not to serve the path.
         var visitor = new UsernamePasswordAuthenticationToken(
                 "shell-icon-denied@example.com", null, List.of(new SimpleGrantedAuthority("ROLE_VISITOR")));
 
-        mockMvc.perform(get("/favicon.ico").with(authentication(visitor))).andExpect(status().isForbidden());
+        mockMvc.perform(get("/favicon.ico").with(authentication(visitor))).andExpect(status().isNotFound());
     }
 
     // -- the burger script (static/js/nav-toggle.js), loaded by the shell head on every page --
@@ -185,7 +187,10 @@ class LayoutShellTest {
      */
     private static void assertLoadsTheNavToggleScriptOnceDeferredInTheHead(String html) {
         List<String> scripts = openingTags(html, "script").stream()
-                .filter(tag -> attribute(tag, "src").filter(NAV_TOGGLE_SCRIPT::equals).isPresent())
+                .filter(tag -> attribute(tag, "src")
+                        .map(AssetUrls::plain)
+                        .filter(NAV_TOGGLE_SCRIPT::equals)
+                        .isPresent())
                 .toList();
         assertThat(scripts).as("<script src=\"" + NAV_TOGGLE_SCRIPT + "\">").hasSize(1);
         String script = scripts.get(0);
@@ -204,12 +209,12 @@ class LayoutShellTest {
                 "/",
                 "/gallery",
                 "/submissions/login",
-                "/submissions/login/code?email=a@example.com",
+                "/submissions/login/code",
                 "/admin/login",
-                "/admin/login/code?email=a@example.com"
+                "/admin/login/code"
             })
     void anonymousPages_loadTheNavToggleScriptOnceDeferred(String path) throws Exception {
-        assertLoadsTheNavToggleScriptOnceDeferredInTheHead(html(get(path)));
+        assertLoadsTheNavToggleScriptOnceDeferredInTheHead(html(LoginCodeSteps.page(mockMvc, path)));
     }
 
     @Test
@@ -259,7 +264,7 @@ class LayoutShellTest {
         assertThat(html(get("/"))).doesNotContain("/webjars/alpinejs");
         assertThat(html(get("/gallery/{id}", saved.getId()))).doesNotContain("/webjars/alpinejs");
         assertThat(html(get("/gallery/999999"), 404)).doesNotContain("/webjars/alpinejs");
-        assertThat(html(get("/submissions/login/code?email=a@example.com"))).doesNotContain("/webjars/alpinejs");
+        assertThat(html(LoginCodeSteps.page(mockMvc, "/submissions/login/code"))).doesNotContain("/webjars/alpinejs");
         assertThat(html(get("/submissions/confirmation").with(authentication(visitor()))))
                 .doesNotContain("/webjars/alpinejs");
         assertThat(html(get("/moderation/queue").with(authentication(admin())))).doesNotContain("/webjars/alpinejs");

@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 
 import com.iitm.beacon.common.web.PageResponse;
 import com.iitm.beacon.config.NotificationMailer;
+import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.achievement.Achievement;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
@@ -60,6 +61,7 @@ class ModerationServiceListPendingTest {
                 testimonialRepository,
                 mock(NotificationMailer.class),
                 new PhotoUrlResolver(),
+                mock(PhotoFileDeleter.class),
                 java.time.Clock.systemUTC());
     }
 

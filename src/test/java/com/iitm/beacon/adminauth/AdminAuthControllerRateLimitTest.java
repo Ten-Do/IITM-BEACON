@@ -1,5 +1,6 @@
 package com.iitm.beacon.adminauth;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfHeader;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -44,12 +45,12 @@ class AdminAuthControllerRateLimitTest {
 
     @Test
     void secondRequestWithinWindow_returns429WithErrorResponseBody() throws Exception {
-        mockMvc.perform(post("/api/admin/auth/otp/request")
+        mockMvc.perform(post("/api/admin/auth/otp/request").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpRequestRequest(ADMIN_EMAIL))))
                 .andExpect(status().isAccepted());
 
-        mockMvc.perform(post("/api/admin/auth/otp/request")
+        mockMvc.perform(post("/api/admin/auth/otp/request").with(csrfHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new OtpRequestRequest(ADMIN_EMAIL))))
                 .andExpect(status().isTooManyRequests())

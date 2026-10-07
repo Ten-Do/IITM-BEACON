@@ -2,8 +2,9 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{layout/shell :: head(${editing} ? 'Edit your testimonial' : 'Write your testimonial')}"></head>
 <body>
-<!-- Without JS nothing stays cloaked: every topic block is shown (and submitted). -->
-<noscript><style>[x-cloak]{display:block!important}</style></noscript>
+<!-- Without JS nothing stays cloaked: every topic block is shown (and submitted). A stylesheet,
+     not an inline style element, which the Content-Security-Policy blocks. -->
+<noscript><link rel="stylesheet" th:href="@{/css/noscript.css}"/></noscript>
 <div th:replace="~{layout/header-visitor :: header('submit')}"></div>
 
 <main class="submission-form-body">
@@ -87,10 +88,10 @@
         <section class="submission-section">
             <h2 class="submission-section-heading">Your recommendation</h2>
             <p class="submission-section-hint">How would you rate your overall exchange experience?</p>
-            <!-- Server renders the current score's number, colour and label (so the
-                 page is right without JS); Alpine then keeps them in sync with the range. -->
+            <!-- Server renders the current score's number, colour (a score-N class) and label (so
+                 the page is right without JS); Alpine then keeps them in sync with the range. -->
             <div class="submission-score-wrap" x-data="scoreSlider" th:data-initial-score="${currentScore}">
-                <div class="submission-score-value-row" th:style="|color: var(--score-${currentScore})|"
+                <div class="submission-score-value-row" th:classappend="|score-${currentScore}|"
                      x-bind:style="{ color: 'var(--score-' + score + ')' }">
                     <span class="submission-score-number" th:text="${currentScore}" x-text="score">8</span>
                     <span class="submission-score-label" th:each="label, labelStat : ${scoreLabels}"
@@ -307,8 +308,8 @@
     </form>
 </main>
 <!-- Component registrations first: they listen for alpine:init, which Alpine fires as it starts. -->
-<script defer src="/js/submission-form.js"></script>
-<script defer src="/webjars/alpinejs/dist/cdn.min.js"></script>
+<script defer th:src="@{/js/submission-form.js}"></script>
+<script defer th:src="@{/webjars/alpinejs/dist/cdn.min.js}"></script>
 <!-- This page needs the visitor login (header-visitor doesn't add the check: it's also on public pages). -->
 <script th:replace="~{layout/session-check :: script('/api/submissions/session')}"></script>
 </body>

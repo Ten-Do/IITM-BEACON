@@ -1,5 +1,6 @@
 package com.iitm.beacon.adminauth;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfField;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
@@ -9,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
 import com.iitm.beacon.config.OtpMailer;
+import com.iitm.beacon.testsupport.LoginCodeSteps;
 import com.iitm.beacon.testsupport.MutableClock;
 import java.time.Duration;
 import java.time.Instant;
@@ -21,6 +23,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -50,8 +53,7 @@ class AdminAuthViewControllerExpiredOtpTest {
 
     @Test
     void verifyAfterTtlElapses_rerendersTheCodeStepWithErrorAndKeepsEmail() throws Exception {
-        mockMvc.perform(post("/admin/login/request").param("email", ADMIN_EMAIL))
-                .andExpect(status().is3xxRedirection());
+        MockHttpSession session = LoginCodeSteps.adminAskedForACode(mockMvc, ADMIN_EMAIL);
 
         ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
         verify(otpMailer, atLeastOnce()).sendOtp(eq(ADMIN_EMAIL), captor.capture());
@@ -59,9 +61,7 @@ class AdminAuthViewControllerExpiredOtpTest {
 
         mutableClock.advanceBy(Duration.ofMinutes(5).plusSeconds(1));
 
-        mockMvc.perform(post("/admin/login/verify")
-                        .param("email", ADMIN_EMAIL)
-                        .param("code", code))
+        mockMvc.perform(post("/admin/login/verify").with(csrfField()).param("code", code).session(session))
                 .andExpect(status().isOk())
                 .andExpect(view().name("adminauth/login-code"))
                 .andExpect(model().attributeExists("error"))

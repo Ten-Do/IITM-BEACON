@@ -1,0 +1,17 @@
+# Docker build context for the app image (Dockerfile) and the e2e runner
+# image (Dockerfile.e2e, which copies nothing from it). Allowlist: everything
+# is left out — .git, target/, data/ (local H2 database and uploads), .env and
+# any other secrets, .claude/, IDE folders, logs, docs and design files —
+# except exactly what the Dockerfile's COPY steps use: .mvn/, mvnw, pom.xml
+# and src/. A file added later stays out of the context (and the image) until
+# it is listed here.
+*
+!.mvn/
+!mvnw
+!pom.xml
+!src/
+
+# Even inside what is kept: never build-local or editor leftovers.
+**/*.log
+**/.DS_Store
+**/*.iml

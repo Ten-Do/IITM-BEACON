@@ -1,5 +1,6 @@
 package com.iitm.beacon.analytics;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfHeader;
 import static org.hamcrest.Matchers.anEmptyMap;
 import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.not;
@@ -160,13 +161,14 @@ class AnalyticsControllerTest {
     @ParameterizedTest
     @ValueSource(strings = {"POST", "PUT", "PATCH", "DELETE"})
     void anonymousWrite_isRefusedWith401(String method) throws Exception {
-        mockMvc.perform(request(HttpMethod.valueOf(method), SUMMARY)).andExpect(status().isUnauthorized());
+        mockMvc.perform(request(HttpMethod.valueOf(method), SUMMARY).with(csrfHeader()))
+                .andExpect(status().isUnauthorized());
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"POST", "PUT", "PATCH", "DELETE"})
     void adminWrite_isRefusedWith403(String method) throws Exception {
-        mockMvc.perform(request(HttpMethod.valueOf(method), SUMMARY).with(authentication(admin())))
+        mockMvc.perform(request(HttpMethod.valueOf(method), SUMMARY).with(csrfHeader()).with(authentication(admin())))
                 .andExpect(status().isForbidden());
     }
 }

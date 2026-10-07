@@ -11,7 +11,7 @@
         <div class="gallery-title-row">
             <span class="gallery-country-name" th:text="${testimonial.country().name()}">Country</span>
             <span class="gallery-score-badge"
-                  th:style="'color: var(--score-' + ${testimonial.recommendationScore()} + ')'">
+                  th:classappend="|score-${testimonial.recommendationScore()}|">
                 <span class="gallery-score-dot"></span><span
                     th:text="${testimonial.recommendationScore()}">8</span>
             </span>
@@ -60,6 +60,6 @@
 </main>
 
 <th:block th:replace="~{layout/photo-viewer :: assets}"></th:block>
-<script th:if="${revealable}" defer src="/js/contact-reveal.js"></script>
+<script th:if="${revealable}" defer th:src="@{/js/contact-reveal.js}"></script>
 </body>
 </html>

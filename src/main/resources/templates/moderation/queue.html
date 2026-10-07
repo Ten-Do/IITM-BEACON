@@ -11,6 +11,12 @@
         0 testimonials waiting for review
     </p>
 
+    <!-- A reject whose email couldn't be sent (ModerationViewController): nothing changed, try again. -->
+    <div class="moderation-error-banner" role="alert" th:if="${error}">
+        <span class="catalog-error-mark">!</span>
+        <p class="catalog-error-text" th:text="${error}">The email couldn't be sent.</p>
+    </div>
+
     <div class="moderation-empty-state" th:if="${queue.content().isEmpty()}">
         <h3 class="moderation-empty-title">Nothing waiting for review</h3>
         <p class="moderation-empty-hint">Every submission has been decided. New and edited testimonials will appear
@@ -41,7 +47,7 @@
 
         <div class="moderation-score-row">
             <span class="moderation-score-badge"
-                  th:style="'color: var(--score-' + ${card.recommendationScore()} + ')'"
+                  th:classappend="|score-${card.recommendationScore()}|"
                   th:text="${card.recommendationScore()}">8</span>
             <span class="moderation-changed-badge" th:if="${card.scoreModified()}">Score changed</span>
         </div>
@@ -83,7 +89,9 @@
                 <div class="moderation-reject-reason">
                     <label th:for="'reason-' + ${card.id()}">Rejection reason (optional, emailed to the
                         submitter)</label>
+                    <!-- After a reject whose email failed, that item gets the typed reason back. -->
                     <textarea th:id="'reason-' + ${card.id()}" name="reason"
+                              th:text="${rejectFailedId == card.id()} ? ${rejectReason} : ''"
                               placeholder="e.g. Please double-check the accommodation section — it now conflicts with your travel section."></textarea>
                 </div>
                 <button type="submit" class="moderation-btn moderation-btn-reject">Reject</button>

@@ -2,6 +2,7 @@ package com.iitm.beacon.gallery;
 
 import com.iitm.beacon.common.error.NotFoundException;
 import com.iitm.beacon.common.score.RecommendationScoreLabels;
+import com.iitm.beacon.common.web.PageRequests;
 import com.iitm.beacon.common.web.PageResponse;
 import com.iitm.beacon.common.web.SameOriginOnly;
 import jakarta.servlet.http.HttpServletResponse;
@@ -10,9 +11,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,9 +41,9 @@ import org.springframework.web.bind.annotation.RequestParam;
  *
  * <p>The handlers catch {@link NotFoundException} themselves (same
  * convention as the sibling view controllers) rather than letting it reach
- * {@code GlobalExceptionHandler} (a {@code @RestControllerAdvice} that would
- * write a JSON body — the wrong response shape for a browser page) and
- * render a 404 page or fragment instead.
+ * {@code GlobalExceptionHandler} (whose answer to a page is the site's
+ * generic error page) and render the gallery's own 404 page or fragment
+ * instead — for an article path that isn't an id at all, too.
  */
 @Controller
 public class GalleryViewController {
@@ -58,6 +59,9 @@ public class GalleryViewController {
 
     /** Only an id of up to 18 digits (always a {@code Long}): anything else is simply no such page. */
     static final String CONTACT_PATH = "/gallery/{id:\\d{1,18}}/contact";
+
+    /** The same rule for the article's own path segment, checked by {@link #detail}. */
+    private static final Pattern ID = Pattern.compile("\\d{1,18}");
 
     /** The request header, and its value, by which the article's script asks for the contact card alone. */
     static final String FRAGMENT_HEADER = "X-Requested-With";
@@ -81,7 +85,7 @@ public class GalleryViewController {
         List<Long> safeGroupIds = groupIds == null ? List.of() : groupIds;
         List<Long> safeTopicIds = topicIds == null ? List.of() : topicIds;
         PageResponse<TestimonialCardDto> results = galleryService.browse(
-                country, safeGroupIds, safeTopicIds, q, PageRequest.of(safePage, PAGE_SIZE));
+                country, safeGroupIds, safeTopicIds, q, PageRequests.of(safePage, PAGE_SIZE));
 
         model.addAttribute("results", results);
         model.addAttribute("countries", galleryService.listCountriesWithApproved());
@@ -93,9 +97,16 @@ public class GalleryViewController {
         return LIST_VIEW;
     }
 
+    /**
+     * The article — or the not-found page, with a 404, for an unknown or
+     * unapproved testimonial, and for a path segment that isn't an id at all
+     * (BL-029): anything but 1–18 digits, so text, a sign, a decimal point, a
+     * hex spelling, or a longer number (the contact path's rule, which keeps
+     * every id within {@code Long}).
+     */
     @GetMapping("/gallery/{id}")
-    public String detail(@PathVariable Long id, Model model, HttpServletResponse response) {
-        if (!addArticle(id, model)) {
+    public String detail(@PathVariable String id, Model model, HttpServletResponse response) {
+        if (!ID.matcher(id).matches() || !addArticle(Long.valueOf(id), model)) {
             response.setStatus(HttpServletResponse.SC_NOT_FOUND);
             return NOT_FOUND_VIEW;
         }

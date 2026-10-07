@@ -11,6 +11,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
+/**
+ * The dev/test OTP "delivery" (decision 4): the code is logged — a developer
+ * logs in with it, no SMTP needed — but the recipient only as a masked
+ * address ({@link LogMask}), never in plaintext (NFR-CONTACT-CONFIDENTIALITY).
+ */
 class LoggingOtpMailerTest {
 
     private final ListAppender<ILoggingEvent> appender = new ListAppender<>();
@@ -29,14 +34,31 @@ class LoggingOtpMailerTest {
     }
 
     @Test
-    void logsEmailAndCodeAtInfoLevel() {
-        LoggingOtpMailer mailer = new LoggingOtpMailer();
+    void logsTheMaskedEmailAndTheCodeAtInfoLevel() {
+        new LoggingOtpMailer().sendOtp("visitor@example.com", "ABC234");
 
-        mailer.sendOtp("visitor@example.com", "ABC234");
+        assertThat(appender.list).singleElement().satisfies(event -> {
+            assertThat(event.getLevel()).isEqualTo(Level.INFO);
+            assertThat(event.getFormattedMessage()).isEqualTo("OTP for v***@example.com: ABC234");
+        });
+    }
 
-        assertThat(appender.list).hasSize(1);
-        ILoggingEvent event = appender.list.get(0);
-        assertThat(event.getLevel()).isEqualTo(Level.INFO);
-        assertThat(event.getFormattedMessage()).contains("visitor@example.com").contains("ABC234");
+    @Test
+    void neverLogsTheFullAddress() {
+        new LoggingOtpMailer().sendOtp("jane.doe@example.com", "ABC234");
+
+        assertThat(appender.list).singleElement().satisfies(event -> assertThat(event.getFormattedMessage())
+                .doesNotContain("jane.doe@example.com")
+                .doesNotContain("jane.doe")
+                .contains("ABC234"));
+        assertThat(appender.list.get(0).getArgumentArray()).noneMatch(arg -> String.valueOf(arg).contains("jane.doe"));
+    }
+
+    @Test
+    void oneCharacterLocalPart_isNotRevealedEither() {
+        new LoggingOtpMailer().sendOtp("j@example.com", "ABC234");
+
+        assertThat(appender.list).singleElement().satisfies(event -> assertThat(event.getFormattedMessage())
+                .isEqualTo("OTP for ***@example.com: ABC234"));
     }
 }

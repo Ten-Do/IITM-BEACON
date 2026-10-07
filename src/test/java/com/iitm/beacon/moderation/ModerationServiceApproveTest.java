@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import com.iitm.beacon.common.error.NotFoundException;
 import com.iitm.beacon.common.error.TestimonialNotPendingException;
 import com.iitm.beacon.config.NotificationMailer;
+import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.country.CountryRepository;
 import com.iitm.beacon.domain.testimonial.Testimonial;
@@ -47,7 +48,11 @@ class ModerationServiceApproveTest {
     void setUp() {
         notificationMailer = mock(NotificationMailer.class);
         moderationService = new ModerationService(
-                testimonialRepository, notificationMailer, new PhotoUrlResolver(), new MutableClock(FIXED_NOW));
+                testimonialRepository,
+                notificationMailer,
+                new PhotoUrlResolver(),
+                mock(PhotoFileDeleter.class),
+                new MutableClock(FIXED_NOW));
     }
 
     private Testimonial pendingTestimonial(String email) {

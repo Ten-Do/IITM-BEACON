@@ -77,7 +77,7 @@
                         <span class="dashboard-stat-label">Approved testimonials</span>
                     </div>
                     <div class="dashboard-card dashboard-stat-card">
-                        <span class="dashboard-stat-number" th:style="|color: var(--score-${d.averageScoreColour()})|"
+                        <span class="dashboard-stat-number" th:classappend="|score-${d.averageScoreColour()}|"
                               th:text="${d.averageScore()}">8.1</span>
                         <span class="dashboard-stat-label">Average recommendation score</span>
                     </div>

@@ -1,23 +1,22 @@
 package com.iitm.beacon.common.error;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
+import com.iitm.beacon.testsupport.TemplateEngines;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.ConstraintViolationException;
 import java.lang.reflect.Method;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.Collections;
 import org.apache.tomcat.util.http.fileupload.impl.FileCountLimitExceededException;
 import org.apache.tomcat.util.http.fileupload.impl.FileSizeLimitExceededException;
 import org.apache.tomcat.util.http.fileupload.impl.SizeLimitExceededException;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -26,29 +25,30 @@ import org.springframework.web.multipart.MultipartException;
 
 /**
  * Unit tests calling {@link GlobalExceptionHandler} handler methods directly
- * with a fixed {@link Clock} — no MockMvc/controllers exist yet in M1.
+ * with a fixed {@link Clock}, for requests under {@code /api/} (the JSON
+ * answers); the HTML page answers and the client errors Spring MVC raises
+ * itself are in {@link GlobalExceptionHandlerClientErrorsTest}.
  */
 class GlobalExceptionHandlerTest {
 
     private static final Instant FIXED_INSTANT = Instant.parse("2026-01-15T10:00:00Z");
 
     private final Clock fixedClock = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
-    private final GlobalExceptionHandler handler = new GlobalExceptionHandler(fixedClock);
+    private final GlobalExceptionHandler handler =
+            new GlobalExceptionHandler(fixedClock, new ErrorPageRenderer(TemplateEngines.classpathTemplates()));
 
     private HttpServletRequest requestFor(String uri) {
-        HttpServletRequest request = mock(HttpServletRequest.class);
-        when(request.getRequestURI()).thenReturn(uri);
-        return request;
+        return new MockHttpServletRequest("GET", uri);
     }
 
     @Test
     void notFoundException_mapsTo404WithExactTimestampFromClock() {
         NotFoundException ex = new NotFoundException("testimonial 42 not found");
 
-        ResponseEntity<ErrorResponse> response = handler.handleNotFound(ex, requestFor("/api/testimonials/42"));
+        ResponseEntity<?> response = handler.handleNotFound(ex, requestFor("/api/testimonials/42"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        ErrorResponse body = response.getBody();
+        ErrorResponse body = body(response);
         assertThat(body).isNotNull();
         assertThat(body.timestamp()).isEqualTo(FIXED_INSTANT);
         assertThat(body.status()).isEqualTo(404);
@@ -65,36 +65,24 @@ class GlobalExceptionHandlerTest {
         bindingResult.addError(new FieldError("testimonialRequest", "email", "must not be blank"));
         MethodArgumentNotValidException ex = new MethodArgumentNotValidException(methodParameter, bindingResult);
 
-        ResponseEntity<ErrorResponse> response = handler.handleValidation(ex, requestFor("/api/submissions"));
+        ResponseEntity<?> response = handler.handleValidation(ex, requestFor("/api/submissions"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        ErrorResponse body = response.getBody();
+        ErrorResponse body = body(response);
         assertThat(body).isNotNull();
         assertThat(body.message()).contains("email").contains("must not be blank");
         assertThat(body.path()).isEqualTo("/api/submissions");
     }
 
     @Test
-    void constraintViolationException_mapsTo400() {
-        ConstraintViolationException ex = new ConstraintViolationException(
-                "recommendationScore: must be between 0 and 10", Collections.emptySet());
-
-        ResponseEntity<ErrorResponse> response = handler.handleConstraintViolation(ex, requestFor("/api/testimonials"));
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().message()).isEqualTo("recommendationScore: must be between 0 and 10");
-    }
-
-    @Test
     void notFoundException_blankMessage_stillProducesNonBlankResponseMessage() {
         NotFoundException ex = new NotFoundException("");
 
-        ResponseEntity<ErrorResponse> response = handler.handleNotFound(ex, requestFor("/api/testimonials/999"));
+        ResponseEntity<?> response = handler.handleNotFound(ex, requestFor("/api/testimonials/999"));
 
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().message()).isNotNull();
-        assertThat(response.getBody().message()).isNotBlank();
+        assertThat(body(response).message()).isNotNull();
+        assertThat(body(response).message()).isNotBlank();
     }
 
     @Test
@@ -102,10 +90,10 @@ class GlobalExceptionHandlerTest {
         Exception sensitive = new RuntimeException(
                 "java.sql.SQLException: connection failed at com.iitm.beacon.internal.Db (Db.java:42)");
 
-        ResponseEntity<ErrorResponse> response = handler.handleGeneric(sensitive, requestFor("/api/testimonials"));
+        ResponseEntity<?> response = handler.handleGeneric(sensitive, requestFor("/api/testimonials"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
-        ErrorResponse body = response.getBody();
+        ErrorResponse body = body(response);
         assertThat(body).isNotNull();
         assertThat(body.message()).doesNotContain("SQLException");
         assertThat(body.message()).doesNotContain("Db.java");
@@ -116,11 +104,11 @@ class GlobalExceptionHandlerTest {
     void tooManyRequestsException_mapsTo429WithGivenMessage() {
         TooManyRequestsException ex = new TooManyRequestsException("Too many OTP requests in a short window.");
 
-        ResponseEntity<ErrorResponse> response =
+        ResponseEntity<?> response =
                 handler.handleTooManyRequests(ex, requestFor("/api/admin/auth/otp/request"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
-        ErrorResponse body = response.getBody();
+        ErrorResponse body = body(response);
         assertThat(body).isNotNull();
         assertThat(body.status()).isEqualTo(429);
         assertThat(body.message()).isEqualTo("Too many OTP requests in a short window.");
@@ -131,22 +119,22 @@ class GlobalExceptionHandlerTest {
     void tooManyRequestsException_blankMessage_fallsBackToDefaultMessage() {
         TooManyRequestsException ex = new TooManyRequestsException("");
 
-        ResponseEntity<ErrorResponse> response =
+        ResponseEntity<?> response =
                 handler.handleTooManyRequests(ex, requestFor("/api/admin/auth/otp/request"));
 
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().message()).isEqualTo("Too many OTP requests in a short window.");
+        assertThat(body(response).message()).isEqualTo("Too many OTP requests in a short window.");
     }
 
     @Test
     void otpVerificationFailedException_mapsTo401WithGivenMessage() {
         OtpVerificationFailedException ex = new OtpVerificationFailedException("Wrong or expired code.");
 
-        ResponseEntity<ErrorResponse> response =
+        ResponseEntity<?> response =
                 handler.handleOtpVerificationFailed(ex, requestFor("/api/admin/auth/otp/verify"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        ErrorResponse body = response.getBody();
+        ErrorResponse body = body(response);
         assertThat(body).isNotNull();
         assertThat(body.status()).isEqualTo(401);
         assertThat(body.message()).isEqualTo("Wrong or expired code.");
@@ -156,22 +144,22 @@ class GlobalExceptionHandlerTest {
     void otpVerificationFailedException_blankMessage_fallsBackToDefaultMessage() {
         OtpVerificationFailedException ex = new OtpVerificationFailedException(null);
 
-        ResponseEntity<ErrorResponse> response =
+        ResponseEntity<?> response =
                 handler.handleOtpVerificationFailed(ex, requestFor("/api/admin/auth/otp/verify"));
 
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().message()).isEqualTo("Wrong or expired code.");
+        assertThat(body(response).message()).isEqualTo("Wrong or expired code.");
     }
 
     @Test
     void submissionValidationException_mapsTo400WithGivenMessage() {
         SubmissionValidationException ex = new SubmissionValidationException("At least one section must be filled in.");
 
-        ResponseEntity<ErrorResponse> response =
+        ResponseEntity<?> response =
                 handler.handleSubmissionValidation(ex, requestFor("/api/submissions"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        ErrorResponse body = response.getBody();
+        ErrorResponse body = body(response);
         assertThat(body).isNotNull();
         assertThat(body.status()).isEqualTo(400);
         assertThat(body.message()).isEqualTo("At least one section must be filled in.");
@@ -184,12 +172,12 @@ class GlobalExceptionHandlerTest {
                 new FieldViolation("rollNumber", "must look like CS21B001"),
                 new FieldViolation("contactMethods[0].value", "doesn't look like a valid Email contact")));
 
-        ResponseEntity<ErrorResponse> response =
+        ResponseEntity<?> response =
                 handler.handleSubmissionValidation(ex, requestFor("/api/submissions"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().message()).isEqualTo("rollNumber: must look like CS21B001,"
+        assertThat(body(response).message()).isEqualTo("rollNumber: must look like CS21B001,"
                 + " contactMethods[0].value: doesn't look like a valid Email contact");
     }
 
@@ -197,22 +185,22 @@ class GlobalExceptionHandlerTest {
     void submissionValidationException_emptyViolationList_fallsBackToDefaultMessage() {
         SubmissionValidationException ex = new SubmissionValidationException(java.util.List.of());
 
-        ResponseEntity<ErrorResponse> response =
+        ResponseEntity<?> response =
                 handler.handleSubmissionValidation(ex, requestFor("/api/submissions"));
 
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().message()).isEqualTo("Validation failed");
+        assertThat(body(response).message()).isEqualTo("Validation failed");
     }
 
     @Test
     void submissionValidationException_blankMessage_fallsBackToDefaultMessage() {
         SubmissionValidationException ex = new SubmissionValidationException("");
 
-        ResponseEntity<ErrorResponse> response =
+        ResponseEntity<?> response =
                 handler.handleSubmissionValidation(ex, requestFor("/api/submissions"));
 
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().message()).isEqualTo("Validation failed");
+        assertThat(body(response).message()).isEqualTo("Validation failed");
     }
 
     @Test
@@ -220,11 +208,11 @@ class GlobalExceptionHandlerTest {
         TestimonialAlreadyExistsException ex =
                 new TestimonialAlreadyExistsException("A testimonial already exists for this visitor.");
 
-        ResponseEntity<ErrorResponse> response =
+        ResponseEntity<?> response =
                 handler.handleTestimonialAlreadyExists(ex, requestFor("/api/submissions"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        ErrorResponse body = response.getBody();
+        ErrorResponse body = body(response);
         assertThat(body).isNotNull();
         assertThat(body.status()).isEqualTo(409);
         assertThat(body.message()).isEqualTo("A testimonial already exists for this visitor.");
@@ -235,11 +223,11 @@ class GlobalExceptionHandlerTest {
     void testimonialAlreadyExistsException_blankMessage_fallsBackToDefaultMessage() {
         TestimonialAlreadyExistsException ex = new TestimonialAlreadyExistsException(null);
 
-        ResponseEntity<ErrorResponse> response =
+        ResponseEntity<?> response =
                 handler.handleTestimonialAlreadyExists(ex, requestFor("/api/submissions"));
 
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().message())
+        assertThat(body(response).message())
                 .isEqualTo("A testimonial already exists for this visitor.");
     }
 
@@ -248,11 +236,11 @@ class GlobalExceptionHandlerTest {
         TestimonialNotPendingException ex =
                 new TestimonialNotPendingException("Testimonial 42 is not pending and cannot be moderated again.");
 
-        ResponseEntity<ErrorResponse> response =
+        ResponseEntity<?> response =
                 handler.handleTestimonialNotPending(ex, requestFor("/api/moderation/testimonials/42/approve"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        ErrorResponse body = response.getBody();
+        ErrorResponse body = body(response);
         assertThat(body).isNotNull();
         assertThat(body.status()).isEqualTo(409);
         assertThat(body.message()).isEqualTo("Testimonial 42 is not pending and cannot be moderated again.");
@@ -263,11 +251,49 @@ class GlobalExceptionHandlerTest {
     void testimonialNotPendingException_blankMessage_fallsBackToDefaultMessage() {
         TestimonialNotPendingException ex = new TestimonialNotPendingException(null);
 
-        ResponseEntity<ErrorResponse> response =
+        ResponseEntity<?> response =
                 handler.handleTestimonialNotPending(ex, requestFor("/api/moderation/testimonials/42/approve"));
 
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().message()).isEqualTo("This testimonial is no longer pending.");
+        assertThat(body(response).message()).isEqualTo("This testimonial is no longer pending.");
+    }
+
+    @Test
+    void notificationNotSentException_mapsTo503WithGivenMessage() {
+        NotificationNotSentException ex = new NotificationNotSentException(
+                "The email to the submitter couldn't be sent, so the testimonial was not rejected. Try again later.");
+
+        ResponseEntity<?> response =
+                handler.handleNotificationNotSent(ex, requestFor("/api/moderation/testimonials/42/reject"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        ErrorResponse body = body(response);
+        assertThat(body.status()).isEqualTo(503);
+        assertThat(body.error()).isEqualTo("Service Unavailable");
+        assertThat(body.message()).isEqualTo(
+                "The email to the submitter couldn't be sent, so the testimonial was not rejected. Try again later.");
+        assertThat(body.path()).isEqualTo("/api/moderation/testimonials/42/reject");
+    }
+
+    @Test
+    void notificationNotSentException_blankMessage_fallsBackToDefaultMessage() {
+        ResponseEntity<?> response = handler.handleNotificationNotSent(
+                new NotificationNotSentException(" "), requestFor("/api/moderation/testimonials/42/reject"));
+
+        assertThat(body(response).message())
+                .isEqualTo("The email couldn't be sent, so nothing was changed. Try again later.");
+    }
+
+    /** Never a 500 and never logged as a server error: the service already warned, without the recipient. */
+    @Test
+    void notificationNotSentException_onAPage_isTheHtml503Page() {
+        ResponseEntity<?> response = handler.handleNotificationNotSent(
+                new NotificationNotSentException("Not sent."), requestFor("/moderation/queue/42/reject"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getHeaders().getContentType()).isNotNull();
+        assertThat(response.getHeaders().getContentType().isCompatibleWith(MediaType.TEXT_HTML)).isTrue();
+        assertThat((String) response.getBody()).doesNotContain("Not sent.");
     }
 
     // -- multipart failures (upload too large / too many parts / unparseable body) --
@@ -279,11 +305,11 @@ class GlobalExceptionHandlerTest {
                 new IllegalStateException(
                         "org.apache.tomcat.util.http.fileupload.impl.FileCountLimitExceededException: attachment"));
 
-        ResponseEntity<ErrorResponse> response =
+        ResponseEntity<?> response =
                 handler.handleMaxUploadSizeExceeded(ex, requestFor("/api/submissions"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
-        ErrorResponse body = response.getBody();
+        ErrorResponse body = body(response);
         assertThat(body).isNotNull();
         assertThat(body.status()).isEqualTo(413);
         assertThat(body.error()).isEqualTo("Payload Too Large");
@@ -302,12 +328,12 @@ class GlobalExceptionHandlerTest {
         // was hit (e.g. Tomcat's part-count limit rather than a byte size).
         MaxUploadSizeExceededException ex = new MaxUploadSizeExceededException(-1L);
 
-        ResponseEntity<ErrorResponse> response =
+        ResponseEntity<?> response =
                 handler.handleMaxUploadSizeExceeded(ex, requestFor("/api/submissions/mine"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().message()).isNotBlank().doesNotContain("-1");
+        assertThat(body(response).message()).isNotBlank().doesNotContain("-1");
     }
 
     @Test
@@ -316,10 +342,10 @@ class GlobalExceptionHandlerTest {
                 "Failed to parse multipart servlet request",
                 new IllegalStateException("org.apache.tomcat.util.http.fileupload.FileUploadException: Stream ended"));
 
-        ResponseEntity<ErrorResponse> response = handler.handleMultipart(ex, requestFor("/api/submissions"));
+        ResponseEntity<?> response = handler.handleMultipart(ex, requestFor("/api/submissions"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        ErrorResponse body = response.getBody();
+        ErrorResponse body = body(response);
         assertThat(body).isNotNull();
         assertThat(body.status()).isEqualTo(400);
         assertThat(body.path()).isEqualTo("/api/submissions");
@@ -344,11 +370,11 @@ class GlobalExceptionHandlerTest {
                 "Could not access multipart servlet request",
                 new IllegalStateException(new FileCountLimitExceededException("attachment", 500)));
 
-        ResponseEntity<ErrorResponse> response = handler.handleMultipart(ex, requestFor("/api/submissions"));
+        ResponseEntity<?> response = handler.handleMultipart(ex, requestFor("/api/submissions"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().message()).doesNotContain("attachment").doesNotContain("tomcat");
+        assertThat(body(response).message()).doesNotContain("attachment").doesNotContain("tomcat");
     }
 
     @Test
@@ -423,5 +449,9 @@ class GlobalExceptionHandlerTest {
         @SuppressWarnings("unused")
         void dummyMethod(String arg) {
         }
+    }
+
+    private static ErrorResponse body(ResponseEntity<?> response) {
+        return (ErrorResponse) response.getBody();
     }
 }

@@ -34,12 +34,29 @@ server:
     # (url, remove checkbox, tags). Worst case with 50 saved + 50 new photos:
     # well under 400.
     max-part-count: ${BEACON_UPLOAD_MAX_PART_COUNT:500}
+    # Keep every redirect's Location relative (/admin/login), as the app sends
+    # it, instead of letting the container build an absolute URL from the
+    # request's own scheme and host — which is http:// behind a reverse proxy
+    # that terminates TLS (decision 23). Spring Boot turns Tomcat's own default
+    # (relative) off.
+    use-relative-redirects: true
   servlet:
     session:
       # How long an idle admin or visitor stays logged in (both log in into this
       # HTTP session). Boot's default of 30 minutes logged visitors out while
       # they were still writing their testimonial.
       timeout: ${BEACON_SESSION_TIMEOUT:24h}
+      cookie:
+        # A cross-site POST (or any cross-site request but a top-level
+        # navigation) never carries the session — on top of the CSRF token
+        # (BL-004). The XSRF-TOKEN cookie is Lax too (config.SecurityConfig).
+        same-site: lax
+        # Secure on JSESSIONID and, through config.SecurityConfig, on XSRF-TOKEN
+        # even when the request itself is plain http — as the app sees it
+        # behind a reverse proxy that terminates TLS. Off here (dev and the
+        # tests run on http), on in application-prod.yml. Off still marks both
+        # Secure on a request the container knows to be https.
+        secure: ${BEACON_COOKIE_SECURE:false}
 
 admin:
   otp:
@@ -67,6 +84,29 @@ beacon:
     # reach the app directly. Behind a reverse proxy (TLS termination, another host
     # name or port) set it to the address browsers use, e.g. https://beacon.example.
     allowed-origins: ${BEACON_ALLOWED_ORIGINS:}
+    # The IP addresses (comma-separated, exactly as the app sees them connect)
+    # of the reverse proxies in front of the app. From those addresses only,
+    # X-Forwarded-For gives the visitor's address (what the per-IP OTP limits
+    # count) and X-Forwarded-Proto the scheme (config.ClientAddressConfig).
+    # Empty: no proxy is trusted, every X-Forwarded-* header is ignored, and
+    # behind a proxy all visitors share the proxy's address. Never a range:
+    # trusting the whole Docker network would let any container spoof it.
+    trusted-proxies: ${BEACON_TRUSTED_PROXIES:}
+    # The largest multipart body accepted anywhere but the three submission
+    # endpoints (POST /submissions/form, POST /api/submissions, PUT
+    # /api/submissions/mine), which alone take photos and have the
+    # spring.servlet.multipart limits above. Anything bigger elsewhere — or of
+    # unknown length — is refused before it is read (config.NonUploadMultipartFilter):
+    # the CSRF check would otherwise have the container parse it, up to the
+    # upload limit, for anyone. 16KB is about four times the largest other form
+    # (the catalog's topic form, even with 4-byte characters).
+    non-upload-multipart-max-size: ${BEACON_NON_UPLOAD_MULTIPART_MAX_SIZE:16KB}
+  retention:
+    # When moderation.RejectedTestimonialCleanupJob deletes testimonials rejected
+    # more than 30 days ago (decision 3): a Spring cron expression (second minute
+    # hour day-of-month month day-of-week), evaluated in UTC. Default: Sundays at
+    # 03:00 UTC. "-" switches the job off.
+    cleanup-cron: ${BEACON_RETENTION_CRON:0 0 3 * * SUN}
   storage:
     root-path: ${BEACON_UPLOADS_ROOT:/data/uploads}
     # Most photos one testimonial can have, and one section (topic) of it; both

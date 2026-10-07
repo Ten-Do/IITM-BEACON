@@ -102,13 +102,17 @@ com.iitm.beacon
 ├── common/            Cross-cutting: @RestControllerAdvice error handling, shared
 │                      error-response DTO, base exceptions, the security layer's JSON 401/403
 │                      writers (RestAuthenticationEntryPoint, RestAccessDeniedHandler — §15),
+│                      the HTML error page (ErrorPage, ErrorPageRenderer, ErrorPageViewResolver,
+│                      PageAccessDeniedHandler, PageNotFoundHandler — decision 33),
 │                      EncryptedValueConverter (AES, decision 6, shared by Testimonial.email
 │                      and ContactMethod.value), EmailLookupHashService (HMAC-SHA256,
 │                      decision 6). common.security: SessionAuthenticator (session login after
-│                      an OTP verify) and PostLoginRedirect (return to the requested page —
-│                      decision 23). common.web: the same-origin check (SameOriginOnly,
+│                      an OTP verify, rotating the session id and CSRF token) and
+│                      PostLoginRedirect (return to the requested page — decision 23).
+│                      common.web: the same-origin check (SameOriginOnly,
 │                      SameOriginInterceptor, SameOriginGuard, SameOriginProperties —
-│                      decision 27).
+│                      decision 27) and UploadFailure (the form's upload-failure message,
+│                      shared by SubmissionViewController and the CSRF layer — decision 32).
 ├── config/            Spring Security config (SecurityConfig; separate admin and visitor
 │                      principals/roles, page login redirects — decision 23), mail
 │                      (JavaMailSender) config, @EnableScheduling setup, multipart/upload size
@@ -120,8 +124,12 @@ com.iitm.beacon
 │                      NotificationMailer (each a Smtp*/Logging*, prod/non-prod profile pair —
 │                      decision 21), PhotoUrlResolver (shared `/uploads/`-URL builder used by
 │                      submission/gallery/moderation — decision 21), PhotoFileDeleter (shared
-│                      best-effort delete of a photo's files, used by submission and
-│                      catalogadmin — decision 28).
+│                      best-effort delete of a photo's files, used by submission,
+│                      catalogadmin — decision 28 — and moderation's retention job — decision
+│                      3; never throws, returns whether every file was there),
+│                      SchedulingConfig (`@EnableScheduling`, for the retention job),
+│                      SpaCsrfTokenRequestHandler and UnreadableFormUploadHandler (CSRF —
+│                      decision 32).
 ├── domain/
 │   ├── testimonial/   Testimonial, TestimonialSection, Photo, PhotoTag, ContactMethod
 │   │                  entities, TestimonialStatus enum, their repositories.
@@ -154,10 +162,11 @@ com.iitm.beacon
 │                      22); SubmissionViewController.
 ├── moderation/        Admin pending queue, approve/reject one at a time — no bulk actions
 │                      (decision 18) — as REST (`api-spec.yaml`) and as a page (decision 21); and
-│                      the rejected-testimonial retention job (not yet built — M7).
-│                      ModerationController, ModerationService, ModerationTestimonialDetailDto,
+│                      the rejected-testimonial retention job (decision 3, §11).
+│                      ModerationController, ModerationService (incl.
+│                      `purgeExpiredRejections`), ModerationTestimonialDetailDto,
 │                      ModerationQueueCardDto; ModerationViewController;
-│                      RejectedTestimonialCleanupJob (@Scheduled, planned for M7).
+│                      RejectedTestimonialCleanupJob (@Scheduled, thin).
 ├── catalogadmin/      Admin CRUD for topic groups, topics (incl. re-parenting), and
 │                      achievements, incl. cascading delete (decisions 9, 28), as REST
 │                      (`api-spec.yaml`) and as pages under `/catalog/**`.
@@ -441,7 +450,12 @@ memory — no DB table. TTL and max attempts are `@ConfigurationProperties`, bac
 No concurrent-session cap. An app restart drops any in-flight OTP request; the admin simply
 requests a new one. After a successful verify on the login page, the admin lands on the
 moderation page they were sent to the login from (an expired session), otherwise on
-`/moderation/queue` (decision 23, §6).
+`/moderation/queue` (decision 23, §6). The login page keeps the typed email in the session
+(`adminauth.pendingLoginEmail`) for the code step and `POST /admin/login/resend`, never in the
+URL; opening the email step forgets it, a successful login removes it. A code that can't be
+emailed (`MailException`) gets the same response as a sent one and a WARN naming only the
+exception type (decision 4). In `dev`/`test` the code is logged, with the recipient masked
+(`config.LogMask`: `j***@example.com`).
 
 ## 6. Visitor authentication & session (decision 17)
 
@@ -475,7 +489,33 @@ Behavior is specified as UC-VISITOR-LOGIN in `use-cases.md`.
   sends the user back to it through `common.security.PostLoginRedirect`, which only ever returns
   a GET's path and query under the role's own pages, else the role's default page
   (`/submissions/form`, `/moderation/queue`). A form POST isn't saved, so a submission sent after
-  the session expired lands on the form, its input lost.
+  the session expired lands on the form, its input lost. A session of the other role on such a
+  page is sent to that page's login page the same way (`DelegatingAccessDeniedHandler`, BL-033),
+  and the new login replaces it; `/api/**` keeps the JSON 403.
+- Login hardening (decision 23): every successful OTP login rotates the session id and renews
+  the CSRF token — `common.security.SessionAuthenticator` applies a
+  `CompositeSessionAuthenticationStrategy` (`ChangeSessionIdAuthenticationStrategy` +
+  `CsrfAuthenticationStrategy`) from `SecurityConfig` before saving the context; session
+  attributes (the saved page, flash messages) survive, a failed verify rotates nothing. No
+  in-memory user exists (`UserDetailsServiceAutoConfiguration` excluded). `JSESSIONID` is
+  `HttpOnly` and `SameSite=Lax`.
+- CSRF (decision 32): a cookie token (`XSRF-TOKEN`, script-readable, `SameSite=Lax`) checked on
+  every POST/PUT/PATCH/DELETE — the raw value in the `X-XSRF-TOKEN` header (REST,
+  `contact-reveal.js`) or the masked value in a form's hidden `_csrf` field (Thymeleaf adds it to
+  every `th:action` form) — via `config.SpaCsrfTokenRequestHandler`. It lives in a cookie, so it
+  outlives an expired session and the expired-session redirect above still works for a form POST.
+  The multipart submission form's unreadable-upload case is handled by
+  `config.UnreadableFormUploadHandler` (decision 32).
+- Pages: the email step keeps the email in the session (`submission.pendingLoginEmail`) for the
+  code step and `POST /submissions/login/resend` — never in the URL, so every visitor gets the
+  same redirect `Location` (decision 17); a code that can't be emailed gets the identical
+  response and a WARN with the exception type only.
+- Log out (both roles): `POST /logout` with the CSRF token — the header's "Log out" form (admin
+  header always; visitor header when the request has a logged-in principal,
+  `common.security.LoginStateModelAdvice`'s `loggedIn`; never on the error page). It invalidates
+  the session, expires `JSESSIONID`, clears `XSRF-TOKEN` (a new one comes with the next page) and
+  redirects an admin to `/admin/login`, anyone else to `/`. Any other method on `/logout` is the
+  HTML 405 with `Allow: POST` (`config.LogoutMethodFilter`).
 - Session ping: `GET /api/submissions/session` (visitor) and `GET /api/moderation/session`
   (admin) answer 204 while the session lives — the request itself extends it — and JSON 401/403
   otherwise. `static/js/session-check.js` calls its role's ping when a protected page's tab
@@ -505,9 +545,17 @@ Behavior is specified as UC-VISITOR-LOGIN in `use-cases.md`.
   `webp-imageio`'s bundled native libwebp. No metadata of the original (EXIF incl. GPS, XMP, ICC)
   is copied, and the uploaded file itself is never kept.
 - Files: `PhotoStorageService.store` writes `<uuid>.webp` and `<uuid>-thumb.webp` (never
-  overwriting; if the thumbnail can't be written the full-size file is removed again) and returns
-  their paths plus the full-size pixel size for the `Photo` row. `delete(Photo)` removes both
-  files, best-effort. The random UUID keeps paths under the public `/uploads/**` prefix
+  overwriting; if the thumbnail can't be written the full-size file is removed again at once) and
+  returns their paths plus the full-size pixel size for the `Photo` row. `delete(Photo)` removes
+  both files, best-effort. Files follow the surrounding transaction: inside one, the files
+  `store` (and `convertLegacy`) wrote are removed again if it rolls back — also when a failing
+  commit is rolled back — and kept on commit or an unknown commit outcome; `delete(...)` of a
+  removed or replaced photo runs only after the commit, never on a rollback. So a submission
+  whose later photo is refused, or whose save fails, leaves no orphan files, and a failed edit
+  never loses a live photo's file. With no active transaction (e.g. `LegacyPhotoBackfill`) files
+  are written and deleted at once and cleanup is the caller's job. Request-level rules (counts)
+  are checked before any file is written; each photo's own checks (size, format, pixels) run as
+  it is stored, and the rollback cleans up the photos stored before it. The random UUID keeps paths under the public `/uploads/**` prefix
   unguessable from a testimonial or photo id.
 - Legacy photos (stored before the pipeline: original file, no thumbnail, no size) are converted
   by `submission.LegacyPhotoBackfill` once, synchronously at startup
@@ -522,7 +570,9 @@ Behavior is specified as UC-VISITOR-LOGIN in `use-cases.md`.
 - Files are served back to any client through a plain Spring static resource handler
   (`config/WebMvcConfig`, a `WebMvcConfigurer` mapping `/uploads/**` to the mounted directory) —
   not a dedicated per-photo endpoint, and not owned by any one feature slice, matching the rest
-  of `config`'s cross-cutting role (§3). `.webp` files are served as `image/webp`.
+  of `config`'s cross-cutting role (§3). `.webp` files are served as `image/webp`, with
+  `Cache-Control: max-age=31536000, private, immutable` (a missing file: `no-store`) — a photo
+  never changes under its UUID name (decision 34).
 - Page and API use: `gallery.PhotoRefDto`/`moderation.ModerationPhotoRefDto` carry `url` (full
   size), `thumbnailUrl` (the full-size URL again for a legacy photo) and `width`/`height` (null
   for a legacy photo); gallery cards, article thumbnails and the moderation queue show the
@@ -620,10 +670,22 @@ Behavior is specified as UC-VISITOR-LOGIN in `use-cases.md`.
 Behavior is specified as UC-PURGE-REJECTED in `use-cases.md` — system-initiated, no HTTP
 endpoint, so it has no `api-spec.yaml` entry.
 
-- `RejectedTestimonialCleanupJob`, `@Scheduled` weekly.
-- Finds `Testimonial` rows with `status = REJECTED` and `rejected_at` older than 30 days,
-  deletes their photo files, then deletes the testimonial row (cascading through sections,
-  photos, and contact methods).
+- `moderation.RejectedTestimonialCleanupJob` — a thin `@Scheduled` entry point (cron from
+  `beacon.retention.cleanup-cron` / `BEACON_RETENTION_CRON`, default `0 0 3 * * SUN`, zone UTC;
+  `-` disables it). Scheduling is switched on by `config.SchedulingConfig` (`@EnableScheduling`).
+  It calls `ModerationService.purgeExpiredRejections()` and logs one summary line (counts only —
+  never an email).
+- `purgeExpiredRejections()` runs in one transaction: it finds `Testimonial` rows with
+  `status = REJECTED` and `rejected_at` more than 30 days before now, and deletes each with a
+  delete that re-checks both conditions (a testimonial resubmitted — or resubmitted and rejected
+  again — meanwhile stays; a `REJECTED` row with no `rejected_at` is never due). The
+  database's `ON DELETE CASCADE` foreign keys take its sections, photos, photo tags, contact
+  methods and achievement ticks with it.
+- The deleted testimonials' photo files are removed by `config.PhotoFileDeleter` after the
+  transaction commits, never on rollback; a file already missing is logged at WARN and the run
+  goes on.
+- `rejected_at` is not cleared when a visitor resubmits; the status check alone keeps such a
+  testimonial out of the purge.
 - Inject a `Clock` bean (rather than calling `Instant.now()` directly) so the 30-day window is
   testable without real time passing.
 
@@ -637,8 +699,15 @@ endpoint, so it has no `api-spec.yaml` entry.
   IN :visibleTopicIds)] [AND (EXISTS (visible section WHERE answer_text ILIKE %:q%) OR
   first_name ILIKE %:q% OR last_name ILIKE %:q%)]` — a section is visible when its topic is
   (decision 28).
-- Implemented via a Spring Data JPA query method or `Specification`, paginated
+- Implemented as `Specification`s (`gallery.TestimonialSpecifications`), paginated
   (`Pageable`/`Page<T>`).
+- Order (decision 31): `ORDER BY reviewed_at DESC NULLS LAST, id DESC`, set inside the criteria
+  query by `TestimonialSpecifications.newestApprovalFirst()` as a portable
+  `CASE WHEN reviewed_at IS NULL ...` (Spring Data's `Sort` can't express null precedence on a
+  criteria query). `GalleryService.browse` passes on only the page number and size, so any sort
+  a caller sends is ignored. The `(status, country_code)` index doesn't serve this sort, which is
+  acceptable at hundreds of rows (NFR-GALLERY-/NFR-SEARCH-PERFORMANCE, measured in
+  `nfr-verification.md`).
 - Indexes: `(status, country_code)` on `Testimonial`, and `topic_id` on `TestimonialSection`
   (supports the topic filter), per NFR-SEARCH-PERFORMANCE.
 
@@ -659,23 +728,38 @@ endpoint, so it has no `api-spec.yaml` entry.
   `make e2e-update-screenshots` — decision 25).
 - Behind a reverse proxy (TLS termination, another host name or port), set
   `BEACON_ALLOWED_ORIGINS` to the public origin(s) browsers use, or the contact reveal's
-  same-origin check refuses every request (decision 27). `server.forward-headers-strategy` is
-  deliberately left off: Tomcat would trust `X-Forwarded-*` from the Docker network's private
-  addresses, which would let a client spoof its IP for the per-IP OTP request limits.
+  same-origin check refuses every request (decision 27), and set `BEACON_TRUSTED_PROXIES` to the
+  proxy's exact address(es) so the per-IP OTP limits see the visitor's address and the app sees
+  https (decision 34; the proxy must append to `X-Forwarded-For` and set `X-Forwarded-Proto`).
+  `server.forward-headers-strategy` is deliberately left off: Tomcat would trust `X-Forwarded-*`
+  from the Docker network's private addresses, which would let a client spoof its IP for the
+  per-IP OTP request limits. `BEACON_COOKIE_SECURE` (`true` under `prod`) marks the session and
+  CSRF cookies `Secure`; redirects are always relative (`server.tomcat.use-relative-redirects`).
+- `.dockerignore` is an allowlist: the build context holds only `.mvn/`, `mvnw`, `pom.xml` and
+  `src/` — never `.git`, `target/`, `data/`, `.env` or docs. The multi-stage build leaves only
+  `app.jar` in the runtime image, run as the unprivileged user `beacon`.
+- Tooling: `make perf` (performance pass on the host, Testcontainers — `nfr-verification.md`)
+  and `make cve-scan` (Trivy over the freshly built image — `security-review.md`). The normal
+  `./mvnw test` needs a reachable Docker daemon for its PostgreSQL tests.
 - Known risk: a submission with many photos takes a long time to convert synchronously (§7);
   a proxy in front of the app needs a request timeout long enough for it, until that open
   question is decided.
 - `application.yml` profiles:
-  - `dev`: H2, OTP logged (not emailed) for both admin and visitor login, relaxed local config.
+  - `dev`: H2, OTP logged (not emailed, recipient masked) for both admin and visitor login,
+    relaxed local config.
   - `prod`: Postgres, real SMTP, Flyway migrations (no `ddl-auto=update` in prod, per baseline
     rules).
 - Secrets/config via environment variables only (`ADMIN_EMAIL`, SMTP credentials, DB
   credentials, `admin.otp.*`, `visitor.otp.*` (ttl, max attempts, request rate per email/IP),
   session timeout, photo count/size/pixel limits and conversion settings, multipart limits,
-  allowed origins, cleanup cron, encryption key, HMAC pepper) — never committed.
-  `.env.example` documents the required ones and the photo/session/origin overrides; the compose
-  `app` service currently forwards only the required ones plus `BEACON_ALLOWED_ORIGINS`
-  (BL-023).
+  allowed origins, trusted proxies (`BEACON_TRUSTED_PROXIES`), Secure cookies
+  (`BEACON_COOKIE_SECURE`), the non-upload multipart limit
+  (`BEACON_NON_UPLOAD_MULTIPART_MAX_SIZE`), cleanup cron (`BEACON_RETENTION_CRON`), encryption
+  key, HMAC pepper) — never committed.
+  `.env.example` documents the required ones and the photo/session/origin/retention overrides;
+  the compose `app` service currently forwards only the required ones plus
+  `BEACON_ALLOWED_ORIGINS`, `BEACON_TRUSTED_PROXIES`, `BEACON_COOKIE_SECURE` and
+  `BEACON_RETENTION_CRON` (BL-023).
 - Hosting target: free-tier by default; university-server hosting is a viable alternative (see
   `scope.md` Constraints).
 
@@ -689,24 +773,65 @@ two services.
 
 ## 15. Error handling
 
-- `common.error.GlobalExceptionHandler` (`@RestControllerAdvice`) maps exceptions raised by
-  controllers to one consistent error-response DTO: validation failures → 400, a wrong OTP →
-  401, not-found → 404, a conflicting state → 409, an oversized multipart request → 413 (any
-  other multipart failure → 400), too many OTP requests → 429, anything else → 500 with a
-  generic message. No stack traces or internal messages reach the client
-  (NFR-ERROR-TRANSPARENCY).
+- `common.error.GlobalExceptionHandler` (`@RestControllerAdvice`) is the single owner of
+  exception → status, for every controller (decision 33): validation failures → 400 (Bean
+  Validation on parameters reports `param: constraint`, never the Java method path), a malformed
+  query/form value, a missing parameter or part, or an unreadable form field → 400, a wrong OTP
+  → 401, not-found — including a path id that isn't a number or overflows `Long` → 404, an
+  unsupported method → 405 (with `Allow`), an unacceptable `Accept` → 406, an unsupported
+  `Content-Type` → 415 (with `Accept`), a conflicting state → 409, an oversized multipart request
+  → 413 (any other multipart failure → 400), too many OTP requests → 429, any other Spring 4xx →
+  its status with "The request could not be processed.", anything else → 500 with a generic
+  message. Messages are fixed strings — a parameter or part name from our own code at most —
+  never the exception's text. Client errors are logged at DEBUG, only real 500s at ERROR. No
+  stack traces or internal messages reach the client (NFR-ERROR-TRANSPARENCY).
+- Representation by path, not by `Accept` (`common.web.ApiRequests`: `/api` and anything under
+  `/api/`, after decoding and normalisation): `/api/**` gets the JSON `ErrorResponse`, always as
+  `application/json`; every other path — a page — gets the HTML error page with the same status
+  and headers. The page (`templates/error/page.html`, rendered by `common.error.ErrorPageRenderer`
+  from the fixed status → title/sentence table in `common.error.ErrorPage`) uses the site shell
+  and the visitor header, one plain sentence, and a "Back to homepage" link. Errors raised before
+  a handler is chosen (405, 406, 415, no such resource) are covered too, as the choice depends on
+  the path only.
 - Authentication and authorization failures never reach a controller, so the advice doesn't
   handle them: the Spring Security filter chain does. `common.error.RestAuthenticationEntryPoint`
   writes the same JSON shape with 401 for an unauthenticated request, and
   `common.error.RestAccessDeniedHandler` with 403 for a session of the wrong role — except that
-  an unauthenticated request to a login-protected page is redirected to its login page instead
-  (decision 23, §6). A logged-in user of the other role still gets the JSON 403 on a page
-  (BL-033).
+  a request to a login-protected page without a session, or with the other role's, is redirected
+  to that page's login page instead (decision 23, §6). Outside `/api/**`, a request that reaches
+  the `denyAll()` tail — a path no route serves — gets the HTML 404 page
+  (`common.error.PageNotFoundHandler`), anonymous or logged in, with the usual response headers,
+  never a login redirect and never saved in the request cache. A CSRF failure is the JSON 403 under
+  `/api/**` and the HTML 403 error page (`common.error.PageAccessDeniedHandler`) on a page, never
+  a login redirect (decision 32) — except an unreadable multipart POST to `/submissions/form`,
+  which `config.UnreadableFormUploadHandler` redirects back to the form with its upload-failure
+  message. The CSRF check runs in the filter chain, before `SameOriginInterceptor`, so a POST
+  without a token is refused before any Origin 403. Under `/api/**` the entry point's JSON 401 and
+  the tail's JSON 403 stay (decision 23).
+- Before any of that, `config.NonUploadMultipartFilter` (in the security chain, before the CSRF
+  check) refuses a multipart request to anything but the three submission endpoints that
+  declares more than 16 KB (413) or no length (411), from its headers alone and without reading
+  the body; it answers through `common.error.ErrorResponseWriter` in the same representation
+  (decisions 32, 34). A page number whose offset would overflow (`page × size` >
+  `Integer.MAX_VALUE`, `common.web.PageRequests`) is a 400.
+- Every response carries the CSP and `Referrer-Policy: same-origin` (decision 34), error
+  responses included — except those Spring Security's firewall rejects before the header
+  writers run (BL-057).
+- A reject whose email to the submitter can't be sent throws
+  `common.error.NotificationNotSentException`: the testimonial stays `PENDING` (the email is sent
+  before the status changes) and the answer is a 503 with a fixed message under `/api/**`; the
+  queue page redirects back with it as a banner and the typed reason restored (decision 33). A
+  mail failure is logged as a WARN naming only the exception type, never the address.
+- Spring Boot's `/error` dispatch: `common.error.ErrorPageViewResolver` serves the same HTML error
+  page to HTML requests; other requests keep Boot's JSON body, which never includes a trace, an
+  exception, a message or binding errors (`server.error.*` left at its safe defaults, guarded by
+  `config.ErrorDetailConfigTest`).
 - `common.web.SameOriginInterceptor` refuses a request to a `@SameOriginOnly` handler that
   doesn't come from this site's own pages with a 403 and a one-line plain-text reason, before the
   handler runs (decision 27).
-- Page (View-Controller) errors are handled in the View-Controller itself — redirect, re-render
-  with an inline error, or an in-slice not-found page — never as JSON (§17).
+- Expected page errors are still handled in the View-Controller itself — redirect, re-render
+  with an inline error, or an in-slice not-found page (§17); anything else gets the HTML error
+  page, never JSON.
 
 ## 16. Testing notes
 
@@ -755,14 +880,22 @@ Neither controller depends on the other, and the REST contract is unchanged.
 
 `SecurityConfig` enumerates every one of these (and every `/api/**` route) as its own explicit
 matcher; the catch-all tail is `.anyRequest().denyAll()`, not `.authenticated()` — a route this
-list doesn't name is refused outright, not merely gated behind "some role or other." The gallery
+list doesn't name is refused outright, not merely gated behind "some role or other" — `/api/**`
+with the JSON 401/403, any other path with the HTML 404 page (§15, decision 33). The gallery
 matchers are method-specific: `GET`/`HEAD` for its pages, `POST` only for the contact reveal. A
 login-protected page answers a missing or expired session with a redirect to its login page and,
-after the login, a return to the page (decision 23, §6); a session of the other role still gets
-the JSON 403 (BL-033).
+after the login, a return to the page (decision 23, §6); a session of the other role is
+redirected to that page's login page the same way (BL-033).
 
 **Templates and shared chrome.** `src/main/resources/templates/<slice>/*.html`, one subdirectory
-per slice. Shared chrome is factored into `templates/layout/` fragments:
+per slice; `templates/error/page.html` is the generic error page (§15). Rules every template
+follows (decision 34): static assets are linked with `@{...}` so the content-versioned URL is
+rendered (the shared head in `shell.html` uses `@{~/...}`, as the error page is rendered without
+a web context); no inline `<script>`, `<style>`, `style=""` or event-handler attributes — the
+Content-Security-Policy allows none (score colours are `score-N` classes in `beacon.css`, the
+no-JavaScript styles are `noscript.css`), guarded by `config.ContentSecurityPolicyTemplatesTest`;
+every `<form method="post">` uses `th:action` so it carries the CSRF field (decision 32). Shared
+chrome is factored into `templates/layout/` fragments:
 - `shell.html` — `head(title)` for the `<head>`: viewport meta, stylesheet, and
   `static/js/nav-toggle.js` (deferred) on every page;
 - `header-visitor.html` and `header-admin.html` — each a `header(activePage)` fragment for the
@@ -798,7 +931,7 @@ high with an invisible 40px tap area. Static assets are served under `/css/**`, 
 decision 24), all `permitAll`, through Spring Boot's default static-resource handling (not
 `WebMvcConfig`'s `/uploads/**` mapping, which is unrelated). `shell.html`'s `head` declares an
 empty inline favicon (`<link rel="icon" href="data:,">`) so browsers never probe `/favicon.ico`,
-which the `denyAll()` tail would refuse; it's replaced by a real icon once a logo asset exists.
+which the `denyAll()` tail would answer with the 404 page; it's replaced by a real icon once a logo asset exists.
 
 **No SPA.** Pages are ordinary server-rendered HTML: filtering/pagination/navigation are plain
 `<a>`/`<form method="get">` links that reload the page with query parameters; state-changing
@@ -842,9 +975,14 @@ request, a failed validation), or render a small in-slice not-found page (an unk
 not-yet/no-longer-approved testimonial id — the gallery detail page's 404 is deliberately
 identical for "doesn't exist" and "exists but isn't approved," the same privacy property the REST
 `GET /gallery/testimonials/{id}` already has; the contact reveal likewise answers 404 with an
-"unavailable" card for an unknown, unapproved or contact-less testimonial).
-`GlobalExceptionHandler` never branches on the caller being a page and still owns every actual
-REST response.
+"unavailable" card for an unknown, unapproved or contact-less testimonial). The gallery
+detail route accepts an id of 1–18 digits only (like the contact reveal); anything else is the
+same `gallery/not-found` page. A submission-form POST with a field the binder can't read (an
+index of 256 or more, e.g. `sections[256]` — BL-014) is redirected back to the form with "The
+form couldn't be read, so nothing was saved. Please check it and send it again." Anything a
+View-Controller doesn't handle itself — a malformed parameter, an unsupported method, a CSRF
+failure, an unexpected exception — reaches `GlobalExceptionHandler`, which answers a page with
+the generic HTML error page (`templates/error/page.html`, §15, decision 33), never JSON.
 
 **Submission form.** The REST `POST /api/submissions` contract takes one multipart `payload` part
 (a JSON `TestimonialSubmissionRequest`) plus photo files keyed by `fileRef` — not something a

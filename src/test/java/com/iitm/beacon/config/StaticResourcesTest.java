@@ -270,6 +270,44 @@ class StaticResourcesTest {
                 "is larger than", "You can add at most", "to this topic.", "in total.", "is not an image.");
     }
 
+    /**
+     * The row's behaviour runs in a browser (e2e); this pins the fix for
+     * BL-030. {@code update()} also runs from the value input's {@code
+     * x-on:input}, where Alpine's {@code $el} is that input, not the row —
+     * so looking the checkbox up through {@code this.$el} found nothing and
+     * left it ticked. The row is captured once, in {@code init()}, and
+     * {@code update()} finds the checkbox through it.
+     */
+    @Test
+    void submissionFormJs_contactRow_findsItsCheckboxThroughTheRowCapturedInInit_neverThroughThisEl()
+            throws Exception {
+        String row = withoutComments(alpineComponent(submissionFormJs(), "contactRow"))
+                .replaceAll("(?m)//.*$", "");
+
+        assertThat(jsMethodBody(row, "init()")).containsPattern("\\b(\\w+) = this\\.\\$el;");
+        String rowVariable = jsMethodBody(row, "init()").replaceAll("(?s).*?\\b(\\w+) = this\\.\\$el;.*", "$1");
+        assertThat(jsMethodBody(row, "update(value)"))
+                .doesNotContain("$el")
+                .contains(rowVariable + ".querySelector('input[type=\"checkbox\"]').checked = false;");
+        assertThat(row.split("this\\.\\$el", -1)).as("this.$el used only in init()").hasSize(2);
+    }
+
+    /** The body of the JS method declared as {@code signature {…}}, braces matched. */
+    private static String jsMethodBody(String js, String signature) {
+        int start = js.indexOf(signature + " {");
+        assertThat(start).as("method " + signature).isNotNegative();
+        int open = js.indexOf('{', start);
+        int depth = 0;
+        for (int i = open; i < js.length(); i++) {
+            if (js.charAt(i) == '{') {
+                depth++;
+            } else if (js.charAt(i) == '}' && --depth == 0) {
+                return js.substring(open + 1, i);
+            }
+        }
+        throw new AssertionError("Unclosed method " + signature);
+    }
+
     @Test
     void submissionFormJs_formStillLeavesEmptyPhotoInputsOutOfTheSubmission_andRestoresThemOnPageShow()
             throws Exception {
@@ -354,6 +392,29 @@ class StaticResourcesTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString(".submission-field-error")))
                 .andExpect(content().string(containsString(".submission-field-input--invalid")));
+    }
+
+    /** Linked from a {@code <noscript>} on the submission form: without JS, nothing stays cloaked. */
+    @Test
+    void noscriptCss_showsWhatAlpineWouldHaveUncloaked() throws Exception {
+        String css = mockMvc.perform(get("/css/noscript.css"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/css"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(topLevelRule(css, "[x-cloak]")).contains("display: block !important;");
+    }
+
+    /** One class per score, 0 to 10, in that score's colour: the pages' score badges use them (no inline style). */
+    @Test
+    void beaconCss_hasAColourClassForEveryScore() throws Exception {
+        String css = beaconCss();
+
+        for (int score = 0; score <= 10; score++) {
+            assertThat(css).contains(".score-" + score + " { color: var(--score-" + score + "); }");
+        }
     }
 
     @Test

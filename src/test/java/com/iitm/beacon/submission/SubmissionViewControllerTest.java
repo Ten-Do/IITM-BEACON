@@ -1,9 +1,13 @@
 package com.iitm.beacon.submission;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfField;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -12,7 +16,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrlPattern;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
@@ -25,11 +28,15 @@ import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
+import com.iitm.beacon.testsupport.Csrf;
+import com.iitm.beacon.testsupport.HtmlSnippets;
+import com.iitm.beacon.testsupport.LoginCodeSteps;
 import jakarta.persistence.EntityManager;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +58,8 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -69,6 +78,8 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @Transactional
 class SubmissionViewControllerTest {
+
+    private static final String CODE_PAGE = LoginCodeSteps.VISITOR_CODE_PAGE;
 
     @Autowired
     private MockMvc mockMvc;
@@ -101,9 +112,8 @@ class SubmissionViewControllerTest {
                 "admin@example.com", null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
     }
 
-    private String requestAndCaptureCode(String email) throws Exception {
-        mockMvc.perform(post("/submissions/login").param("email", email)).andExpect(status().is3xxRedirection());
-
+    /** The code last mailed to {@code email}. */
+    private String codeMailedTo(String email) {
         ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
         verify(otpMailer, atLeastOnce()).sendOtp(eq(email), captor.capture());
         return captor.getValue();
@@ -155,58 +165,150 @@ class SubmissionViewControllerTest {
                 .andExpect(view().name("submission/login-email"));
     }
 
+    /** Back at the email step — the header link, the browser's back button — the pending email is forgotten. */
     @Test
-    void loginEmailForm_post_redirectsToCodePageWithEmail() throws Exception {
-        mockMvc.perform(post("/submissions/login").param("email", "new-visitor@example.com"))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrlPattern("/submissions/login/code?email=*"));
+    void loginEmailForm_get_forgetsThePendingEmail() throws Exception {
+        MockHttpSession session = LoginCodeSteps.visitorAskedForACode(mockMvc, "forget-me@example.com");
+
+        mockMvc.perform(get("/submissions/login").session(session)).andExpect(status().isOk());
+
+        mockMvc.perform(get(CODE_PAGE).session(session))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/submissions/login"));
+    }
+
+    @Test
+    void loginEmailForm_post_redirectsToTheCodePage_withoutTheEmailInTheUrl() throws Exception {
+        mockMvc.perform(post("/submissions/login").with(csrfField()).param("email", "new-visitor@example.com"))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl(CODE_PAGE));
     }
 
     @Test
     void loginEmailForm_post_blankEmail_rerendersWithErrorInsteadOfCrashing() throws Exception {
-        mockMvc.perform(post("/submissions/login").param("email", ""))
+        mockMvc.perform(post("/submissions/login").with(csrfField()).param("email", ""))
                 .andExpect(status().isOk())
                 .andExpect(view().name("submission/login-email"))
                 .andExpect(model().attributeExists("error"));
     }
 
+    @Test
+    void loginEmailForm_post_missingEmail_rerendersWithErrorAndSendsNothing() throws Exception {
+        mockMvc.perform(post("/submissions/login").with(csrfField()))
+                .andExpect(status().isOk())
+                .andExpect(view().name("submission/login-email"))
+                .andExpect(model().attributeExists("error"));
+
+        verify(otpMailer, never()).sendOtp(anyString(), anyString());
+    }
+
+    /** Two requests in one browser (two tabs, say): the last email wins — the page and the verify use it. */
+    @Test
+    void loginEmailForm_post_secondEmailInTheSameSession_replacesThePendingOne() throws Exception {
+        MockHttpSession session = LoginCodeSteps.visitorAskedForACode(mockMvc, "first-tab@example.com");
+        String firstCode = codeMailedTo("first-tab@example.com");
+        LoginCodeSteps.askedForACode(mockMvc, "/submissions/login", "second-tab@example.com", session);
+
+        mockMvc.perform(get(CODE_PAGE).session(session))
+                .andExpect(model().attribute("email", "second-tab@example.com"));
+        mockMvc.perform(post(CODE_PAGE).with(csrfField()).param("code", firstCode).session(session))
+                .andExpect(status().isOk())
+                .andExpect(model().attributeExists("error"));
+        mockMvc.perform(post(CODE_PAGE).with(csrfField())
+                        .param("code", codeMailedTo("second-tab@example.com"))
+                        .session(session))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/submissions/form"));
+    }
+
     // -- GET/POST /submissions/login/code --
 
     @Test
-    void loginCodeForm_get_returns200AndRendersViewWithEmail() throws Exception {
-        mockMvc.perform(get("/submissions/login/code").param("email", "someone@example.com"))
+    void loginCodeForm_get_afterTheEmailStep_rendersTheCodePageWithTheEmail() throws Exception {
+        mockMvc.perform(get(CODE_PAGE).session(LoginCodeSteps.visitorAskedForACode(mockMvc, "someone@example.com")))
                 .andExpect(status().isOk())
                 .andExpect(view().name("submission/login-code"))
                 .andExpect(model().attribute("email", "someone@example.com"));
     }
 
     @Test
-    void loginCodeForm_get_missingEmail_redirectsBackToLoginEmail() throws Exception {
-        mockMvc.perform(get("/submissions/login/code"))
-                .andExpect(status().is3xxRedirection())
+    void loginCodeForm_get_showsTheEmail_butNoFormActionOrLinkCarriesIt() throws Exception {
+        String html = okHtml(get(CODE_PAGE)
+                .session(LoginCodeSteps.visitorAskedForACode(mockMvc, "jane+tab@example.com")));
+
+        assertThat(html).contains("<strong>jane+tab@example.com</strong>");
+        List<String> urls = new ArrayList<>();
+        HtmlSnippets.openingTags(html, "form")
+                .forEach(tag -> urls.add(HtmlSnippets.attribute(tag, "action").orElse("")));
+        HtmlSnippets.openingTags(html, "a")
+                .forEach(tag -> urls.add(HtmlSnippets.attribute(tag, "href").orElse("")));
+        assertThat(urls).isNotEmpty().allSatisfy(url -> assertThat(url)
+                .doesNotContain("jane", "example.com", "email="));
+        assertThat(HtmlSnippets.openingTags(html, "input"))
+                .noneMatch(input -> input.contains("name=\"email\""))
+                .noneMatch(input -> input.contains("jane+tab@example.com"));
+    }
+
+    @Test
+    void loginCodeForm_get_offersVerifyAndAResendThatPostsToItsOwnStep() throws Exception {
+        String html = okHtml(get(CODE_PAGE)
+                .session(LoginCodeSteps.visitorAskedForACode(mockMvc, "resend-form@example.com")));
+
+        List<String> actions = HtmlSnippets.openingTags(html, "form").stream()
+                .map(tag -> HtmlSnippets.attribute(tag, "action").orElse(""))
+                .toList();
+        assertThat(actions).contains("/submissions/login/code", "/submissions/login/resend");
+        assertThat(html).contains("Resend code");
+    }
+
+    /** A fresh browser — no session at all, e.g. a bookmarked or shared code-page URL — starts at the email step. */
+    @Test
+    void loginCodeForm_get_withoutASession_redirectsBackToLoginEmail() throws Exception {
+        mockMvc.perform(get(CODE_PAGE))
+                .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/submissions/login"));
     }
 
     @Test
+    void loginCodeForm_get_aSessionThatAskedForNoCode_redirectsBackToLoginEmail() throws Exception {
+        mockMvc.perform(get(CODE_PAGE).session(new MockHttpSession()))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/submissions/login"));
+    }
+
+    /** An old link with the email in its query is ignored: it neither fills the page nor replaces the pending email. */
+    @Test
+    void loginCodeForm_get_legacyEmailQueryParameter_isIgnored() throws Exception {
+        mockMvc.perform(get(CODE_PAGE).param("email", "someone@example.com"))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/submissions/login"));
+        mockMvc.perform(get(CODE_PAGE).param("email", "other@example.com")
+                        .session(LoginCodeSteps.visitorAskedForACode(mockMvc, "pending@example.com")))
+                .andExpect(status().isOk())
+                .andExpect(model().attribute("email", "pending@example.com"));
+    }
+
+    @Test
     void loginCodeForm_get_alreadyLoggedInVisitor_redirectsStraightToForm() throws Exception {
-        mockMvc.perform(get("/submissions/login/code")
-                        .param("email", "someone@example.com")
+        mockMvc.perform(get(CODE_PAGE)
+                        .session(LoginCodeSteps.visitorAskedForACode(mockMvc, "someone@example.com"))
                         .with(authentication(visitor("code-again@example.com"))))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/submissions/form"));
     }
 
     @Test
-    void loginCodeForm_get_alreadyLoggedInVisitorWithoutEmail_redirectsToFormNotBackToLogin() throws Exception {
-        mockMvc.perform(get("/submissions/login/code").with(authentication(visitor("code-again-no-email@example.com"))))
+    void loginCodeForm_get_alreadyLoggedInVisitorWithoutAPendingEmail_redirectsToFormNotBackToLogin()
+            throws Exception {
+        mockMvc.perform(get(CODE_PAGE).with(authentication(visitor("code-again-no-email@example.com"))))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/submissions/form"));
     }
 
     @Test
     void loginCodeForm_get_loggedInAdmin_stillRendersCodePage() throws Exception {
-        mockMvc.perform(get("/submissions/login/code")
-                        .param("email", "someone@example.com")
+        mockMvc.perform(get(CODE_PAGE)
+                        .session(LoginCodeSteps.visitorAskedForACode(mockMvc, "someone@example.com"))
                         .with(authentication(admin())))
                 .andExpect(status().isOk())
                 .andExpect(view().name("submission/login-code"))
@@ -216,11 +318,11 @@ class SubmissionViewControllerTest {
     @Test
     void loginCodeForm_post_correctCode_redirectsToFormAndEstablishesVisitorSession() throws Exception {
         String email = "view-login-success@example.com";
-        String code = requestAndCaptureCode(email);
+        MockHttpSession requested = LoginCodeSteps.visitorAskedForACode(mockMvc, email);
 
-        var result = mockMvc.perform(post("/submissions/login/code")
-                        .param("email", email)
-                        .param("code", code))
+        var result = mockMvc.perform(post(CODE_PAGE).with(csrfField())
+                        .param("code", codeMailedTo(email))
+                        .session(requested))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/submissions/form"))
                 .andReturn();
@@ -233,18 +335,113 @@ class SubmissionViewControllerTest {
         assertThat(securityContext.getAuthentication().getPrincipal()).isEqualTo(email);
     }
 
+    /** Once logged in, the email is no longer held as a pending login: no session attribute has it as its value. */
     @Test
-    void loginCodeForm_post_wrongCode_rerendersWithError() throws Exception {
-        String email = "view-login-wrong-code@example.com";
-        requestAndCaptureCode(email);
+    void loginCodeForm_post_correctCode_forgetsThePendingEmail() throws Exception {
+        String email = "view-login-forget@example.com";
+        MockHttpSession session = LoginCodeSteps.visitorAskedForACode(mockMvc, email);
 
-        mockMvc.perform(post("/submissions/login/code")
-                        .param("email", email)
-                        .param("code", "ZZZZZZ"))
+        mockMvc.perform(post(CODE_PAGE).with(csrfField()).param("code", codeMailedTo(email)).session(session))
+                .andExpect(status().isFound());
+
+        assertThat(Collections.list(session.getAttributeNames()))
+                .noneMatch(name -> email.equals(session.getAttribute(name)));
+    }
+
+    @Test
+    void loginCodeForm_post_wrongCode_rerendersWithErrorAndTheEmail() throws Exception {
+        String email = "view-login-wrong-code@example.com";
+        MockHttpSession session = LoginCodeSteps.visitorAskedForACode(mockMvc, email);
+
+        mockMvc.perform(post(CODE_PAGE).with(csrfField()).param("code", "ZZZZZZ").session(session))
                 .andExpect(status().isOk())
                 .andExpect(view().name("submission/login-code"))
                 .andExpect(model().attributeExists("error"))
                 .andExpect(model().attribute("email", email));
+    }
+
+    /**
+     * The code is checked against the session's email only. An email posted
+     * along — say, someone else's, with a code mailed to them — is ignored:
+     * nobody is logged in as that other address.
+     */
+    @Test
+    void loginCodeForm_post_anEmailPostedAlong_isIgnored() throws Exception {
+        String victim = "view-login-victim@example.com";
+        LoginCodeSteps.visitorAskedForACode(mockMvc, victim);
+        String victimsCode = codeMailedTo(victim);
+        MockHttpSession attacker = LoginCodeSteps.visitorAskedForACode(mockMvc, "view-login-attacker@example.com");
+
+        MvcResult result = mockMvc.perform(post(CODE_PAGE).with(csrfField())
+                        .param("email", victim)
+                        .param("code", victimsCode)
+                        .session(attacker))
+                .andExpect(status().isOk())
+                .andExpect(view().name("submission/login-code"))
+                .andExpect(model().attribute("email", "view-login-attacker@example.com"))
+                .andReturn();
+
+        assertThat(result.getRequest().getSession(false)
+                .getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).isNull();
+    }
+
+    @Test
+    void loginCodeForm_post_withoutAPendingEmail_redirectsToTheEmailStep() throws Exception {
+        String email = "view-login-no-session@example.com";
+        LoginCodeSteps.visitorAskedForACode(mockMvc, email);
+
+        mockMvc.perform(post(CODE_PAGE).with(csrfField()).param("email", email).param("code", codeMailedTo(email)))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/submissions/login"));
+    }
+
+    // -- POST /submissions/login/resend --
+
+    @Test
+    void resend_post_sendsANewCodeToThePendingEmail_whichLogsIn() throws Exception {
+        String email = "view-resend@example.com";
+        MockHttpSession session = LoginCodeSteps.visitorAskedForACode(mockMvc, email);
+
+        mockMvc.perform(post("/submissions/login/resend").with(csrfField()).session(session))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl(CODE_PAGE));
+
+        verify(otpMailer, times(2)).sendOtp(eq(email), anyString());
+        mockMvc.perform(post(CODE_PAGE).with(csrfField()).param("code", codeMailedTo(email)).session(session))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/submissions/form"));
+    }
+
+    @Test
+    void resend_post_anEmailPostedAlong_isIgnored() throws Exception {
+        MockHttpSession session = LoginCodeSteps.visitorAskedForACode(mockMvc, "view-resend-pending@example.com");
+
+        mockMvc.perform(post("/submissions/login/resend").with(csrfField())
+                        .param("email", "view-resend-other@example.com")
+                        .session(session))
+                .andExpect(status().isFound());
+
+        verify(otpMailer, never()).sendOtp(eq("view-resend-other@example.com"), anyString());
+        verify(otpMailer, times(2)).sendOtp(eq("view-resend-pending@example.com"), anyString());
+    }
+
+    @Test
+    void resend_post_withoutAPendingEmail_redirectsToTheEmailStepAndSendsNothing() throws Exception {
+        mockMvc.perform(post("/submissions/login/resend").with(csrfField()).param("email", "view-resend@example.com"))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/submissions/login"));
+
+        verify(otpMailer, never()).sendOtp(anyString(), anyString());
+    }
+
+    @Test
+    void resend_post_withoutTheCsrfToken_isRefusedAndSendsNothing() throws Exception {
+        String email = "view-resend-no-csrf@example.com";
+        MockHttpSession session = LoginCodeSteps.visitorAskedForACode(mockMvc, email);
+
+        mockMvc.perform(post("/submissions/login/resend").session(session)).andExpect(status().isForbidden());
+
+        verify(otpMailer, times(1)).sendOtp(eq(email), anyString());
     }
 
     // -- GET /submissions/form --
@@ -346,14 +543,23 @@ class SubmissionViewControllerTest {
     void form_get_loadsItsAlpineComponentsBeforeAlpineItselfBothDeferred() throws Exception {
         String html = formHtml(visitor("view-form-js@example.com"));
 
-        int components = html.indexOf("<script defer src=\"/js/submission-form.js\"></script>");
-        int alpine = html.indexOf("<script defer src=\"/webjars/alpinejs/dist/cdn.min.js\"></script>");
+        // At their versioned URLs (config.StaticAssetsConfig).
+        int components = firstIndexOf(html, "<script defer src=\"/js/submission-form-[0-9a-f]{32}\\.js\"></script>");
+        int alpine = firstIndexOf(html,
+                "<script defer src=\"/webjars/alpinejs/\\d[^/\"]*/dist/cdn\\.min\\.js\"></script>");
         assertThat(components).as("component script").isNotNegative();
         assertThat(alpine)
                 .as("Alpine must load after the alpine:init listener is registered")
                 .isGreaterThan(components);
-        // Without JS nothing may stay cloaked: the whole form is shown instead.
-        assertThat(html).contains("<noscript><style>[x-cloak]{display:block!important}</style></noscript>");
+        // Without JS nothing may stay cloaked: the whole form is shown instead (static/css/noscript.css;
+        // a stylesheet, as the Content-Security-Policy blocks inline styles).
+        assertThat(html).containsPattern(
+                "<noscript><link rel=\"stylesheet\" href=\"/css/noscript(-[0-9a-f]{32})?\\.css\"/></noscript>");
+    }
+
+    private static int firstIndexOf(String html, String regex) {
+        Matcher m = Pattern.compile(regex).matcher(html);
+        return m.find() ? m.start() : -1;
     }
 
     // -- recommendation score slider --
@@ -390,7 +596,7 @@ class SubmissionViewControllerTest {
             }
         }
         assertThat(html).contains(RecommendationScoreLabels.forScore(visibleScore));
-        assertThat(html).contains("var(--score-" + visibleScore + ")");
+        assertThat(html).contains("class=\"submission-score-value-row score-" + visibleScore + "\"");
         assertThat(scoreInputTag(html)).contains("value=\"" + visibleScore + "\"");
     }
 
@@ -453,7 +659,7 @@ class SubmissionViewControllerTest {
 
     @Test
     void form_post_scoreMissingAltogether_rerendersWithTheSliderAtTen() throws Exception {
-        String html = mockMvc.perform(multipart("/submissions/form")
+        String html = mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .param("lastName", "Jones")
                         .param("rollNumber", "GE26Z001")
@@ -475,7 +681,7 @@ class SubmissionViewControllerTest {
 
     @Test
     void form_post_unparseableScore_rerendersWithTheSliderAtTenInsteadOfCrashing() throws Exception {
-        String html = mockMvc.perform(multipart("/submissions/form")
+        String html = mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .param("recommendationScore", "not-a-number")
                         .with(authentication(visitor("view-score-garbage@example.com"))))
@@ -500,7 +706,7 @@ class SubmissionViewControllerTest {
     }
 
     private String postValidFormWithScore(String email, String score) throws Exception {
-        return mockMvc.perform(multipart("/submissions/form")
+        return mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .param("lastName", "Jones")
                         .param("rollNumber", "GE26Z001")
@@ -742,7 +948,7 @@ class SubmissionViewControllerTest {
         List<String> slugs = catalogSlugsInFormOrder();
         int index = slugs.indexOf("travel_recommend");
 
-        mockMvc.perform(multipart("/submissions/form")
+        mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .param("lastName", "Jones")
                         .param("rollNumber", "GE26Z001")
@@ -769,7 +975,7 @@ class SubmissionViewControllerTest {
         List<String> slugs = catalogSlugsInFormOrder();
         int last = slugs.size() - 1;
 
-        mockMvc.perform(multipart("/submissions/form")
+        mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .param("lastName", "Jones")
                         .param("rollNumber", "GE26Z001")
@@ -793,7 +999,7 @@ class SubmissionViewControllerTest {
         persistTestimonialWithSections(email, "networking", "general");
         int generalIndex = catalogSlugsInFormOrder().indexOf("general");
 
-        mockMvc.perform(multipart("/submissions/form")
+        mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .param("lastName", "Jones")
                         .param("rollNumber", "GE26Z001")
@@ -816,7 +1022,7 @@ class SubmissionViewControllerTest {
         List<String> slugs = catalogSlugsInFormOrder();
         int index = slugs.indexOf("travel_recommend");
 
-        String html = mockMvc.perform(multipart("/submissions/form")
+        String html = mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .param("lastName", "Jones")
                         .param("rollNumber", "GE26Z001")
@@ -850,7 +1056,7 @@ class SubmissionViewControllerTest {
         List<String> slugs = catalogSlugsInFormOrder();
         assertThat(slugs.get(0)).isNotEqualTo("networking");
 
-        mockMvc.perform(multipart("/submissions/form")
+        mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .param("sections[0].topicSlug", "networking")
                         .param("sections[0].answerText", "Met great people.")
@@ -871,6 +1077,7 @@ class SubmissionViewControllerTest {
     private MockMultipartHttpServletRequestBuilder generalPost(
             int generalIndex, String email) {
         MockMultipartHttpServletRequestBuilder builder = multipart("/submissions/form");
+        builder.with(csrfField());
         builder.param("firstName", "David")
                 .param("lastName", "Jones")
                 .param("rollNumber", "GE26Z001")
@@ -975,9 +1182,10 @@ class SubmissionViewControllerTest {
     }
 
     @Test
-    void form_get_adminRole_returns403() throws Exception {
+    void form_get_adminRole_redirectsToVisitorLogin() throws Exception {
         mockMvc.perform(get("/submissions/form").with(authentication(admin())))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/submissions/login"));
     }
 
     // -- POST /submissions/form --
@@ -986,7 +1194,7 @@ class SubmissionViewControllerTest {
     void form_post_createMode_persistsAndRedirectsToConfirmation() throws Exception {
         String email = "view-form-post-create@example.com";
 
-        mockMvc.perform(multipart("/submissions/form")
+        mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .param("lastName", "Jones")
                         .param("rollNumber", "GE26Z001")
@@ -1014,7 +1222,7 @@ class SubmissionViewControllerTest {
         String email = "view-form-post-edit@example.com";
         persistTestimonialFor(email);
 
-        mockMvc.perform(multipart("/submissions/form")
+        mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .param("lastName", "Jones")
                         .param("rollNumber", "GE26Z001")
@@ -1049,7 +1257,7 @@ class SubmissionViewControllerTest {
         int generalIndex = slugs.indexOf("general");
         int clubsIndex = slugs.indexOf("campus_clubs");
 
-        mockMvc.perform(multipart("/submissions/form")
+        mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .param("lastName", "Jones")
                         .param("rollNumber", "GE26Z001")
@@ -1070,7 +1278,7 @@ class SubmissionViewControllerTest {
         MockMultipartFile photo = new MockMultipartFile(
                 "sections[" + clubsIndex + "].photos", "club.png", "image/png", realPngBytes());
         mockMvc.perform(multipart("/submissions/form")
-                        .file(photo)
+                        .file(photo).with(csrfField())
                         .param("firstName", "David")
                         .param("lastName", "Jones")
                         .param("rollNumber", "GE26Z001")
@@ -1110,7 +1318,7 @@ class SubmissionViewControllerTest {
 
     @Test
     void form_post_unauthenticated_redirectsToVisitorLogin() throws Exception {
-        mockMvc.perform(multipart("/submissions/form")
+        mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .param("lastName", "Jones")
                         .param("rollNumber", "GE26Z001")
@@ -1152,5 +1360,62 @@ class SubmissionViewControllerTest {
         mockMvc.perform(get("/submissions/confirmation"))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/submissions/login"));
+    }
+
+    // -- CSRF (BL-004) --
+
+    private String okHtml(MockHttpServletRequestBuilder request) throws Exception {
+        return mockMvc.perform(request).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+    }
+
+    @Test
+    void loginPages_carryTheCsrfTokenInEveryForm() throws Exception {
+        Csrf.assertEveryPostFormCarriesTheToken(okHtml(get("/submissions/login")), 1);
+        Csrf.assertEveryPostFormCarriesTheToken(
+                okHtml(get(CODE_PAGE).session(LoginCodeSteps.visitorAskedForACode(mockMvc, "csrf-pages@example.com"))),
+                2);
+    }
+
+    @Test
+    void submissionForm_carriesTheCsrfToken_alsoWhenRerenderedWithErrors() throws Exception {
+        Authentication visitor = visitor("view-csrf-form@example.com");
+        Csrf.assertEveryPostFormCarriesTheToken(okHtml(get("/submissions/form").with(authentication(visitor))), 1);
+
+        String rerendered = okHtml(multipart("/submissions/form").with(csrfField())
+                .param("firstName", "")
+                .param("sections[0].topicSlug", "general")
+                .param("sections[0].answerText", "Great time overall.")
+                .with(authentication(visitor)));
+
+        assertThat(rerendered).contains("submission-error");
+        Csrf.assertEveryPostFormCarriesTheToken(rerendered, 1);
+    }
+
+    @Test
+    void loginEmail_post_withoutTheCsrfToken_isRefusedAndSendsNothing() throws Exception {
+        mockMvc.perform(post("/submissions/login").param("email", "no-csrf-login@example.com"))
+                .andExpect(status().isForbidden());
+
+        verify(otpMailer, never()).sendOtp(eq("no-csrf-login@example.com"), anyString());
+    }
+
+    @Test
+    void form_post_withoutTheCsrfToken_isRefusedAndSavesNothing() throws Exception {
+        String email = "view-form-post-no-csrf@example.com";
+
+        mockMvc.perform(multipart("/submissions/form")
+                        .param("firstName", "David")
+                        .param("lastName", "Jones")
+                        .param("rollNumber", "GE26Z001")
+                        .param("admissionYear", "2024")
+                        .param("countryCode", "IN")
+                        .param("recommendationScore", "8")
+                        .param("sections[0].topicSlug", "general")
+                        .param("sections[0].answerText", "Great time overall.")
+                        .param("dataProcessingConsent", "true")
+                        .with(authentication(visitor(email))))
+                .andExpect(status().isForbidden());
+
+        assertThat(testimonialRepository.findAll()).noneMatch(t -> email.equals(t.getEmail()));
     }
 }

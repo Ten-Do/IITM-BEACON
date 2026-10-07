@@ -1,5 +1,6 @@
 package com.iitm.beacon.common.web;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfField;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -30,16 +31,18 @@ class AllowedOriginsAppliedTest {
 
     @Test
     void eachListedOrigin_passesTheCheck() throws Exception {
-        mockMvc.perform(post(CONTACT).header("Origin", "https://beacon.example").header("X-Requested-With", "fetch"))
+        mockMvc.perform(post(CONTACT).with(csrfField())
+                        .header("Origin", "https://beacon.example").header("X-Requested-With", "fetch"))
                 .andExpect(status().isNotFound());
-        mockMvc.perform(post(CONTACT).header("Origin", "https://www.beacon.example")
+        mockMvc.perform(post(CONTACT).with(csrfField()).header("Origin", "https://www.beacon.example")
                         .header("X-Requested-With", "fetch"))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void theRequestsOwnOrigin_isRefused_onceTheListIsSet() throws Exception {
-        mockMvc.perform(post(CONTACT).header("Origin", "http://localhost").header("X-Requested-With", "fetch"))
+        mockMvc.perform(post(CONTACT).with(csrfField())
+                        .header("Origin", "http://localhost").header("X-Requested-With", "fetch"))
                 .andExpect(status().isForbidden());
     }
 }

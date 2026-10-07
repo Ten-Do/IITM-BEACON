@@ -220,8 +220,11 @@ public class SubmissionService {
      * plus the business rules below — is checked in one pass, and all
      * violations are thrown together as one {@link
      * SubmissionValidationException} (decision 21). Photos are stored only
-     * after everything has passed, to avoid orphaned uploads on rejection
-     * (decision 2).
+     * after all of those have passed, so a request they refuse writes no
+     * file at all (decision 2). Each photo's own file checks (format, size,
+     * pixels) run as it's stored, so a refused photo can come after others
+     * were already written; the rollback that follows removes those again,
+     * as it does on any later failure ({@link PhotoStorageService#store}).
      */
     @Transactional
     public SubmissionResultResponse create(
@@ -415,10 +418,12 @@ public class SubmissionService {
         }
 
         // Validate every section and photo fileRef with zero IO, so a
-        // rejection never leaves an orphaned upload or a wrongly-deleted
-        // live file behind. A kept photo is one whose fileRef is the url of
-        // a photo its own section already has; anything else must name a
-        // genuinely new multipart part (decision 18).
+        // request these rules refuse touches no file at all. Past this
+        // point, files follow the transaction: new ones are removed again
+        // on rollback, and removed photos lose theirs only once it commits
+        // (PhotoStorageService). A kept photo is one whose fileRef is the
+        // url of a photo its own section already has; anything else must
+        // name a genuinely new multipart part (decision 18).
         List<FilledSection> filledSections = validateSections(
                 req.sections(),
                 violations,
@@ -576,7 +581,8 @@ public class SubmissionService {
      * mutating it in place: kept photos are matched by their current {@code
      * url}, tag changes on a kept photo count as a modification just like
      * edited text (decision 18), and any current photo left unreferenced is
-     * dropped (file deleted, row removed via {@code orphanRemoval}).
+     * dropped (files deleted once the edit commits, row removed via {@code
+     * orphanRemoval}).
      */
     private void applyExistingSectionEdit(
             TestimonialSection existing, SectionInput incoming, Map<String, MultipartFile> fileParts) {

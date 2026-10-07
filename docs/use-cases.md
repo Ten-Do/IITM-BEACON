@@ -230,7 +230,10 @@ while here.
 - **Preconditions:** none.
 - **Main flow:** Visitor opens the gallery → system returns a paginated list of `APPROVED`
   testimonials as cards (a representative photo, country, recommendation score, a short
-  preview drawn from the first filled section).
+  preview drawn from the first filled section), newest approval first — the most recently
+  approved (or re-approved) testimonial leads, ties go to the newer one (decision 31). Filters
+  and search (UC-FILTER-COUNTRY, UC-SEARCH-KEYWORD, UC-FILTER-TOPIC) keep this order, and paging
+  through it shows every testimonial exactly once.
 - **Alternate flows:** No approved testimonials exist → gallery shows an empty state, not an
   error.
 - **Postconditions:** none (read-only).
@@ -328,9 +331,14 @@ while here.
   idle) while they were on the form or the confirmation page → reloading that page, or coming
   back to its browser tab, takes them to the login page; after logging in again they return to
   the page they were on. A form submitted after the session expired is not saved: after the
-  login they land on the form again, and what they had typed is lost.
+  login they land on the form again, and what they had typed is lost. The code can't be emailed
+  (mail server failure) → the visitor sees exactly the same code screen as on success and can
+  press "Resend code" later. The code screen opened without a pending email (a fresh browser, an
+  expired session) → back to the email step. Between the two steps the email is kept in the
+  session, never in the page address; the last email requested in a browser wins.
 - **Postconditions:** visitor becomes an Authenticated Visitor for the session; no testimonial
-  data is read or written yet.
+  data is read or written yet. "Log out" in the header ends the session and returns them to the
+  homepage.
 
 ## UC-CREATE-TESTIMONIAL: Create a new testimonial
 - **Actor:** Authenticated Visitor
@@ -413,15 +421,17 @@ while here.
   identical to a match (the admin is still taken to the code-entry screen), so the login page
   never reveals whether the email was right (decision 4). Too many code requests in a short
   window → the code-entry screen shows a "wait a moment" error; a code already received can
-  still be entered.
+  still be entered. The code can't be emailed (mail server failure) → the same response as a
+  match, so a failure never reveals that the email was the admin's; the admin can resend
+  later.
 - **Postconditions:** a new request replaces any previously pending OTP for that email.
 
 ## UC-ADMIN-OTP-VERIFY: Verify OTP and establish admin session
 - **Actor:** Admin
 - **Preconditions:** a live, unexpired OTP exists from UC-ADMIN-OTP-REQUEST.
 - **Main flow:** Admin submits the OTP code on the code-entry screen (a single code field; the
-  email is carried over from the previous step, and the screen offers "resend code" and "use a
-  different email") → system checks it against the in-memory value → match and not expired →
+  email is carried over from the previous step in the session, never in the page address, and
+  the screen offers "resend code" and "use a different email") → system checks it against the in-memory value → match and not expired →
   authenticated session created → admin lands on the pending queue (UC-VIEW-PENDING-QUEUE).
 - **Alternate flows:** Wrong code → attempt counter decrements, 401 returned; counter reaches
   the configured max → OTP invalidated outright, admin must restart from UC-ADMIN-OTP-REQUEST.
@@ -430,7 +440,7 @@ while here.
   tab, takes them to the login page; after logging in they return to the page they were on
   instead of the queue.
 - **Postconditions:** admin may hold sessions on multiple devices at once (no concurrent-session
-  cap).
+  cap). "Log out" in the admin header ends the session and returns to the login page.
 
 ## UC-VIEW-PENDING-QUEUE: View pending testimonials queue
 - **Actor:** Admin
@@ -466,7 +476,10 @@ while here.
   status becomes `REJECTED`, `rejectedAt` timestamp set, it disappears from both the public
   gallery and the pending queue → system emails the submitter with the reason (if one was
   given), pointing them to log in (UC-VISITOR-LOGIN) and fix it (UC-EDIT-TESTIMONIAL).
-- **Alternate flows:** none.
+- **Alternate flows:** the email to the submitter can't be sent (mail server failure) → the
+  testimonial is not rejected: it stays `PENDING` in the queue, and the admin sees "The email to
+  the submitter couldn't be sent, so the testimonial was not rejected. Try again later." with the
+  reason they typed kept in the form.
 - **Postconditions:** the row, its sections, and its photos are retained for 30 days (see
   UC-PURGE-REJECTED), not deleted immediately — unless the visitor edits and resubmits first
   (UC-EDIT-TESTIMONIAL), which takes it out of the retention countdown.

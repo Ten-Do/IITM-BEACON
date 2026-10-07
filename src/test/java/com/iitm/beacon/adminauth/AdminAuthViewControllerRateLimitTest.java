@@ -1,17 +1,21 @@
 package com.iitm.beacon.adminauth;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfField;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
 import com.iitm.beacon.config.OtpMailer;
+import com.iitm.beacon.testsupport.LoginCodeSteps;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -59,10 +63,9 @@ class AdminAuthViewControllerRateLimitTest {
     @Test
     void resendWithinWindow_rendersTheCodeStepWithErrorAndKeepsEmail() throws Exception {
         String email = "admin-view-ratelimit-resend-probe@example.com";
-        mockMvc.perform(post("/admin/login/request").param("email", email))
-                .andExpect(status().is3xxRedirection());
+        MockHttpSession session = LoginCodeSteps.adminAskedForACode(mockMvc, email);
 
-        String html = mockMvc.perform(post("/admin/login/request").param("email", email))
+        String html = mockMvc.perform(post("/admin/login/resend").with(csrfField()).session(session))
                 .andExpect(status().isOk())
                 .andExpect(view().name("adminauth/login-code"))
                 .andExpect(model().attribute("error", containsString(STILL_ENTER_IT_HINT)))
@@ -75,20 +78,38 @@ class AdminAuthViewControllerRateLimitTest {
     }
 
     @Test
+    void sameEmailAgainFromTheEmailStepWithinWindow_rendersTheCodeStepWithError() throws Exception {
+        String email = "admin-view-ratelimit-again-probe@example.com";
+        MockHttpSession session = LoginCodeSteps.adminAskedForACode(mockMvc, email);
+
+        mockMvc.perform(post("/admin/login/request").with(csrfField()).param("email", email).session(session))
+                .andExpect(status().isOk())
+                .andExpect(view().name("adminauth/login-code"))
+                .andExpect(model().attribute("error", containsString(STILL_ENTER_IT_HINT)))
+                .andExpect(model().attribute("email", email));
+    }
+
+    @Test
     void firstRequestFromThisBrowserAlreadyOverTheLimit_stillRendersTheCodeStepNotTheEmailStep() throws Exception {
         // The per-email budget was already spent elsewhere (another device),
         // so this browser's very first request is the one rejected.
         String email = "admin-view-ratelimit-first-probe@example.com";
-        mockMvc.perform(post("/admin/login/request").param("email", email).with(request -> {
+        mockMvc.perform(post("/admin/login/request").with(csrfField()).param("email", email).with(request -> {
                     request.setRemoteAddr("203.0.113.7");
                     return request;
                 }))
                 .andExpect(status().is3xxRedirection());
 
-        mockMvc.perform(post("/admin/login/request").param("email", email))
+        MockHttpSession session = new MockHttpSession();
+        mockMvc.perform(post("/admin/login/request").with(csrfField()).param("email", email).session(session))
                 .andExpect(status().isOk())
                 .andExpect(view().name("adminauth/login-code"))
                 .andExpect(model().attribute("error", containsString(STILL_ENTER_IT_HINT)))
+                .andExpect(model().attribute("email", email));
+
+        // The page's own forms carry no email: the session already holds this one for them.
+        mockMvc.perform(get("/admin/login/code").session(session))
+                .andExpect(status().isOk())
                 .andExpect(model().attribute("email", email));
     }
 }

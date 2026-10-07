@@ -1,11 +1,11 @@
 package com.iitm.beacon.gallery;
 
+import com.iitm.beacon.common.web.PageRequests;
 import com.iitm.beacon.common.web.PageResponse;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import java.util.List;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -40,7 +40,7 @@ public class GalleryController {
             @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return galleryService.browse(country, groupIds, topicIds, q, PageRequest.of(page, size));
+        return galleryService.browse(country, groupIds, topicIds, q, PageRequests.of(page, size));
     }
 
     @GetMapping("/testimonials/{id}")

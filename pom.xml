@@ -19,6 +19,13 @@
 
   <properties>
     <java.version>21</java.version>
+    <!-- Security patch overrides of Spring Boot's managed versions (M7 CVE scan,
+         docs/security-review.md §4): Tomcat CVE-2026-65182/-65905/-68525,
+         Jackson CVE-2026-68497/-89407/-89425/-91776/-91777, pgjdbc
+         CVE-2026-54291. Drop each once Spring Boot manages that version or newer. -->
+    <tomcat.version>10.1.60</tomcat.version>
+    <jackson-bom.version>2.21.7</jackson-bom.version>
+    <postgresql.version>42.7.13</postgresql.version>
     <archunit.version>1.4.2</archunit.version>
     <checkstyle-core.version>10.26.1</checkstyle-core.version>
     <alpinejs.version>3.17.4</alpinejs.version>
@@ -35,10 +42,11 @@
          the Java client drives exactly the browser build baked into it. -->
     <playwright.version>1.63.0</playwright.version>
     <!-- JUnit 5 tag filters for surefire. The default build skips the
-         browser end-to-end tests (@Tag("e2e")); the `e2e` profile flips
-         both so it runs only them. -->
+         browser end-to-end tests (@Tag("e2e")) and the performance pass
+         (@Tag("perf")); the `e2e` and `perf` profiles each flip both so they
+         run only their own tests. -->
     <beacon.test.groups/>
-    <beacon.test.excludedGroups>e2e</beacon.test.excludedGroups>
+    <beacon.test.excludedGroups>e2e,perf</beacon.test.excludedGroups>
   </properties>
 
   <dependencies>
@@ -197,6 +205,16 @@
       <version>${archunit.version}</version>
       <scope>test</scope>
     </dependency>
+    <!-- A real PostgreSQL (postgres:16-alpine, the image docker-compose.yml
+         runs) for the tests that must not rely on H2's PostgreSQL mode, e.g.
+         the Flyway migration-parity test. Versions come from Spring Boot's
+         testcontainers-bom. Part of the normal `mvn test` run, so that run
+         needs a reachable Docker daemon (see testsupport.PostgresContainerSupport). -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
     <!-- Browser end-to-end tests (src/test/java/com/iitm/beacon/e2e),
          run only via `make e2e` inside the Playwright Docker image. -->
     <dependency>
@@ -301,6 +319,17 @@
       <id>e2e</id>
       <properties>
         <beacon.test.groups>e2e</beacon.test.groups>
+        <beacon.test.excludedGroups/>
+      </properties>
+    </profile>
+    <!-- `mvn -Pperf test`: runs ONLY the manual performance pass
+         (com.iitm.beacon.perf.PerformanceNfrTest) against PostgreSQL 16 in
+         Testcontainers. Meant to run on the host (see `make perf`), where
+         Testcontainers can reach Docker. -->
+    <profile>
+      <id>perf</id>
+      <properties>
+        <beacon.test.groups>perf</beacon.test.groups>
         <beacon.test.excludedGroups/>
       </properties>
     </profile>

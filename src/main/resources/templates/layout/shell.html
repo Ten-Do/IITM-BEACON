@@ -7,9 +7,13 @@
     <!-- Inline empty icon: without one, browsers request /favicon.ico, which
          SecurityConfig's denyAll() tail answers with 401/403. -->
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/css/beacon.css" />
+    <!-- Link expressions render each file's content-versioned URL (config.StaticAssetsConfig).
+         Server-relative (~/): the error page renders this head without a web request context
+         (common.error.ErrorPageRenderer), where only such a link works — it then keeps the
+         plain URL. -->
+    <link rel="stylesheet" th:href="@{~/css/beacon.css}" />
     <!-- The header's burger menu on phones (layout/nav-toggle.html); inert on a page without one. -->
-    <script defer src="/js/nav-toggle.js"></script>
+    <script defer th:src="@{~/js/nav-toggle.js}"></script>
 </head>
 <body>
 </body>

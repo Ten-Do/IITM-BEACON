@@ -116,11 +116,27 @@ a:hover {
 }
 
 /* Alpine.js: elements marked x-cloak stay hidden until Alpine has
-   initialized them (templates that load Alpine add a <noscript> override,
-   so without JS the same elements are simply shown). */
+   initialized them (templates that load Alpine link css/noscript.css in a
+   <noscript>, so without JS the same elements are simply shown). */
 [x-cloak] {
   display: none !important;
 }
+
+/* A recommendation score's colour: templates add score-0 ... score-10 — never
+   an inline style, which the Content-Security-Policy blocks. (The submission
+   form's slider recolours its row through Alpine's x-bind:style, which sets
+   the property via the CSSOM, as the policy allows.) */
+.score-0 { color: var(--score-0); }
+.score-1 { color: var(--score-1); }
+.score-2 { color: var(--score-2); }
+.score-3 { color: var(--score-3); }
+.score-4 { color: var(--score-4); }
+.score-5 { color: var(--score-5); }
+.score-6 { color: var(--score-6); }
+.score-7 { color: var(--score-7); }
+.score-8 { color: var(--score-8); }
+.score-9 { color: var(--score-9); }
+.score-10 { color: var(--score-10); }
 
 /* Page shell — max-width centered container reused by later page templates */
 .page-container {
@@ -167,16 +183,34 @@ a.wordmark:hover {
   gap: var(--space-5);
 }
 
-.header-nav a {
+.header-nav a,
+.header-nav-button {
   font-size: 14px;
   font-weight: 600;
   color: var(--ink-soft);
 }
 
 .header-nav a:hover,
-.header-nav a.active {
+.header-nav a.active,
+.header-nav-button:hover {
   color: var(--maroon);
   text-decoration: none;
+}
+
+/* The header's "Log out" (layout/header-*.html): a POST form, so a button,
+   looking like the nav's links beside it. */
+.header-nav-form {
+  display: flex;
+  margin: 0;
+}
+
+.header-nav-button {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
 }
 
 .admin-badge {
@@ -880,7 +914,7 @@ input[type="checkbox"].submission-field-input--invalid {
   box-shadow: var(--shadow-card);
 }
 
-/* Number + label share the row's colour (var(--score-N), set inline). */
+/* Number + label share the row's colour (its score-N class, then Alpine's binding). */
 .submission-score-value-row {
   display: flex;
   align-items: baseline;
@@ -2027,7 +2061,8 @@ input[type="checkbox"].submission-field-input--invalid {
   line-height: 1.5;
 }
 
-.catalog-error-banner {
+.catalog-error-banner,
+.moderation-error-banner {
   display: flex;
   gap: var(--space-2);
   align-items: flex-start;
@@ -2903,7 +2938,8 @@ a.dashboard-list-row:hover .dashboard-list-label {
     gap: 0 var(--space-5);
   }
 
-  .header-nav a {
+  .header-nav a,
+  .header-nav-button {
     display: inline-flex;
     align-items: center;
     min-height: 44px;
@@ -2933,11 +2969,18 @@ a.dashboard-list-row:hover .dashboard-list-label {
     box-shadow: var(--shadow-card);
   }
 
-  .header-nav.nav-menu--collapsible a {
+  .header-nav.nav-menu--collapsible a,
+  .header-nav.nav-menu--collapsible .header-nav-button {
     min-height: 48px;
     padding: 0 var(--space-4) 0 calc(var(--space-4) - 3px);
     border-left: 3px solid transparent;
     font-size: 16px;
+  }
+
+  /* In the open menu the button is a full-width row, like the links. */
+  .header-nav.nav-menu--collapsible .header-nav-button {
+    width: 100%;
+    text-align: left;
   }
 
   .header-nav.nav-menu--collapsible a.active {
@@ -2946,7 +2989,8 @@ a.dashboard-list-row:hover .dashboard-list-label {
   }
 
   /* Inside the row: the rows touch the screen edges, which would clip it. */
-  .header-nav.nav-menu--collapsible a:focus-visible {
+  .header-nav.nav-menu--collapsible a:focus-visible,
+  .header-nav.nav-menu--collapsible .header-nav-button:focus-visible {
     outline-offset: -2px;
   }
 

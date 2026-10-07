@@ -36,6 +36,15 @@ services:
       MAIL_PASSWORD: ${MAIL_PASSWORD:?MAIL_PASSWORD is required}
       # Optional: the site's public origin(s) behind a reverse proxy (see .env.example).
       BEACON_ALLOWED_ORIGINS: ${BEACON_ALLOWED_ORIGINS:-}
+      # Optional: the reverse proxy's address(es), whose X-Forwarded-For/-Proto are believed
+      # (see .env.example). Empty: none.
+      BEACON_TRUSTED_PROXIES: ${BEACON_TRUSTED_PROXIES:-}
+      # Optional: Secure session and CSRF cookies (see .env.example). Never forwarded empty:
+      # an empty value would leave them without Secure.
+      BEACON_COOKIE_SECURE: "${BEACON_COOKIE_SECURE:-true}"
+      # Optional: when the rejected-testimonial purge runs, "-" for never (see .env.example).
+      # Never forwarded empty: an empty cron would stop the app from starting.
+      BEACON_RETENTION_CRON: "${BEACON_RETENTION_CRON:-0 0 3 * * SUN}"
     ports:
       - "8081:8080"
     volumes:

@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Test;
  * Every page on a phone, whole: at 390px and again at 375px, where anything
  * too wide would show as a wider screenshot. And the short pages on a
  * desktop, where the sand background must reach the bottom of the screen.
+ * The generic error page (decision 33) is shown for an unknown page (404)
+ * and a malformed parameter (400).
  */
 class PagesE2eTest extends E2eTestBase {
 
@@ -26,6 +28,12 @@ class PagesE2eTest extends E2eTestBase {
         assertFullPageScreenshot(name + "-375px");
     }
 
+    /** Opens {@code path} on the current (desktop) page and takes the viewport. */
+    private void desktopScreenshot(String path, String name) {
+        navigate(path);
+        assertScreenshot(name + "-desktop");
+    }
+
     @Test
     void publicPages_onAPhone() {
         long id = data().approvedArticle();
@@ -35,10 +43,14 @@ class PagesE2eTest extends E2eTestBase {
         phoneScreenshots("/gallery", "gallery-list");
         phoneScreenshots("/gallery/" + id, "gallery-article");
         phoneScreenshots("/gallery/424242", "testimonial-not-found");
+        phoneScreenshots("/no-such-page", "error-page-not-found");
+        phoneScreenshots("/gallery?page=abc", "error-page-bad-request");
         phoneScreenshots("/submissions/login", "visitor-login");
-        phoneScreenshots("/submissions/login/code?email=" + VISITOR, "visitor-login-code");
+        requestVisitorLoginCode(VISITOR);
+        phoneScreenshots("/submissions/login/code", "visitor-login-code");
         phoneScreenshots("/admin/login", "admin-login");
-        phoneScreenshots("/admin/login/code?email=" + adminEmail(), "admin-login-code");
+        requestAdminLoginCode();
+        phoneScreenshots("/admin/login/code", "admin-login-code");
     }
 
     @Test
@@ -76,17 +88,14 @@ class PagesE2eTest extends E2eTestBase {
     @Test
     void shortPages_onADesktop() {
         openPage(DevicePreset.DESKTOP);
-        String[][] pages = {
-            {"/gallery/424242", "testimonial-not-found"},
-            {"/submissions/login", "visitor-login"},
-            {"/submissions/login/code?email=" + VISITOR, "visitor-login-code"},
-            {"/admin/login", "admin-login"},
-            {"/admin/login/code?email=" + adminEmail(), "admin-login-code"},
-        };
-        for (String[] shortPage : pages) {
-            navigate(shortPage[0]);
-            assertScreenshot(shortPage[1] + "-desktop");
-        }
+        desktopScreenshot("/gallery/424242", "testimonial-not-found");
+        desktopScreenshot("/no-such-page", "error-page-not-found");
+        desktopScreenshot("/submissions/login", "visitor-login");
+        requestVisitorLoginCode(VISITOR);
+        desktopScreenshot("/submissions/login/code", "visitor-login-code");
+        desktopScreenshot("/admin/login", "admin-login");
+        requestAdminLoginCode();
+        desktopScreenshot("/admin/login/code", "admin-login-code");
 
         loginAsVisitor(VISITOR);
         navigate("/submissions/confirmation");

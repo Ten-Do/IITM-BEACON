@@ -1,0 +1,7 @@
+/* IITM Beacon — loaded only without JavaScript, from a <noscript> on the
+   pages that use Alpine.js (submission/form.html): nothing stays hidden
+   behind x-cloak, which beacon.css hides until Alpine starts. A file of its
+   own because the Content-Security-Policy blocks inline styles. */
+[x-cloak] {
+  display: block !important;
+}

@@ -1,5 +1,6 @@
 package com.iitm.beacon.catalogadmin;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfField;
 import static com.iitm.beacon.testsupport.HtmlSnippets.attribute;
 import static com.iitm.beacon.testsupport.HtmlSnippets.elements;
 import static com.iitm.beacon.testsupport.HtmlSnippets.openingTags;
@@ -23,6 +24,7 @@ import com.iitm.beacon.domain.topic.Topic;
 import com.iitm.beacon.domain.topic.TopicGroup;
 import com.iitm.beacon.domain.topic.TopicGroupRepository;
 import com.iitm.beacon.domain.topic.TopicRepository;
+import com.iitm.beacon.testsupport.Csrf;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -124,10 +126,13 @@ class CatalogAdminViewControllerTest {
     // -- access --
 
     @Test
-    void visitorSession_getsA403() throws Exception {
-        mockMvc.perform(get("/catalog/topics").with(authentication(visitor()))).andExpect(status().isForbidden());
-        mockMvc.perform(post("/catalog/topics/1/delete").with(authentication(visitor())))
-                .andExpect(status().isForbidden());
+    void visitorSession_isSentToTheAdminLogin_andChangesNothing() throws Exception {
+        mockMvc.perform(get("/catalog/topics").with(authentication(visitor())))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/admin/login"));
+        mockMvc.perform(post("/catalog/topics/1/delete").with(csrfField()).with(authentication(visitor())))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/admin/login"));
         assertThat(topicRepository.findById(1L)).isPresent();
     }
 
@@ -275,7 +280,8 @@ class CatalogAdminViewControllerTest {
 
     @Test
     void createTopicGroup_valid_redirectsToTheListWithANotice() throws Exception {
-        asAdmin(post("/catalog/topic-groups/new").param("label", "  Sports  ").param("displayOrder", "9999"))
+        asAdmin(post("/catalog/topic-groups/new").with(csrfField())
+                .param("label", "  Sports  ").param("displayOrder", "9999"))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/catalog/topics"))
                 .andExpect(flash().attributeExists("notice"));
@@ -288,7 +294,8 @@ class CatalogAdminViewControllerTest {
     void createTopicGroup_invalid_reRendersWithAnErrorPerField_andSavesNothing() throws Exception {
         long before = topicGroupRepository.count();
 
-        String html = asAdmin(post("/catalog/topic-groups/new").param("label", "   ").param("displayOrder", "10000"))
+        String html = asAdmin(post("/catalog/topic-groups/new").with(csrfField())
+                .param("label", "   ").param("displayOrder", "10000"))
                 .andExpect(status().isOk())
                 .andExpect(view().name("catalogadmin/topic-group-form"))
                 .andExpect(model().attributeHasFieldErrors("form", "label", "displayOrder"))
@@ -302,7 +309,8 @@ class CatalogAdminViewControllerTest {
     @ParameterizedTest
     @ValueSource(strings = {"first", "1.5", "99999999999"})
     void createTopicGroup_nonNumericOrder_showsAReadableMessage(String order) throws Exception {
-        String html = asAdmin(post("/catalog/topic-groups/new").param("label", "X").param("displayOrder", order))
+        String html = asAdmin(post("/catalog/topic-groups/new").with(csrfField())
+                .param("label", "X").param("displayOrder", order))
                 .andExpect(status().isOk())
                 .andExpect(model().attributeHasFieldErrors("form", "displayOrder"))
                 .andReturn().getResponse().getContentAsString();
@@ -314,11 +322,13 @@ class CatalogAdminViewControllerTest {
     @Test
     void createTopicGroup_labelOf120CharactersWithSurroundingSpaces_isAccepted_121IsNot() throws Exception {
         String label120 = "g".repeat(120);
-        asAdmin(post("/catalog/topic-groups/new").param("label", "  " + label120 + "  ").param("displayOrder", "1"))
+        asAdmin(post("/catalog/topic-groups/new").with(csrfField())
+                .param("label", "  " + label120 + "  ").param("displayOrder", "1"))
                 .andExpect(redirectedUrl("/catalog/topics"));
         assertThat(topicGroupRepository.findAll()).anyMatch(g -> g.getLabel().equals(label120));
 
-        asAdmin(post("/catalog/topic-groups/new").param("label", label120 + "g").param("displayOrder", "1"))
+        asAdmin(post("/catalog/topic-groups/new").with(csrfField())
+                .param("label", label120 + "g").param("displayOrder", "1"))
                 .andExpect(status().isOk())
                 .andExpect(model().attributeHasFieldErrors("form", "label"));
     }
@@ -337,7 +347,8 @@ class CatalogAdminViewControllerTest {
     void editTopicGroup_valid_savesAndKeepsTheActiveFlag() throws Exception {
         TopicGroup group = fixtures.group("Old", 1, false);
 
-        asAdmin(post("/catalog/topic-groups/" + group.getId()).param("label", "New").param("displayOrder", "2"))
+        asAdmin(post("/catalog/topic-groups/" + group.getId()).with(csrfField())
+                .param("label", "New").param("displayOrder", "2"))
                 .andExpect(redirectedUrl("/catalog/topics"))
                 .andExpect(flash().attributeExists("notice"));
 
@@ -351,7 +362,7 @@ class CatalogAdminViewControllerTest {
     void editTopicGroup_invalid_reRendersTheEditForm() throws Exception {
         TopicGroup group = fixtures.group("Keep", 1, true);
 
-        String html = asAdmin(post("/catalog/topic-groups/" + group.getId())
+        String html = asAdmin(post("/catalog/topic-groups/" + group.getId()).with(csrfField())
                         .param("label", "")
                         .param("displayOrder", "-1"))
                 .andExpect(status().isOk())
@@ -367,7 +378,7 @@ class CatalogAdminViewControllerTest {
         asAdmin(get("/catalog/topic-groups/987654"))
                 .andExpect(redirectedUrl("/catalog/topics"))
                 .andExpect(flash().attributeExists("error"));
-        asAdmin(post("/catalog/topic-groups/987654").param("label", "X").param("displayOrder", "1"))
+        asAdmin(post("/catalog/topic-groups/987654").with(csrfField()).param("label", "X").param("displayOrder", "1"))
                 .andExpect(redirectedUrl("/catalog/topics"))
                 .andExpect(flash().attributeExists("error"));
     }
@@ -392,7 +403,7 @@ class CatalogAdminViewControllerTest {
     void createTopic_inAGroup_redirectsAndSaves() throws Exception {
         TopicGroup group = fixtures.group("G", 1, true);
 
-        asAdmin(post("/catalog/topics/new")
+        asAdmin(post("/catalog/topics/new").with(csrfField())
                         .param("slug", " page_topic_x ")
                         .param("label", "Page topic")
                         .param("guidingPrompt", "Why?")
@@ -407,7 +418,7 @@ class CatalogAdminViewControllerTest {
 
     @Test
     void createTopic_standalone_whenTheEmptyOptionIsChosen() throws Exception {
-        asAdmin(post("/catalog/topics/new")
+        asAdmin(post("/catalog/topics/new").with(csrfField())
                         .param("slug", "page_standalone_x")
                         .param("label", "L")
                         .param("guidingPrompt", "P")
@@ -420,7 +431,7 @@ class CatalogAdminViewControllerTest {
 
     @Test
     void createTopic_duplicateSlug_reRendersWithTheErrorAtTheSlug() throws Exception {
-        String html = asAdmin(post("/catalog/topics/new")
+        String html = asAdmin(post("/catalog/topics/new").with(csrfField())
                         .param("slug", "academics_teaching")
                         .param("label", "Dup")
                         .param("guidingPrompt", "P")
@@ -436,7 +447,7 @@ class CatalogAdminViewControllerTest {
 
     @Test
     void createTopic_unknownGroup_reRendersWithTheErrorAtTheGroup() throws Exception {
-        asAdmin(post("/catalog/topics/new")
+        asAdmin(post("/catalog/topics/new").with(csrfField())
                         .param("slug", "page_orphan_x")
                         .param("label", "L")
                         .param("guidingPrompt", "P")
@@ -450,7 +461,7 @@ class CatalogAdminViewControllerTest {
 
     @Test
     void createTopic_everyFieldBroken_reportsEveryField() throws Exception {
-        String html = asAdmin(post("/catalog/topics/new")
+        String html = asAdmin(post("/catalog/topics/new").with(csrfField())
                         .param("slug", "Bad Slug")
                         .param("label", " ")
                         .param("guidingPrompt", "p".repeat(501))
@@ -475,7 +486,7 @@ class CatalogAdminViewControllerTest {
         assertThat(elements(form, "option")).anyMatch(o -> o.contains("value=\"" + group.getId() + "\"")
                 && o.contains("selected"));
 
-        asAdmin(post("/catalog/topics/" + topic.getId())
+        asAdmin(post("/catalog/topics/" + topic.getId()).with(csrfField())
                         .param("slug", topic.getSlug())
                         .param("label", "T")
                         .param("guidingPrompt", "P")
@@ -490,7 +501,7 @@ class CatalogAdminViewControllerTest {
     void editTopic_keepsItsActiveFlag() throws Exception {
         Topic topic = fixtures.topic(null, "Off", 1, false);
 
-        asAdmin(post("/catalog/topics/" + topic.getId())
+        asAdmin(post("/catalog/topics/" + topic.getId()).with(csrfField())
                         .param("slug", topic.getSlug())
                         .param("label", "Still off")
                         .param("guidingPrompt", "P")
@@ -519,7 +530,7 @@ class CatalogAdminViewControllerTest {
     void editGeneral_labelPromptAndOrder_save() throws Exception {
         Topic general = fixtures.general();
 
-        asAdmin(post("/catalog/topics/" + general.getId())
+        asAdmin(post("/catalog/topics/" + general.getId()).with(csrfField())
                         .param("slug", "general")
                         .param("label", "Anything else")
                         .param("guidingPrompt", "Add anything.")
@@ -537,7 +548,7 @@ class CatalogAdminViewControllerTest {
         Topic general = fixtures.general();
         TopicGroup group = fixtures.group("G", 1, true);
 
-        String html = asAdmin(post("/catalog/topics/" + general.getId())
+        String html = asAdmin(post("/catalog/topics/" + general.getId()).with(csrfField())
                         .param("slug", "general_two")
                         .param("label", "L")
                         .param("guidingPrompt", "P")
@@ -547,7 +558,7 @@ class CatalogAdminViewControllerTest {
                 .andReturn().getResponse().getContentAsString();
         assertThat(html).contains("The general topic&#39;s slug can&#39;t be changed.");
 
-        asAdmin(post("/catalog/topics/" + general.getId())
+        asAdmin(post("/catalog/topics/" + general.getId()).with(csrfField())
                         .param("slug", "general")
                         .param("label", "L")
                         .param("guidingPrompt", "P")
@@ -564,7 +575,7 @@ class CatalogAdminViewControllerTest {
         asAdmin(get("/catalog/topics/987654"))
                 .andExpect(redirectedUrl("/catalog/topics"))
                 .andExpect(flash().attributeExists("error"));
-        asAdmin(post("/catalog/topics/987654")
+        asAdmin(post("/catalog/topics/987654").with(csrfField())
                         .param("slug", "x")
                         .param("label", "X")
                         .param("guidingPrompt", "P")
@@ -577,7 +588,7 @@ class CatalogAdminViewControllerTest {
 
     @Test
     void createAchievement_valid_andDuplicate() throws Exception {
-        asAdmin(post("/catalog/achievements/new")
+        asAdmin(post("/catalog/achievements/new").with(csrfField())
                         .param("slug", "page_ach_x")
                         .param("label", "A")
                         .param("displayOrder", "5"))
@@ -585,7 +596,7 @@ class CatalogAdminViewControllerTest {
                 .andExpect(flash().attributeExists("notice"));
         assertThat(achievementRepository.findBySlug("page_ach_x")).isPresent();
 
-        asAdmin(post("/catalog/achievements/new")
+        asAdmin(post("/catalog/achievements/new").with(csrfField())
                         .param("slug", "page_ach_x")
                         .param("label", "B")
                         .param("displayOrder", "5"))
@@ -601,7 +612,7 @@ class CatalogAdminViewControllerTest {
         String html = html(get("/catalog/achievements/" + a.getId()));
         assertThat(html).contains("value=\"" + a.getSlug() + "\"").contains("value=\"Old\"").contains("value=\"3\"");
 
-        asAdmin(post("/catalog/achievements/" + a.getId())
+        asAdmin(post("/catalog/achievements/" + a.getId()).with(csrfField())
                         .param("slug", a.getSlug())
                         .param("label", "New")
                         .param("displayOrder", "4"))
@@ -614,7 +625,8 @@ class CatalogAdminViewControllerTest {
         asAdmin(get("/catalog/achievements/987654"))
                 .andExpect(redirectedUrl("/catalog/achievements"))
                 .andExpect(flash().attributeExists("error"));
-        asAdmin(post("/catalog/achievements/987654").param("slug", "x").param("label", "X").param("displayOrder", "1"))
+        asAdmin(post("/catalog/achievements/987654").with(csrfField())
+                .param("slug", "x").param("label", "X").param("displayOrder", "1"))
                 .andExpect(redirectedUrl("/catalog/achievements"))
                 .andExpect(flash().attributeExists("error"));
     }
@@ -627,11 +639,12 @@ class CatalogAdminViewControllerTest {
         Topic topic = fixtures.topic(null, "T", 1, true);
         Achievement achievement = fixtures.achievement("A", 1, false);
 
-        asAdmin(post("/catalog/topic-groups/" + group.getId() + "/active").param("active", "false"))
+        asAdmin(post("/catalog/topic-groups/" + group.getId() + "/active").with(csrfField()).param("active", "false"))
                 .andExpect(redirectedUrl("/catalog/topics"));
-        asAdmin(post("/catalog/topics/" + topic.getId() + "/active").param("active", "false"))
+        asAdmin(post("/catalog/topics/" + topic.getId() + "/active").with(csrfField()).param("active", "false"))
                 .andExpect(redirectedUrl("/catalog/topics"));
-        asAdmin(post("/catalog/achievements/" + achievement.getId() + "/active").param("active", "true"))
+        asAdmin(post("/catalog/achievements/" + achievement.getId() + "/active").with(csrfField())
+                .param("active", "true"))
                 .andExpect(redirectedUrl("/catalog/achievements"));
 
         assertThat(topicGroupRepository.findById(group.getId()).orElseThrow().isActive()).isFalse();
@@ -644,21 +657,21 @@ class CatalogAdminViewControllerTest {
         // A double click must not flip it back.
         Topic topic = fixtures.topic(null, "T", 1, true);
 
-        asAdmin(post("/catalog/topics/" + topic.getId() + "/active").param("active", "false"));
-        asAdmin(post("/catalog/topics/" + topic.getId() + "/active").param("active", "false"));
+        asAdmin(post("/catalog/topics/" + topic.getId() + "/active").with(csrfField()).param("active", "false"));
+        asAdmin(post("/catalog/topics/" + topic.getId() + "/active").with(csrfField()).param("active", "false"));
 
         assertThat(topicRepository.findById(topic.getId()).orElseThrow().isActive()).isFalse();
     }
 
     @Test
     void toggle_unknownId_redirectsWithAnError() throws Exception {
-        asAdmin(post("/catalog/topic-groups/987654/active").param("active", "false"))
+        asAdmin(post("/catalog/topic-groups/987654/active").with(csrfField()).param("active", "false"))
                 .andExpect(redirectedUrl("/catalog/topics"))
                 .andExpect(flash().attributeExists("error"));
-        asAdmin(post("/catalog/topics/987654/active").param("active", "false"))
+        asAdmin(post("/catalog/topics/987654/active").with(csrfField()).param("active", "false"))
                 .andExpect(redirectedUrl("/catalog/topics"))
                 .andExpect(flash().attributeExists("error"));
-        asAdmin(post("/catalog/achievements/987654/active").param("active", "false"))
+        asAdmin(post("/catalog/achievements/987654/active").with(csrfField()).param("active", "false"))
                 .andExpect(redirectedUrl("/catalog/achievements"))
                 .andExpect(flash().attributeExists("error"));
     }
@@ -668,10 +681,10 @@ class CatalogAdminViewControllerTest {
     void toggle_withoutAUsableState_changesNothing(String value) throws Exception {
         Topic topic = fixtures.topic(null, "T", 1, true);
 
-        asAdmin(post("/catalog/topics/" + topic.getId() + "/active").param("active", value))
+        asAdmin(post("/catalog/topics/" + topic.getId() + "/active").with(csrfField()).param("active", value))
                 .andExpect(redirectedUrl("/catalog/topics"))
                 .andExpect(flash().attributeExists("error"));
-        asAdmin(post("/catalog/topics/" + topic.getId() + "/active"))
+        asAdmin(post("/catalog/topics/" + topic.getId() + "/active").with(csrfField()))
                 .andExpect(redirectedUrl("/catalog/topics"))
                 .andExpect(flash().attributeExists("error"));
 
@@ -682,7 +695,7 @@ class CatalogAdminViewControllerTest {
     void toggle_deactivatingGeneral_isRefusedWithAnError() throws Exception {
         Topic general = fixtures.general();
 
-        asAdmin(post("/catalog/topics/" + general.getId() + "/active").param("active", "false"))
+        asAdmin(post("/catalog/topics/" + general.getId() + "/active").with(csrfField()).param("active", "false"))
                 .andExpect(redirectedUrl("/catalog/topics"))
                 .andExpect(flash().attribute("error", "The general topic can't be deactivated."));
 
@@ -757,12 +770,12 @@ class CatalogAdminViewControllerTest {
         var testimonial = fixtures.testimonial(
                 TestimonialStatus.APPROVED, List.of(topic, fixtures.general()), List.of(), List.of(achievement));
 
-        asAdmin(post("/catalog/topics/" + topic.getId() + "/delete"))
+        asAdmin(post("/catalog/topics/" + topic.getId() + "/delete").with(csrfField()))
                 .andExpect(redirectedUrl("/catalog/topics"))
                 .andExpect(flash().attributeExists("notice"));
-        asAdmin(post("/catalog/topic-groups/" + group.getId() + "/delete"))
+        asAdmin(post("/catalog/topic-groups/" + group.getId() + "/delete").with(csrfField()))
                 .andExpect(redirectedUrl("/catalog/topics"));
-        asAdmin(post("/catalog/achievements/" + achievement.getId() + "/delete"))
+        asAdmin(post("/catalog/achievements/" + achievement.getId() + "/delete").with(csrfField()))
                 .andExpect(redirectedUrl("/catalog/achievements"))
                 .andExpect(flash().attributeExists("notice"));
 
@@ -777,17 +790,17 @@ class CatalogAdminViewControllerTest {
 
     @Test
     void confirmDelete_unknownIdOrGeneral_redirectsWithAnError() throws Exception {
-        asAdmin(post("/catalog/topics/987654/delete"))
+        asAdmin(post("/catalog/topics/987654/delete").with(csrfField()))
                 .andExpect(redirectedUrl("/catalog/topics"))
                 .andExpect(flash().attributeExists("error"));
-        asAdmin(post("/catalog/topic-groups/987654/delete"))
+        asAdmin(post("/catalog/topic-groups/987654/delete").with(csrfField()))
                 .andExpect(redirectedUrl("/catalog/topics"))
                 .andExpect(flash().attributeExists("error"));
-        asAdmin(post("/catalog/achievements/987654/delete"))
+        asAdmin(post("/catalog/achievements/987654/delete").with(csrfField()))
                 .andExpect(redirectedUrl("/catalog/achievements"))
                 .andExpect(flash().attributeExists("error"));
         Topic general = fixtures.general();
-        asAdmin(post("/catalog/topics/" + general.getId() + "/delete"))
+        asAdmin(post("/catalog/topics/" + general.getId() + "/delete").with(csrfField()))
                 .andExpect(redirectedUrl("/catalog/topics"))
                 .andExpect(flash().attribute("error", "The general topic can't be deleted."));
         assertThat(topicRepository.findById(general.getId())).isPresent();
@@ -796,7 +809,7 @@ class CatalogAdminViewControllerTest {
     @Test
     void nonNumericIds_matchNoPage() throws Exception {
         asAdmin(get("/catalog/topics/abc")).andExpect(status().isNotFound());
-        asAdmin(post("/catalog/achievements/abc/delete")).andExpect(status().isNotFound());
+        asAdmin(post("/catalog/achievements/abc/delete").with(csrfField())).andExpect(status().isNotFound());
     }
 
     @Test
@@ -804,7 +817,7 @@ class CatalogAdminViewControllerTest {
         TopicGroup off = fixtures.group("Off", 1, false);
         Topic topic = fixtures.topic(null, "T", 1, true);
 
-        asAdmin(post("/catalog/topics/" + topic.getId())
+        asAdmin(post("/catalog/topics/" + topic.getId()).with(csrfField())
                         .param("slug", topic.getSlug())
                         .param("label", "T")
                         .param("guidingPrompt", "P")
@@ -814,5 +827,52 @@ class CatalogAdminViewControllerTest {
 
         assertThat(Optional.ofNullable(topicRepository.findById(topic.getId()).orElseThrow().getTopicGroup())
                 .map(TopicGroup::getId)).contains(off.getId());
+    }
+
+    // -- CSRF (BL-004) --
+
+    @Test
+    void everyCatalogPage_carriesTheCsrfTokenInEveryForm() throws Exception {
+        TopicGroup group = fixtures.group("Csrf group", 1, true);
+        Topic topic = fixtures.topic(group, "Csrf topic", 1, true);
+        Achievement achievement = fixtures.achievement("Csrf achievement", 1, true);
+
+        // Lists: a visibility toggle per row (at least the fixtures' own).
+        Csrf.assertEveryPostFormCarriesTheToken(html(get("/catalog/topics")), 2);
+        Csrf.assertEveryPostFormCarriesTheToken(html(get("/catalog/achievements")), 1);
+        // New and edit forms.
+        for (String page : List.of(
+                "/catalog/topic-groups/new", "/catalog/topics/new", "/catalog/achievements/new",
+                "/catalog/topic-groups/" + group.getId(), "/catalog/topics/" + topic.getId(),
+                "/catalog/achievements/" + achievement.getId())) {
+            Csrf.assertEveryPostFormCarriesTheToken(html(get(page)), 1);
+        }
+        // Delete confirmations.
+        for (String page : List.of(
+                "/catalog/topic-groups/" + group.getId() + "/delete", "/catalog/topics/" + topic.getId() + "/delete",
+                "/catalog/achievements/" + achievement.getId() + "/delete")) {
+            Csrf.assertEveryPostFormCarriesTheToken(html(get(page)), 1);
+        }
+    }
+
+    @Test
+    void formRerenderedWithErrors_stillCarriesTheToken() throws Exception {
+        String html = html(post("/catalog/topics/new").with(csrfField())
+                .param("slug", "Bad Slug")
+                .param("label", "")
+                .param("guidingPrompt", "")
+                .param("displayOrder", "1"));
+
+        assertThat(fieldErrors(html)).isNotEmpty();
+        Csrf.assertEveryPostFormCarriesTheToken(html, 1);
+    }
+
+    @Test
+    void deleteWithoutTheCsrfToken_isRefused_andDeletesNothing() throws Exception {
+        Topic topic = fixtures.topic(null, "Kept", 1, true);
+
+        asAdmin(post("/catalog/topics/" + topic.getId() + "/delete")).andExpect(status().isForbidden());
+
+        assertThat(topicRepository.findById(topic.getId())).isPresent();
     }
 }

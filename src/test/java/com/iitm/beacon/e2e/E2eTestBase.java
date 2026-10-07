@@ -76,13 +76,22 @@ public abstract class E2eTestBase {
                   image.naturalWidth > 0 ? image.decode().catch(() => null) : null));
             }""";
 
+    /**
+     * Applies the CSS given as its argument to the page as a constructed
+     * stylesheet: the site's Content-Security-Policy ({@code style-src
+     * 'self'}) blocks an inline {@code <style>} element — which is what
+     * {@code Page.addStyleTag} would add — but not a constructed sheet.
+     */
+    private static final String ADOPT_STYLESHEET_JS = """
+            css => {
+              const sheet = new CSSStyleSheet();
+              sheet.replaceSync(css);
+              document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+            }""";
+
     /** A phone's tap highlight lingers over whatever the tap opened; screenshots would catch it. */
-    private static final String NO_TAP_HIGHLIGHT_JS = """
-            document.addEventListener('DOMContentLoaded', () => {
-              const style = document.createElement('style');
-              style.textContent = '* { -webkit-tap-highlight-color: transparent !important; }';
-              document.head.append(style);
-            });""";
+    private static final String NO_TAP_HIGHLIGHT_JS = "(" + ADOPT_STYLESHEET_JS + ")("
+            + "'* { -webkit-tap-highlight-color: transparent !important; }');";
 
     private static Playwright playwright;
     private static Browser browser;
@@ -183,7 +192,7 @@ public abstract class E2eTestBase {
     }
 
     private static void stabilize(Page page) {
-        page.addStyleTag(new Page.AddStyleTagOptions().setContent(STABILIZING_CSS));
+        page.evaluate(ADOPT_STYLESHEET_JS, STABILIZING_CSS);
         page.evaluate("() => document.fonts.ready.then(() => true)");
         page.evaluate(AWAIT_IMAGES_JS);
     }
@@ -198,13 +207,31 @@ public abstract class E2eTestBase {
         loginThroughUi("/submissions/login", "#email", email);
     }
 
-    private void loginThroughUi(String loginPath, String emailField, String email) {
-        String key = EmailNormalizer.normalize(email);
-        lastOtpCodeByEmail.remove(key);
+    /**
+     * Asks for a visitor login code for {@code email} on the real email step;
+     * the browser ends on the code step. The code page has no URL of its own
+     * to open directly: the email reaches it in the session.
+     */
+    protected void requestVisitorLoginCode(String email) {
+        requestLoginCode("/submissions/login", "#email", email);
+    }
+
+    /** Asks for an admin login code on the real email step; the browser ends on the code step. */
+    protected void requestAdminLoginCode() {
+        requestLoginCode("/admin/login", "#admin-email", adminEmail);
+    }
+
+    private void requestLoginCode(String loginPath, String emailField, String email) {
         navigate(loginPath);
         currentPage.locator(emailField).fill(email);
         currentPage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Send code")).click();
         currentPage.waitForURL(url -> url.contains(loginPath + "/code"));
+    }
+
+    private void loginThroughUi(String loginPath, String emailField, String email) {
+        String key = EmailNormalizer.normalize(email);
+        lastOtpCodeByEmail.remove(key);
+        requestLoginCode(loginPath, emailField, email);
         currentPage.waitForCondition(() -> lastOtpCodeByEmail.containsKey(key));
         currentPage.locator("#code").fill(lastOtpCodeByEmail.get(key));
         currentPage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Verify")).click();

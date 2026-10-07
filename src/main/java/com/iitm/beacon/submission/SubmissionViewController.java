@@ -7,10 +7,10 @@ import com.iitm.beacon.common.error.TestimonialAlreadyExistsException;
 import com.iitm.beacon.common.score.RecommendationScoreLabels;
 import com.iitm.beacon.common.security.PostLoginRedirect;
 import com.iitm.beacon.common.security.SessionAuthenticator;
+import com.iitm.beacon.common.web.UploadFailure;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
+import jakarta.servlet.http.HttpSession;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.InvalidPropertyException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -30,6 +31,7 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.SessionAttribute;
 import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
@@ -45,14 +47,20 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
  * <p>The two POST handlers that can fail on a business rule ({@link
  * SubmissionValidationException}/{@link TestimonialAlreadyExistsException})
  * catch them locally and re-render the form with an error, rather than
- * letting them reach {@code GlobalExceptionHandler} (a {@code
- * @RestControllerAdvice}, which would write a JSON body — the wrong response
- * shape for a plain browser form submission) — same convention as {@code
- * moderation.ModerationViewController}.
+ * letting them reach {@code GlobalExceptionHandler} (whose answer to a page
+ * is the site's generic error page — a dead end for a form submission) —
+ * same convention as {@code moderation.ModerationViewController}.
  *
  * <p>For the same reason, a multipart upload that breaks a servlet-container
  * limit (too large, or too many parts) is caught by {@link
- * #handleMultipartFailure} and sent back to the form with a readable error.
+ * #handleMultipartFailure} and sent back to the form with a readable error,
+ * and so is a field the data binder can't bind ({@link
+ * #handleUnbindableField}, BL-014).
+ * The rendered form carries its CSRF token inside that same body, so a
+ * browser's upload meets the failure one step earlier, in the CSRF check,
+ * where {@code config.UnreadableFormUploadHandler} answers it the same way;
+ * this handler still answers a client that sends the token in the {@code
+ * X-XSRF-TOKEN} header.
  *
  * <p>A rejected submission is reported per field (decision 21): every
  * violation {@link SubmissionService} returns — already at form field paths —
@@ -64,6 +72,17 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
  * on: the request is then parsed while the handler's arguments are bound,
  * so the failure is raised inside this controller rather than in {@code
  * DispatcherServlet} before any handler is chosen.
+ *
+ * <p>The email typed at the login's first step reaches the code step in the
+ * HTTP session ({@link #PENDING_EMAIL}), never in a URL — so it stays out of
+ * the browser history and access logs, and the redirect after the email step
+ * is the same for every email (decision 17). The code page shows it from
+ * there, and "Resend code" ({@link #resendOtp}) and the verify use it from
+ * there too: neither form carries it, and an email posted along is ignored.
+ * One browser holds one pending visitor email — the last one asked for —
+ * kept apart from a pending admin login's. Without one (a fresh browser, an
+ * expired session), the code step goes back to the email step. Opening the
+ * email step forgets it, and so does a successful login.
  *
  * <p>A successful {@link #verifyOtp} returns the visitor to the form or
  * confirmation page they were sent to the login from (an expired session),
@@ -77,11 +96,15 @@ public class SubmissionViewController {
 
     private static final Logger log = LoggerFactory.getLogger(SubmissionViewController.class);
 
+    /** The session attribute carrying the email from the login's email step to its code step. */
+    private static final String PENDING_EMAIL = "submission.pendingLoginEmail";
+
     private static final String LOGIN_EMAIL_VIEW = "submission/login-email";
     private static final String LOGIN_CODE_VIEW = "submission/login-code";
     private static final String FORM_VIEW = "submission/form";
     private static final String CONFIRMATION_VIEW = "submission/confirmation";
     private static final String REDIRECT_TO_LOGIN_EMAIL = "redirect:/submissions/login";
+    private static final String REDIRECT_TO_LOGIN_CODE = "redirect:/submissions/login/code";
     private static final String FORM_PATH = "/submissions/form";
     private static final String REDIRECT_TO_FORM = "redirect:" + FORM_PATH;
     private static final String REDIRECT_TO_CONFIRMATION = "redirect:/submissions/confirmation";
@@ -98,12 +121,12 @@ public class SubmissionViewController {
      * falls back to the same value.
      */
     private static final int DEFAULT_SCORE = RecommendationScoreLabels.MAX_SCORE;
-    private static final String UPLOAD_FAILED_MESSAGE =
-            "Your upload was too large or contained too many files. Please try again with fewer or smaller photos.";
     private static final String FIX_HIGHLIGHTED_FIELDS_MESSAGE = "Please fix the highlighted fields below.";
     private static final String REATTACH_PHOTOS_MESSAGE =
             "Photos you attached were not saved — please attach them again.";
     private static final String COMMAND = "command";
+    private static final String UNREADABLE_FORM_MESSAGE =
+            "The form couldn't be read, so nothing was saved. Please check it and send it again.";
 
     private final SubmissionService submissionService;
     private final VisitorOtpService visitorOtpService;
@@ -128,9 +151,12 @@ public class SubmissionViewController {
      * so a visitor who is already logged in is sent straight on to the form
      * instead of through the OTP flow again. Anyone else (anonymous, or an
      * admin session, which carries no visitor identity) gets the login page.
+     * Either way, a pending email is forgotten: whoever comes back here
+     * starts over.
      */
     @GetMapping("/login")
-    public String loginEmailForm(Authentication authentication) {
+    public String loginEmailForm(Authentication authentication, HttpServletRequest request) {
+        forgetPendingEmail(request);
         if (isLoggedInVisitor(authentication)) {
             return REDIRECT_TO_FORM;
         }
@@ -143,21 +169,33 @@ public class SubmissionViewController {
             model.addAttribute("error", BLANK_EMAIL_MESSAGE);
             return LOGIN_EMAIL_VIEW;
         }
+        request.getSession().setAttribute(PENDING_EMAIL, email);
         visitorOtpService.requestOtp(email, request.getRemoteAddr());
-        return "redirect:/submissions/login/code?email=" + URLEncoder.encode(email, StandardCharsets.UTF_8);
+        return REDIRECT_TO_LOGIN_CODE;
+    }
+
+    /** "Resend code": a new code for the pending email; without one, back to the email step. */
+    @PostMapping("/login/resend")
+    public String resendOtp(
+            @SessionAttribute(name = PENDING_EMAIL, required = false) String email, HttpServletRequest request) {
+        if (email == null) {
+            return REDIRECT_TO_LOGIN_EMAIL;
+        }
+        visitorOtpService.requestOtp(email, request.getRemoteAddr());
+        return REDIRECT_TO_LOGIN_CODE;
     }
 
     // -- login: code step --
 
     @GetMapping("/login/code")
     public String loginCodeForm(
-            @RequestParam(required = false, defaultValue = "") String email,
+            @SessionAttribute(name = PENDING_EMAIL, required = false) String email,
             Authentication authentication,
             Model model) {
         if (isLoggedInVisitor(authentication)) {
             return REDIRECT_TO_FORM;
         }
-        if (email.isBlank()) {
+        if (email == null) {
             return REDIRECT_TO_LOGIN_EMAIL;
         }
         model.addAttribute("email", email);
@@ -166,11 +204,14 @@ public class SubmissionViewController {
 
     @PostMapping("/login/code")
     public String verifyOtp(
-            @RequestParam String email,
+            @SessionAttribute(name = PENDING_EMAIL, required = false) String email,
             @RequestParam String code,
             HttpServletRequest request,
             HttpServletResponse response,
             Model model) {
+        if (email == null) {
+            return REDIRECT_TO_LOGIN_EMAIL;
+        }
         VisitorOtpVerifyResult result = visitorOtpService.verify(email, code);
         if (result instanceof VisitorOtpVerifyResult.Rejected) {
             model.addAttribute("email", email);
@@ -179,6 +220,7 @@ public class SubmissionViewController {
         }
         var verified = (VisitorOtpVerifyResult.Verified) result;
         sessionAuthenticator.login(request, response, verified.email(), "VISITOR");
+        forgetPendingEmail(request);
         return "redirect:" + postLoginRedirect.resolve(request, response, VISITOR_PAGES, FORM_PATH);
     }
 
@@ -262,7 +304,26 @@ public class SubmissionViewController {
     public String handleMultipartFailure(
             MultipartException ex, HttpServletRequest request, RedirectAttributes redirectAttributes) {
         log.warn("Rejected multipart submission to {}: {}", request.getRequestURI(), ex.getMessage());
-        redirectAttributes.addFlashAttribute("error", UPLOAD_FAILED_MESSAGE);
+        redirectAttributes.addFlashAttribute("error", UploadFailure.MESSAGE);
+        return REDIRECT_TO_FORM;
+    }
+
+    /**
+     * A posted field the data binder can't bind at all (BL-014): an index
+     * past its auto-grow limit of 256 ({@code sections[256]}, {@code
+     * contactMethods[256]}, {@code achievementSlugs[256]}, {@code
+     * sections[i].photoTags[256]}), or a negative or non-numeric one. The
+     * rendered form never posts one, so only a crafted request does; it
+     * fails before the handler runs, so nothing is saved and there is no
+     * bound form to re-render — the visitor goes back to the form with the
+     * error in its banner, like an unreadable upload.
+     */
+    @ExceptionHandler(InvalidPropertyException.class)
+    public String handleUnbindableField(
+            InvalidPropertyException ex, HttpServletRequest request, RedirectAttributes redirectAttributes) {
+        // Not the property's name or the exception's message: both echo the posted field name.
+        log.warn("Rejected a submission form to {} with a field that can't be bound", request.getRequestURI());
+        redirectAttributes.addFlashAttribute("error", UNREADABLE_FORM_MESSAGE);
         return REDIRECT_TO_FORM;
     }
 
@@ -354,6 +415,14 @@ public class SubmissionViewController {
             return DEFAULT_SCORE;
         }
         return Math.clamp(score, RecommendationScoreLabels.MIN_SCORE, RecommendationScoreLabels.MAX_SCORE);
+    }
+
+    /** Never creates a session just to forget something in it. */
+    private static void forgetPendingEmail(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.removeAttribute(PENDING_EMAIL);
+        }
     }
 
     /** Null for an anonymous request: Spring MVC resolves an anonymous principal to no {@code Authentication}. */

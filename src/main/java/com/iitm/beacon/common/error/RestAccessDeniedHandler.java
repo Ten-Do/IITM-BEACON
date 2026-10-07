@@ -15,7 +15,11 @@ import org.springframework.stereotype.Component;
  * Same pattern as {@link RestAuthenticationEntryPoint} but for authenticated
  * requests lacking the required authority — produces an
  * {@link ErrorResponse}-shaped 403 instead of Spring Security's default HTML
- * error page.
+ * error page. Only for the JSON API ({@code /api/**}): {@code
+ * config.SecurityConfig} sends a session of the other role on a
+ * login-protected page to that page's login page, and answers a path outside
+ * the API that no route serves with the HTML 404 page ({@link
+ * PageNotFoundHandler}).
  */
 @Component
 public class RestAccessDeniedHandler implements AccessDeniedHandler {

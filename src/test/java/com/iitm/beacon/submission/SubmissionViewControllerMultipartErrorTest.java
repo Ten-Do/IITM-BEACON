@@ -1,5 +1,6 @@
 package com.iitm.beacon.submission;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfField;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -57,7 +58,7 @@ class SubmissionViewControllerMultipartErrorTest {
     void formPost_uploadTooLarge_redirectsBackToFormWithFlashError() throws Exception {
         doThrow(new MaxUploadSizeExceededException(-1L)).when(submissionService).determineMode(anyString());
 
-        mockMvc.perform(multipart("/submissions/form")
+        mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .with(authentication(visitor("multipart-too-large@example.com"))))
                 .andExpect(status().is3xxRedirection())
@@ -71,7 +72,7 @@ class SubmissionViewControllerMultipartErrorTest {
                 .when(submissionService)
                 .determineMode(anyString());
 
-        mockMvc.perform(multipart("/submissions/form")
+        mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .with(authentication(visitor("multipart-malformed@example.com"))))
                 .andExpect(status().is3xxRedirection())
@@ -84,7 +85,7 @@ class SubmissionViewControllerMultipartErrorTest {
         doThrow(new MaxUploadSizeExceededException(-1L)).when(submissionService).determineMode(anyString());
         Authentication visitor = visitor("multipart-follow-redirect@example.com");
 
-        MvcResult redirect = mockMvc.perform(multipart("/submissions/form")
+        MvcResult redirect = mockMvc.perform(multipart("/submissions/form").with(csrfField())
                         .param("firstName", "David")
                         .with(authentication(visitor)))
                 .andExpect(status().is3xxRedirection())

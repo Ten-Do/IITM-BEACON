@@ -12,7 +12,7 @@
   layout/header-visitor.html is shared with the public and login pages,
   which must never load it.
 -->
-<script th:fragment="script(pingUrl)" defer src="/js/session-check.js"
+<script th:fragment="script(pingUrl)" defer th:src="@{/js/session-check.js}"
         th:attr="data-session-url=${pingUrl}"></script>
 </body>
 </html>

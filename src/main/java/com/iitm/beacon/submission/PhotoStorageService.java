@@ -15,6 +15,8 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
@@ -24,6 +26,14 @@ import org.springframework.web.multipart.MultipartFile;
  * bytes, never the client-declared {@code Content-Type} or filename
  * (NFR-UPLOAD-SPOOFING) — and stored as {@code <uuid>.webp} plus {@code
  * <uuid>-thumb.webp}. The uploaded original itself is never kept.
+ *
+ * <p>Files follow the surrounding transaction, so a rollback never leaves a
+ * file without its {@code photo} row nor loses a live one (BL-017): the files
+ * written inside a transaction are removed again if it rolls back, and a
+ * delete inside a transaction waits for its commit. With no transaction
+ * active (the startup {@link LegacyPhotoBackfill}, direct calls), there is
+ * nothing to wait for: written files stay — removing them on a later
+ * failure is up to the caller — and deletes happen right away.
  */
 @Service
 public class PhotoStorageService {
@@ -64,7 +74,10 @@ public class PhotoStorageService {
 
     /**
      * Validates, converts and persists one uploaded photo. The size limit is
-     * checked first, before the bytes are read.
+     * checked first, before the bytes are read. Inside a transaction, both
+     * files are removed again if it rolls back — including a commit that
+     * fails and is rolled back — but kept on commit, and kept when the
+     * commit's outcome is unknown, since the row may then exist.
      *
      * @throws SubmissionValidationException if the file is over the size
      *     limit, isn't a supported image, or is too large in pixels
@@ -88,7 +101,8 @@ public class PhotoStorageService {
      * Converts a photo stored before the WebP pipeline (a root-relative
      * {@code Photo.filePath}) into a new full-size + thumbnail pair. The
      * original file is left in place — deleting it is up to the caller,
-     * once the row points at the new files.
+     * once the row points at the new files. Inside a transaction, the new
+     * files are removed again on rollback, as for {@link #store}.
      *
      * @throws UncheckedIOException if the original can't be read
      * @throws SubmissionValidationException if it isn't a convertible image
@@ -106,15 +120,27 @@ public class PhotoStorageService {
     /**
      * Best-effort delete of a photo's full-size file and its thumbnail (a
      * legacy photo has none): never throws, since this must never break
-     * the surrounding save transaction. Delegates to {@link PhotoFileDeleter}.
+     * the surrounding save transaction. Inside a transaction, the files the
+     * photo has now are deleted only once it commits, and never on rollback;
+     * with none active, right away. Delegates to {@link PhotoFileDeleter}.
      */
     public void delete(Photo photo) {
-        photoFileDeleter.delete(photo);
+        String filePath = photo.getFilePath();
+        String thumbnailPath = photo.getThumbnailPath();
+        afterCommit(() -> {
+            photoFileDeleter.delete(filePath);
+            if (thumbnailPath != null) {
+                photoFileDeleter.delete(thumbnailPath);
+            }
+        });
     }
 
-    /** Best-effort delete of one root-relative file; never throws if it's already gone. */
+    /**
+     * Best-effort delete of one root-relative file; never throws if it's
+     * already gone. Waits for the commit like {@link #delete(Photo)}.
+     */
     public void delete(String relativePath) {
-        photoFileDeleter.delete(relativePath);
+        afterCommit(() -> photoFileDeleter.delete(relativePath));
     }
 
     public String urlFor(String relativePath) {
@@ -136,10 +162,42 @@ public class PhotoStorageService {
         try {
             writeNew(root.resolve(thumbName), processed.thumbWebp());
         } catch (IOException e) {
-            delete(fullName);
+            // Right away, not after a commit: no row will ever point at it.
+            photoFileDeleter.delete(fullName);
             throw new UncheckedIOException("Failed to store the uploaded photo's thumbnail.", e);
         }
+        removeOnRollback(fullName, thumbName);
         return new StoredPhoto(fullName, thumbName, processed.width(), processed.height());
+    }
+
+    /** Inside a transaction, removes the just-written files again if it rolls back. */
+    private void removeOnRollback(String fullName, String thumbName) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == STATUS_ROLLED_BACK) {
+                    photoFileDeleter.delete(fullName);
+                    photoFileDeleter.delete(thumbName);
+                }
+            }
+        });
+    }
+
+    /** Runs {@code deletion} once the surrounding transaction commits (never on rollback), or now if there's none. */
+    private static void afterCommit(Runnable deletion) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            deletion.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                deletion.run();
+            }
+        });
     }
 
     /** Creates {@code target} (never overwriting); a partially written file of ours is removed on failure. */

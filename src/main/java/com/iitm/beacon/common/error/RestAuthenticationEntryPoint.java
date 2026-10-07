@@ -18,9 +18,11 @@ import org.springframework.stereotype.Component;
  * identically-shaped {@link ErrorResponse} JSON body for unauthenticated
  * requests, instead of Spring Security's default HTML error page.
  *
- * <p>Used for every unauthenticated request except the HTML pages that need
- * a login, which {@code config.SecurityConfig} redirects to their login page
- * instead.
+ * <p>Used for every unauthenticated request to the JSON API ({@code /api/**})
+ * that isn't allowed. {@code config.SecurityConfig} redirects the HTML pages
+ * that need a login to their login page instead, and answers any other path
+ * outside the API — one no route serves — with the HTML 404 page ({@link
+ * PageNotFoundHandler}).
  */
 @Component
 public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {

@@ -10,9 +10,10 @@ spring:
     username: test
     password: test
   # This file shadows src/main/resources/application.yml on the test classpath,
-  # so the upload and photo limits and the session timeout are repeated here
-  # verbatim (defaults only); config.UploadLimitsConfigTest and
-  # config.SessionTimeoutConfigTest fail if the two copies drift apart.
+  # so the upload and photo limits and the session timeout and cookie are
+  # repeated here verbatim (defaults only); config.UploadLimitsConfigTest,
+  # config.SessionTimeoutConfigTest, config.SessionCookieConfigTest and
+  # config.SecureCookieConfigTest fail if the two copies drift apart.
   servlet:
     multipart:
       max-file-size: ${BEACON_UPLOAD_MAX_FILE_SIZE:25MB}
@@ -22,14 +23,26 @@ spring:
 server:
   tomcat:
     max-part-count: ${BEACON_UPLOAD_MAX_PART_COUNT:500}
+    # Repeated verbatim from the main file (config.RelativeRedirectsConfigTest).
+    use-relative-redirects: true
   servlet:
     session:
       timeout: ${BEACON_SESSION_TIMEOUT:24h}
+      cookie:
+        same-site: lax
+        secure: ${BEACON_COOKIE_SECURE:false}
 
 beacon:
   web:
     # Repeated verbatim from the main file (config.AllowedOriginsConfigTest).
     allowed-origins: ${BEACON_ALLOWED_ORIGINS:}
+    # Repeated verbatim from the main file (config.TrustedProxiesConfigTest).
+    trusted-proxies: ${BEACON_TRUSTED_PROXIES:}
+    # Repeated verbatim from the main file (config.NonUploadMultipartLimitConfigTest).
+    non-upload-multipart-max-size: ${BEACON_NON_UPLOAD_MULTIPART_MAX_SIZE:16KB}
+  retention:
+    # Repeated verbatim from the main file (config.RetentionCronConfigTest).
+    cleanup-cron: ${BEACON_RETENTION_CRON:0 0 3 * * SUN}
   crypto:
     encryption-key: aunkIRNayPvNjoN2fPob8307AX7znDryq0XhVWMZoaM=
     hmac-pepper: dev-only-insecure-pepper-do-not-use-in-prod

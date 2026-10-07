@@ -11,6 +11,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
+/**
+ * The dev/test notification "delivery": subject and body are logged as
+ * they are (a moderation outcome, no personal data), the recipient only as
+ * a masked address ({@link LogMask}), never in plaintext
+ * (NFR-CONTACT-CONFIDENTIALITY).
+ */
 class LoggingNotificationMailerTest {
 
     private final ListAppender<ILoggingEvent> appender = new ListAppender<>();
@@ -29,17 +35,24 @@ class LoggingNotificationMailerTest {
     }
 
     @Test
-    void logsToSubjectAndBodyAtInfoLevel() {
-        LoggingNotificationMailer mailer = new LoggingNotificationMailer();
+    void logsTheMaskedRecipientSubjectAndBodyAtInfoLevel() {
+        new LoggingNotificationMailer()
+                .send("visitor@example.com", "Your testimonial was approved", "Thanks for sharing your story.");
 
-        mailer.send("visitor@example.com", "Your testimonial was approved", "Thanks for sharing your story.");
+        assertThat(appender.list).singleElement().satisfies(event -> {
+            assertThat(event.getLevel()).isEqualTo(Level.INFO);
+            assertThat(event.getFormattedMessage()).isEqualTo("Notification email for v***@example.com:"
+                    + " subject=Your testimonial was approved, body=Thanks for sharing your story.");
+        });
+    }
 
-        assertThat(appender.list).hasSize(1);
-        ILoggingEvent event = appender.list.get(0);
-        assertThat(event.getLevel()).isEqualTo(Level.INFO);
-        assertThat(event.getFormattedMessage())
-                .contains("visitor@example.com")
-                .contains("Your testimonial was approved")
-                .contains("Thanks for sharing your story.");
+    @Test
+    void neverLogsTheFullAddress() {
+        new LoggingNotificationMailer().send("jane.doe@example.com", "Subject", "Body");
+
+        assertThat(appender.list).singleElement().satisfies(event -> assertThat(event.getFormattedMessage())
+                .doesNotContain("jane.doe@example.com")
+                .doesNotContain("jane.doe"));
+        assertThat(appender.list.get(0).getArgumentArray()).noneMatch(arg -> String.valueOf(arg).contains("jane.doe"));
     }
 }

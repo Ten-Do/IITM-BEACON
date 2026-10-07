@@ -28,6 +28,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -80,6 +81,11 @@ public class GalleryService {
      * ids and topic ids as separate lists (decision 29), combined with OR;
      * each group id expands server-side to its visible member topics
      * (decisions 11, 28). Search matches only visible sections' text.
+     *
+     * <p>Always newest approval first ({@link
+     * TestimonialSpecifications#newestApprovalFirst()}): only {@code
+     * pageable}'s page number and size are used — any sort it carries is
+     * ignored, so no caller can change the order.
      */
     public PageResponse<TestimonialCardDto> browse(
             String country, List<Long> groupIds, List<Long> topicIds, String q, Pageable pageable) {
@@ -87,9 +93,10 @@ public class GalleryService {
                 TestimonialSpecifications.statusIs(TestimonialStatus.APPROVED),
                 TestimonialSpecifications.countryIs(country),
                 topicFilter(groupIds, topicIds),
-                TestimonialSpecifications.matchesQuery(q));
+                TestimonialSpecifications.matchesQuery(q),
+                TestimonialSpecifications.newestApprovalFirst());
 
-        Page<Testimonial> page = testimonialRepository.findAll(spec, pageable);
+        Page<Testimonial> page = testimonialRepository.findAll(spec, withoutSort(pageable));
         List<TestimonialCardDto> content =
                 page.getContent().stream().map(this::toCard).toList();
         return PageResponse.of(content, page);
@@ -122,6 +129,13 @@ public class GalleryService {
                     .ifPresent(topic -> visibleTopicIds.add(topic.getId()));
         }
         return TestimonialSpecifications.hasAnyTopic(visibleTopicIds);
+    }
+
+    /** The same page, unsorted: a sort would replace the gallery's own order. */
+    private static Pageable withoutSort(Pageable pageable) {
+        return pageable.isPaged()
+                ? PageRequest.of(pageable.getPageNumber(), pageable.getPageSize())
+                : Pageable.unpaged();
     }
 
     private static Set<Long> nonNullIds(List<Long> ids) {

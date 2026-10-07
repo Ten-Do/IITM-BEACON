@@ -10,6 +10,9 @@ import com.iitm.beacon.config.OtpMailer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.mail.MailException;
 import org.springframework.stereotype.Service;
 
 /**
@@ -22,10 +25,17 @@ import org.springframework.stereotype.Service;
  * (moved down from {@code AdminAuthController}) so any caller — the REST
  * controller today, a Thymeleaf view-controller later — gets the same
  * throttling without duplicating the logic.
+ *
+ * <p>A code that can't be emailed changes nothing the caller sees: {@link
+ * #requestOtp} returns as it does after a sent one — any other outcome would
+ * tell whoever typed the email that it is the admin's (decision 4). The
+ * failure is logged as a warning with its type only: its text can name the
+ * recipient. The code stays issued, so "Resend code" just tries again.
  */
 @Service
 public class OtpService {
 
+    private static final Logger log = LoggerFactory.getLogger(OtpService.class);
     private static final String RATE_LIMIT_EMAIL_KEY = "admin-otp-request:email";
     private static final String RATE_LIMIT_IP_KEY = "admin-otp-request:ip";
 
@@ -55,7 +65,8 @@ public class OtpService {
 
     /**
      * Enforces the per-email and per-IP OTP request rate limits, then — if
-     * within budget — generates/stores/sends the OTP exactly as before.
+     * within budget — generates/stores/sends the OTP exactly as before. A
+     * code that can't be emailed is only logged (see the class comment).
      *
      * @param ip caller's remote address, used as the per-IP rate-limit key;
      *     may be {@code null} (treated as an opaque, shared key).
@@ -78,7 +89,11 @@ public class OtpService {
         }
         String code = codeGenerator.generate();
         this.state = new OtpState(code, clock.instant().plus(otpProperties.ttl()), otpProperties.maxAttempts());
-        otpMailer.sendOtp(normalized, code);
+        try {
+            otpMailer.sendOtp(normalized, code);
+        } catch (MailException ex) {
+            log.warn("The admin login code could not be emailed ({})", ex.getClass().getSimpleName());
+        }
     }
 
     public synchronized OtpVerifyResult verify(String rawEmail, String rawCode) {

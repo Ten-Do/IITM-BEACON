@@ -9,11 +9,14 @@ import com.iitm.beacon.common.crypto.EmailLookupHashService;
 import com.iitm.beacon.config.OtpMailer;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
+import com.iitm.beacon.testsupport.Csrf;
 import com.iitm.beacon.testsupport.TestImages;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.CookieManager;
+import java.net.HttpCookie;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -70,13 +73,15 @@ class SubmissionUploadLimitsTest {
     @Autowired
     private TransactionTemplate transactionTemplate;
 
+    private CookieManager cookies;
     private HttpClient client;
     private final List<String> usedEmails = new ArrayList<>();
 
     @BeforeEach
     void newBrowser() {
+        cookies = new CookieManager();
         client = HttpClient.newBuilder()
-                .cookieHandler(new CookieManager())
+                .cookieHandler(cookies)
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -212,6 +217,43 @@ class SubmissionUploadLimitsTest {
         assertThat(get(location(response)).body()).contains(UPLOAD_ERROR);
     }
 
+    @Test
+    void tooManyPartsAfterTheSessionExpired_goesBackToTheForm_whichAsksForTheLogin_thenShowsTheError()
+            throws Exception {
+        // The form page was loaded before the session expired: its token is still the cookie's.
+        MultipartBody body = new MultipartBody().field(Csrf.PARAMETER, URLDecoder.decode(
+                formToken("/submissions/login"), StandardCharsets.UTF_8));
+        body.field("firstName", "David");
+        body.padToPartCount(CONFIGURED_MAX_PART_COUNT + 1);
+
+        HttpResponse<String> response = post("/submissions/form", body);
+
+        assertThat(response.statusCode()).isEqualTo(302);
+        assertThat(location(response)).endsWith("/submissions/form");
+        assertThat(location(get(location(response)))).endsWith("/submissions/login");
+        loginAsVisitor("limits-expired-session@example.com");
+        assertThat(get("/submissions/form").body()).contains(UPLOAD_ERROR);
+    }
+
+    @Test
+    void formWithoutItsCsrfField_isRefused_andNothingIsStored() throws Exception {
+        String email = loginAsVisitor("limits-no-csrf-field@example.com");
+        MultipartBody body = new MultipartBody()
+                .field("firstName", "David")
+                .field("lastName", "Jones")
+                .field("rollNumber", "GE26Z001")
+                .field("admissionYear", "2024")
+                .field("countryCode", "IN")
+                .field("recommendationScore", "8")
+                .field("dataProcessingConsent", "true");
+        addSectionAsTheNoJsFormSendsIt(body, 0, "general", "Great.");
+
+        HttpResponse<String> response = post("/submissions/form", body);
+
+        assertThat(response.statusCode()).isEqualTo(403);
+        assertThat(testimonialRepository.findByEmailLookupHash(emailLookupHashService.hash(email))).isEmpty();
+    }
+
     // -- JSON API: POST /api/submissions --
 
     @Test
@@ -221,7 +263,7 @@ class SubmissionUploadLimitsTest {
         body.file("payload", "", "application/json", "{}".getBytes(StandardCharsets.UTF_8));
         body.padToPartCount(CONFIGURED_MAX_PART_COUNT + 1);
 
-        HttpResponse<String> response = post("/api/submissions", body);
+        HttpResponse<String> response = postWithHeaderToken("/api/submissions", body);
 
         assertThat(response.statusCode()).isEqualTo(413);
         assertThat(response.headers().firstValue("Content-Type")).hasValueSatisfying(
@@ -234,11 +276,14 @@ class SubmissionUploadLimitsTest {
 
     // -- helpers --
 
+    /** Through the login pages, as a browser: each form posts the CSRF token rendered into it. */
     private String loginAsVisitor(String email) throws Exception {
         usedEmails.add(email);
+        String encodedEmail = URLEncoder.encode(email, StandardCharsets.UTF_8);
         HttpResponse<String> requested = send(HttpRequest.newBuilder(uri("/submissions/login"))
                 .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString("email=" + URLEncoder.encode(email, StandardCharsets.UTF_8)))
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        "email=" + encodedEmail + "&_csrf=" + formToken("/submissions/login")))
                 .build());
         assertThat(requested.statusCode()).isEqualTo(302);
 
@@ -247,12 +292,35 @@ class SubmissionUploadLimitsTest {
 
         HttpResponse<String> verified = send(HttpRequest.newBuilder(uri("/submissions/login/code"))
                 .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString("email=" + URLEncoder.encode(email, StandardCharsets.UTF_8)
-                        + "&code=" + URLEncoder.encode(code.getValue(), StandardCharsets.UTF_8)))
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        "code=" + URLEncoder.encode(code.getValue(), StandardCharsets.UTF_8)
+                        + "&_csrf=" + formToken("/submissions/login/code")))
                 .build());
         assertThat(verified.statusCode()).isEqualTo(302);
         assertThat(location(verified)).endsWith("/submissions/form");
         return email;
+    }
+
+    /** The CSRF token the page's (first) form carries in its hidden field, URL-encoded. */
+    private String formToken(String page) throws Exception {
+        HttpResponse<String> response = get(page);
+        assertThat(response.statusCode()).isEqualTo(200);
+        List<String> tokens = Csrf.hiddenFieldValues(response.body());
+        assertThat(tokens).as("CSRF fields on " + page).isNotEmpty();
+        return URLEncoder.encode(tokens.get(0), StandardCharsets.UTF_8);
+    }
+
+    /** The submission form's own token, decoded: a multipart field carries it as is. */
+    private String submissionFormToken() throws Exception {
+        return URLDecoder.decode(formToken("/submissions/form"), StandardCharsets.UTF_8);
+    }
+
+    private String csrfCookie() {
+        return cookies.getCookieStore().getCookies().stream()
+                .filter(cookie -> Csrf.COOKIE.equals(cookie.getName()))
+                .map(HttpCookie::getValue)
+                .findFirst()
+                .orElseThrow();
     }
 
     private List<String> storedPhotoPathsOf(String email) {
@@ -278,8 +346,10 @@ class SubmissionUploadLimitsTest {
         return slugs;
     }
 
-    private static MultipartBody validFormBasics() {
+    /** Starts like the rendered form's body: its CSRF field comes first, then the visitor's fields. */
+    private MultipartBody validFormBasics() throws Exception {
         return new MultipartBody()
+                .field(Csrf.PARAMETER, submissionFormToken())
                 .field("firstName", "David")
                 .field("lastName", "Jones")
                 .field("rollNumber", "GE26Z001")
@@ -299,6 +369,15 @@ class SubmissionUploadLimitsTest {
     private HttpResponse<String> post(String path, MultipartBody body) throws Exception {
         return send(HttpRequest.newBuilder(uri(path))
                 .header("Content-Type", body.contentType())
+                .POST(body.publisher())
+                .build());
+    }
+
+    /** A REST client: the CSRF token from the cookie in the header, none in the body. */
+    private HttpResponse<String> postWithHeaderToken(String path, MultipartBody body) throws Exception {
+        return send(HttpRequest.newBuilder(uri(path))
+                .header("Content-Type", body.contentType())
+                .header(Csrf.HEADER, csrfCookie())
                 .POST(body.publisher())
                 .build());
     }

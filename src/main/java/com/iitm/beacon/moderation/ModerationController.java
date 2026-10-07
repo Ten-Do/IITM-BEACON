@@ -1,8 +1,11 @@
 package com.iitm.beacon.moderation;
 
+import com.iitm.beacon.common.web.PageRequests;
 import com.iitm.beacon.common.web.PageResponse;
-import org.springframework.data.domain.PageRequest;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpStatus;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,10 +19,15 @@ import org.springframework.web.bind.annotation.RestController;
  * Admin moderation endpoints (UC-VIEW-PENDING-QUEUE, UC-APPROVE-TESTIMONIAL,
  * UC-REJECT-TESTIMONIAL), plus the admin session ping. Role enforcement
  * lives in {@code config.SecurityConfig} (added in a later batch), same
- * convention as {@code SubmissionController}.
+ * convention as {@code SubmissionController}. The pending list's paging is
+ * validated against its documented bounds (page ≥ 0, size 1–100, and page ×
+ * size within an {@code int} — {@link PageRequests}), like the gallery's: a
+ * value outside them is a 400, never a {@code PageRequest} that can't be
+ * built or a query that fails.
  */
 @RestController
 @RequestMapping("/api/moderation")
+@Validated
 public class ModerationController {
 
     private final ModerationService moderationService;
@@ -30,8 +38,9 @@ public class ModerationController {
 
     @GetMapping("/testimonials/pending")
     public PageResponse<ModerationTestimonialDetailDto> pending(
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        return moderationService.listPending(PageRequest.of(page, size));
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return moderationService.listPending(PageRequests.of(page, size));
     }
 
     @PostMapping("/testimonials/{id}/approve")

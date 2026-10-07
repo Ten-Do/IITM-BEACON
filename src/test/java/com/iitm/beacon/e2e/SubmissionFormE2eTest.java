@@ -5,6 +5,7 @@ import static com.iitm.beacon.e2e.SubmissionForm.chip;
 import static com.iitm.beacon.e2e.SubmissionForm.fillIdentity;
 import static com.iitm.beacon.e2e.SubmissionForm.topic;
 
+import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import org.junit.jupiter.api.Test;
 
@@ -12,8 +13,10 @@ import org.junit.jupiter.api.Test;
  * The submission form's own behaviour (static/js/submission-form.js): the
  * score slider's number, label and colour follow it; topic chips show and
  * hide their topics; with the country still on its placeholder the browser
- * won't submit and takes the visitor to the country field. (The form as it
- * opens — score 10, placeholder — is in {@link PagesE2eTest}.)
+ * won't submit and takes the visitor to the country field; clearing a contact
+ * unticks its "Show publicly", so a contact typed again isn't public until
+ * the visitor ticks it again (BL-030). (The form as it opens — score 10,
+ * placeholder — is in {@link PagesE2eTest}.)
  */
 class SubmissionFormE2eTest extends E2eTestBase {
 
@@ -39,5 +42,24 @@ class SubmissionFormE2eTest extends E2eTestBase {
         // The browser's "Please select an item" bubble fades in, then stays for at least 5 s.
         page.waitForTimeout(1000);
         assertScreenshot("submit-refused-country-placeholder-focused");
+    }
+
+    @Test
+    void clearingAContact_unticksShowPublicly_andTypingItAgainLeavesItUnticked() {
+        openPage(DevicePreset.DESKTOP);
+        loginAsVisitor("contact.visitor@example.com");
+        Page page = page();
+        Locator row = page.locator(".submission-contact-row").first();
+        Locator value = row.locator(".submission-contact-input");
+
+        value.fill("contact.visitor@example.com");
+        row.locator("input[type=checkbox]").check();
+        assertScreenshot(row, "contact-typed-and-public");
+
+        value.fill("");
+        assertScreenshot(row, "contact-cleared");
+
+        value.fill("contact.visitor@example.com");
+        assertScreenshot(row, "contact-typed-again-not-public");
     }
 }

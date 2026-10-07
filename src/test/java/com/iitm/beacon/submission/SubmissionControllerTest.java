@@ -1,5 +1,6 @@
 package com.iitm.beacon.submission;
 
+import static com.iitm.beacon.testsupport.Csrf.csrfHeader;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -118,7 +119,7 @@ class SubmissionControllerTest {
     @Test
     void createSubmission_authenticatedVisitor_returns201WithPendingStatus() throws Exception {
         mockMvc.perform(multipart("/api/submissions")
-                        .file(jsonPayload(validRequest()))
+                        .file(jsonPayload(validRequest())).with(csrfHeader())
                         .with(authentication(visitor("controller-create@example.com"))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("PENDING"))
@@ -145,7 +146,7 @@ class SubmissionControllerTest {
 
         mockMvc.perform(multipart("/api/submissions")
                         .file(jsonPayload(request))
-                        .file(photo)
+                        .file(photo).with(csrfHeader())
                         .with(authentication(visitor("controller-photo@example.com"))))
                 .andExpect(status().isCreated());
     }
@@ -166,7 +167,7 @@ class SubmissionControllerTest {
             request.file(new MockMultipartFile("p" + n, "p" + n + ".png", "image/png", realPngBytes()));
         }
 
-        mockMvc.perform(request.with(authentication(visitor("controller-six-photos@example.com"))))
+        mockMvc.perform(request.with(csrfHeader()).with(authentication(visitor("controller-six-photos@example.com"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(
                         org.hamcrest.Matchers.containsString("sections[0].photos: At most 5 photos per topic.")));
@@ -175,7 +176,8 @@ class SubmissionControllerTest {
     @Test
     void editMine_sixPhotosInOneTopic_returns400NamingThePerTopicLimit() throws Exception {
         Authentication auth = visitor("controller-edit-six-photos@example.com");
-        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(validRequest())).with(authentication(auth)))
+        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(validRequest())).with(csrfHeader())
+                        .with(authentication(auth)))
                 .andExpect(status().isCreated());
         var request = multipart(HttpMethod.PUT, "/api/submissions/mine")
                 .file(jsonPayload(requestWithGeneralPhotos(6)));
@@ -183,7 +185,7 @@ class SubmissionControllerTest {
             request.file(new MockMultipartFile("p" + n, "p" + n + ".png", "image/png", realPngBytes()));
         }
 
-        mockMvc.perform(request.with(authentication(auth)))
+        mockMvc.perform(request.with(csrfHeader()).with(authentication(auth)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(
                         org.hamcrest.Matchers.containsString("sections[0].photos: At most 5 photos per topic.")));
@@ -191,14 +193,14 @@ class SubmissionControllerTest {
 
     @Test
     void createSubmission_unauthenticated_returns401() throws Exception {
-        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(validRequest())))
+        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(validRequest())).with(csrfHeader()))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
     void createSubmission_adminRole_returns403() throws Exception {
         mockMvc.perform(multipart("/api/submissions")
-                        .file(jsonPayload(validRequest()))
+                        .file(jsonPayload(validRequest())).with(csrfHeader())
                         .with(authentication(admin())))
                 .andExpect(status().isForbidden());
     }
@@ -218,7 +220,7 @@ class SubmissionControllerTest {
                 false);
 
         mockMvc.perform(multipart("/api/submissions")
-                        .file(jsonPayload(noConsent))
+                        .file(jsonPayload(noConsent)).with(csrfHeader())
                         .with(authentication(visitor("controller-no-consent@example.com"))))
                 .andExpect(status().isBadRequest());
     }
@@ -240,7 +242,7 @@ class SubmissionControllerTest {
                 true);
 
         mockMvc.perform(multipart("/api/submissions")
-                        .file(jsonPayload(request))
+                        .file(jsonPayload(request)).with(csrfHeader())
                         .with(authentication(visitor("controller-two-violations@example.com"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
@@ -269,7 +271,7 @@ class SubmissionControllerTest {
     void createSubmission_blankOrMissingCountry_returns400WithOneReadableMessage(String countryCode)
             throws Exception {
         mockMvc.perform(multipart("/api/submissions")
-                        .file(payloadWithCountryCode(countryCode))
+                        .file(payloadWithCountryCode(countryCode)).with(csrfHeader())
                         .with(authentication(visitor("controller-blank-country@example.com"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
@@ -279,11 +281,12 @@ class SubmissionControllerTest {
     @Test
     void editMine_blankCountry_returns400WithOneReadableMessage() throws Exception {
         Authentication auth = visitor("controller-edit-blank-country@example.com");
-        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(validRequest())).with(authentication(auth)))
+        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(validRequest())).with(csrfHeader())
+                        .with(authentication(auth)))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(multipart(HttpMethod.PUT, "/api/submissions/mine")
-                        .file(payloadWithCountryCode(""))
+                        .file(payloadWithCountryCode("")).with(csrfHeader())
                         .with(authentication(auth)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("countryCode: Please select your country."));
@@ -292,7 +295,7 @@ class SubmissionControllerTest {
     @Test
     void createSubmission_unknownCountry_returns400NamingTheCode() throws Exception {
         mockMvc.perform(multipart("/api/submissions")
-                        .file(payloadWithCountryCode("ZZ"))
+                        .file(payloadWithCountryCode("ZZ")).with(csrfHeader())
                         .with(authentication(visitor("controller-unknown-country@example.com"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("countryCode: Unknown country code: ZZ"));
@@ -301,7 +304,8 @@ class SubmissionControllerTest {
     @Test
     void editMine_badRollNumberAndBadContact_returns400ReportingBothFieldsAtOnce() throws Exception {
         Authentication auth = visitor("controller-edit-two-violations@example.com");
-        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(validRequest())).with(authentication(auth)))
+        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(validRequest())).with(csrfHeader())
+                        .with(authentication(auth)))
                 .andExpect(status().isCreated());
         TestimonialSubmissionRequest editRequest = new TestimonialSubmissionRequest(
                 "David",
@@ -316,7 +320,7 @@ class SubmissionControllerTest {
                 true);
 
         mockMvc.perform(multipart(HttpMethod.PUT, "/api/submissions/mine")
-                        .file(jsonPayload(editRequest))
+                        .file(jsonPayload(editRequest)).with(csrfHeader())
                         .with(authentication(auth)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.allOf(
@@ -339,7 +343,8 @@ class SubmissionControllerTest {
                 List.of(),
                 true);
 
-        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(request)).with(authentication(auth)))
+        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(request)).with(csrfHeader())
+                        .with(authentication(auth)))
                 .andExpect(status().isCreated());
         mockMvc.perform(get("/api/submissions/mine").with(authentication(auth)))
                 .andExpect(status().isOk())
@@ -350,12 +355,12 @@ class SubmissionControllerTest {
     void createSubmission_secondTimeForSameVisitor_returns409() throws Exception {
         Authentication auth = visitor("controller-duplicate@example.com");
         mockMvc.perform(multipart("/api/submissions")
-                        .file(jsonPayload(validRequest()))
+                        .file(jsonPayload(validRequest())).with(csrfHeader())
                         .with(authentication(auth)))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(multipart("/api/submissions")
-                        .file(jsonPayload(validRequest()))
+                        .file(jsonPayload(validRequest())).with(csrfHeader())
                         .with(authentication(auth)))
                 .andExpect(status().isConflict());
     }
@@ -380,7 +385,8 @@ class SubmissionControllerTest {
     @Test
     void mine_afterCreate_returnsCurrentShape() throws Exception {
         Authentication auth = visitor("controller-mine@example.com");
-        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(validRequest())).with(authentication(auth)))
+        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(validRequest())).with(csrfHeader())
+                        .with(authentication(auth)))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(get("/api/submissions/mine").with(authentication(auth)))
@@ -392,7 +398,8 @@ class SubmissionControllerTest {
     @Test
     void editMine_authenticatedVisitor_returns200() throws Exception {
         Authentication auth = visitor("controller-edit@example.com");
-        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(validRequest())).with(authentication(auth)))
+        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(validRequest())).with(csrfHeader())
+                        .with(authentication(auth)))
                 .andExpect(status().isCreated());
 
         TestimonialSubmissionRequest editRequest = new TestimonialSubmissionRequest(
@@ -408,7 +415,7 @@ class SubmissionControllerTest {
                 true);
 
         mockMvc.perform(multipart(HttpMethod.PUT, "/api/submissions/mine")
-                        .file(jsonPayload(editRequest))
+                        .file(jsonPayload(editRequest)).with(csrfHeader())
                         .with(authentication(auth)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("PENDING"));
@@ -417,22 +424,53 @@ class SubmissionControllerTest {
     @Test
     void editMine_noExistingTestimonial_returns404() throws Exception {
         mockMvc.perform(multipart(HttpMethod.PUT, "/api/submissions/mine")
-                        .file(jsonPayload(validRequest()))
+                        .file(jsonPayload(validRequest())).with(csrfHeader())
                         .with(authentication(visitor("controller-edit-missing@example.com"))))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void editMine_unauthenticated_returns401() throws Exception {
-        mockMvc.perform(multipart(HttpMethod.PUT, "/api/submissions/mine").file(jsonPayload(validRequest())))
+        mockMvc.perform(multipart(HttpMethod.PUT, "/api/submissions/mine")
+                        .file(jsonPayload(validRequest())).with(csrfHeader()))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
     void editMine_adminRole_returns403() throws Exception {
         mockMvc.perform(multipart(HttpMethod.PUT, "/api/submissions/mine")
-                        .file(jsonPayload(validRequest()))
+                        .file(jsonPayload(validRequest())).with(csrfHeader())
                         .with(authentication(admin())))
                 .andExpect(status().isForbidden());
+    }
+
+    // -- CSRF (BL-004); the token's other variants are in config.CsrfProtectionTest --
+
+    @Test
+    void createSubmission_withoutTheCsrfHeader_isAJson403AndCreatesNothing() throws Exception {
+        Authentication auth = visitor("controller-create-no-csrf@example.com");
+
+        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(validRequest())).with(authentication(auth)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+
+        // Nothing was created: the same visitor's first create with the token succeeds, not a 409.
+        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(validRequest())).with(csrfHeader())
+                        .with(authentication(auth)))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void editMine_withoutTheCsrfHeader_isAJson403() throws Exception {
+        Authentication auth = visitor("controller-edit-no-csrf@example.com");
+        mockMvc.perform(multipart("/api/submissions").file(jsonPayload(validRequest())).with(csrfHeader())
+                        .with(authentication(auth)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(multipart(HttpMethod.PUT, "/api/submissions/mine")
+                        .file(jsonPayload(validRequest()))
+                        .with(authentication(auth)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
     }
 }

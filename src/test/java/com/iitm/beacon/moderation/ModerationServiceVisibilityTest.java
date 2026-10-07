@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.mock;
 
 import com.iitm.beacon.config.NotificationMailer;
+import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.achievement.Achievement;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
@@ -69,7 +70,11 @@ class ModerationServiceVisibilityTest {
     @BeforeEach
     void setUp() {
         moderationService = new ModerationService(
-                testimonialRepository, mock(NotificationMailer.class), new PhotoUrlResolver(), Clock.systemUTC());
+                testimonialRepository,
+                mock(NotificationMailer.class),
+                new PhotoUrlResolver(),
+                mock(PhotoFileDeleter.class),
+                Clock.systemUTC());
         catalog = CatalogVisibilityFixture.create(topicGroupRepository, topicRepository, achievementRepository);
     }
 

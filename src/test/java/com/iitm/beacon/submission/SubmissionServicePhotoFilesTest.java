@@ -39,10 +39,13 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * What {@link SubmissionService} does with photo FILES on create/edit: every
  * upload becomes a full-size + thumbnail WebP pair whose paths and size land
- * on the {@link Photo} row, and a photo removed by an edit (or with its whole
- * section) loses both of its files. Photos are stored in this test's own
- * uploads root so the files can be inspected; rows are re-read from the
- * database (flush + clear), not from the persistence context.
+ * on the {@link Photo} row, and a kept photo keeps its files. Photos are
+ * stored in this test's own uploads root so the files can be inspected; rows
+ * are re-read from the database (flush + clear), not from the persistence
+ * context. What a commit or rollback does to the files — a removed photo's
+ * files go only once the edit commits — is {@link
+ * SubmissionServicePhotoFilesTransactionTest}'s, since this test's own
+ * transaction never commits.
  */
 @SpringBootTest
 @Transactional
@@ -209,65 +212,6 @@ class SubmissionServicePhotoFilesTest {
         assertThat(after.getThumbnailPath()).isEqualTo(before.getThumbnailPath());
         assertThat(after.getWidth()).isEqualTo(2560);
         assertThat(uploadedFiles()).isEqualTo(filesBefore);
-    }
-
-    @Test
-    void edit_droppedPhoto_deletesBothItsFiles() throws Exception {
-        String email = "files-edit-drop@example.com";
-        submissionService.create(
-                email, request(section("general", "Text.", photo("a"))), Map.of("a", landscapePng("a")));
-        assertThat(uploadedFiles()).hasSize(2);
-
-        submissionService.edit(email, request(section("general", "Text.")), Map.of());
-
-        assertThat(sectionFor(reload(email), "general").getPhotos()).isEmpty();
-        assertThat(uploadedFiles()).isEmpty();
-    }
-
-    @Test
-    void edit_replacedPhoto_deletesTheOldPairAndKeepsOnlyTheNewOne() throws Exception {
-        String email = "files-edit-replace@example.com";
-        submissionService.create(
-                email, request(section("general", "Text.", photo("a"))), Map.of("a", landscapePng("a")));
-
-        submissionService.edit(
-                email, request(section("general", "Text.", photo("b"))), Map.of("b", landscapePng("b")));
-
-        Photo replacement = sectionFor(reload(email), "general").getPhotos().get(0);
-        assertThat(uploadedFiles())
-                .containsExactlyInAnyOrder(replacement.getFilePath(), replacement.getThumbnailPath());
-    }
-
-    @Test
-    void edit_removedSection_deletesBothFilesOfEachOfItsPhotos() throws Exception {
-        String email = "files-edit-remove-section@example.com";
-        submissionService.create(
-                email,
-                request(section("general", "Text."), section("academics_teaching", "Pics.", photo("a"), photo("b"))),
-                Map.of("a", landscapePng("a"), "b", landscapePng("b")));
-        assertThat(uploadedFiles()).hasSize(4);
-
-        submissionService.edit(email, request(section("general", "Text.")), Map.of());
-
-        assertThat(reload(email).getSections()).hasSize(1);
-        assertThat(uploadedFiles()).isEmpty();
-    }
-
-    @Test
-    void edit_droppedLegacyPhotoWithoutThumbnail_deletesItsSingleFile() throws Exception {
-        String email = "files-edit-legacy@example.com";
-        submissionService.create(email, request(section("general", "Text.")), Map.of());
-        Testimonial testimonial = reload(email);
-        TestimonialSection general = sectionFor(testimonial, "general");
-        general.getPhotos().add(
-                Photo.builder().section(general).filePath("legacy.jpeg").displayOrder(0).build());
-        testimonialRepository.saveAndFlush(testimonial);
-        Files.writeString(uploadsRoot.resolve("legacy.jpeg"), "legacy original");
-
-        submissionService.edit(email, request(section("general", "Text.")), Map.of());
-
-        assertThat(sectionFor(reload(email), "general").getPhotos()).isEmpty();
-        assertThat(uploadedFiles()).isEmpty();
     }
 
     @Test

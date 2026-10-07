@@ -7,9 +7,12 @@ import org.springframework.stereotype.Component;
 
 /**
  * Dev/test OTP delivery: logs the code instead of emailing it
- * (docs/architecture.md §13 — "dev: OTP logged (not emailed)"). Active for
- * every profile except {@code prod}, which also covers the test profile
- * since no profile is active during {@code mvn test}.
+ * (docs/architecture.md §13 — "dev: OTP logged (not emailed)"), so a
+ * developer can log in without SMTP (decision 4). The recipient is logged
+ * only masked ({@link LogMask}), never in plaintext
+ * (NFR-CONTACT-CONFIDENTIALITY). Active for every profile except {@code
+ * prod}, which also covers the test profile since no profile is active
+ * during {@code mvn test}.
  */
 @Component
 @Profile("!prod")
@@ -19,6 +22,6 @@ public class LoggingOtpMailer implements OtpMailer {
 
     @Override
     public void sendOtp(String toEmail, String code) {
-        log.info("OTP for {}: {}", toEmail, code);
+        log.info("OTP for {}: {}", LogMask.email(toEmail), code);
     }
 }
