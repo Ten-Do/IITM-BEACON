@@ -170,8 +170,10 @@ com.iitm.beacon
 │                      request-rate check, called by both controllers below);
 │                      AdminAuthViewController.
 └── analytics/         Homepage dashboard: country map + achievement/score/topic-group stat
-                       cards.
-                       AnalyticsController, AnalyticsService (read-only aggregate queries).
+                       cards (decisions 14, 30), as REST (`api-spec.yaml`) and as the `/` page.
+                       AnalyticsController, AnalyticsService (read-only aggregate queries),
+                       AnalyticsSummaryDto; AnalyticsViewController, DashboardView (page model:
+                       map shading, top-N splits), WorldMap (the country outlines, §18).
 ```
 
 Why `domain` is separate from the feature slices: entities are read and written across
@@ -730,20 +732,20 @@ architecture level because they're time-based or easy to get subtly wrong withou
 
 ## 17. View layer: Thymeleaf pages alongside the REST API (decision 21)
 
-`gallery`, `submission`, `moderation`, `catalogadmin`, and `adminauth` each expose their functionality twice:
-once as the JSON REST API `api-spec.yaml` already specifies, and once as server-rendered HTML
-pages. Both are built on the same `Service` class per slice — the page-rendering
-`XxxViewController` (`@Controller`) calls the exact same `GalleryService`/`SubmissionService`/
-`ModerationService`/`CatalogAdminService`/`OtpService` methods the REST `XxxController`
-(`@RestController`) does, as a plain in-process Java call. Neither controller depends on the
-other, and the REST contract is unchanged. `analytics` has no page yet, since the slice is not
-built yet.
+`gallery`, `submission`, `moderation`, `catalogadmin`, `adminauth`, and `analytics` each expose
+their functionality twice: once as the JSON REST API `api-spec.yaml` already specifies, and once
+as server-rendered HTML pages. Both are built on the same `Service` class per slice — the
+page-rendering `XxxViewController` (`@Controller`) calls the exact same `GalleryService`/
+`SubmissionService`/`ModerationService`/`CatalogAdminService`/`OtpService`/`AnalyticsService`
+methods the REST `XxxController` (`@RestController`) does, as a plain in-process Java call.
+Neither controller depends on the other, and the REST contract is unchanged.
 
 **Routing.** View routes are plain paths, not `/api/**`:
 
 | Route | Slice | Access |
 |---|---|---|
-| `GET`/`HEAD` `/` (redirect to `/gallery`), `/gallery`, `/gallery/{id}` | gallery | public |
+| `GET`/`HEAD` `/` (the homepage dashboard — decision 30) | analytics | public |
+| `GET`/`HEAD` `/gallery`, `/gallery/{id}` | gallery | public |
 | `POST /gallery/{id}/contact` (contact reveal — decision 27) | gallery | public, same-origin requests only |
 | `/submissions/login`, `/submissions/login/**` | submission | public |
 | `/submissions/form`, `/submissions/confirmation` | submission | `VISITOR` session; without one → redirect to `/submissions/login` |
@@ -765,7 +767,8 @@ per slice. Shared chrome is factored into `templates/layout/` fragments:
   `static/js/nav-toggle.js` (deferred) on every page;
 - `header-visitor.html` and `header-admin.html` — each a `header(activePage)` fragment for the
   two nav-bar variants; both put their nav (`#visitor-nav`, `#admin-nav`) behind the burger
-  button below. The admin header also includes the session check, so every page using it gets
+  button below. The visitor nav starts with "Homepage" (`/`, decision 30), and its "IITM
+  Beacon" wordmark links there too. The admin header also includes the session check, so every page using it gets
   it; the two admin login pages use their own inline header and never do;
 - `nav-toggle.html :: toggle(navId)` — the reusable burger button (decision 26), driven by
   `static/js/nav-toggle.js` through `data-nav-toggle`/`aria-controls`/`aria-expanded`; to reuse
@@ -898,3 +901,29 @@ while the handler binds its arguments: `SubmissionViewController` catches `Multi
 locally and redirects back to the form with a flash error; for REST callers
 `GlobalExceptionHandler` maps `MaxUploadSizeExceededException` to 413 and any other
 `MultipartException` to 400.
+
+## 18. Analytics dashboard (decisions 14, 30)
+
+`AnalyticsService.summary()` builds `AnalyticsSummaryDto` (the `AnalyticsSummary` schema) from a
+handful of aggregate JPQL queries, each returning a small projection record that lives in
+`domain` next to its repository — no entity is loaded:
+- `TestimonialRepository`: the count, the average score and the number scoring 6 or more over
+  one status, in one row; and the count per country;
+- `TestimonialSectionRepository`: distinct testimonials per active topic group (over its active
+  topics) and per active standalone topic, with the entry's label and display order;
+- `TestimonialAchievementRepository`: ticks per active achievement.
+
+All filter on `APPROVED`, so a pending or rejected testimonial never moves a number. The
+visibility rule is the JPQL form of `Topic.isVisible()` / `Achievement.isVisible()` (decision 28).
+The service drops zero counts, sorts (count descending, then name / top-level display order /
+achievement display order) and turns the "6 or more" count into a whole percent.
+
+The page (`templates/analytics/dashboard.html`, `AnalyticsViewController` on `GET /`) adds only
+presentation on top, in the package-private `DashboardView`: each map region's shade
+(`ceil(5 · count / max)`, CSS classes `map-shade-1`…`5`), its gallery link and `<title>`, the
+average rounded to one decimal and to a `--score-N` colour, and the top-N splits (6 country
+chips, 5 rows per list; the rest behind `<details>`). The map is inline SVG drawn from
+`src/main/resources/analytics/world-map.json` — the country outlines (ISO 3166-1 alpha-2 code →
+SVG path, `viewBox` 900 × 440.71) converted once from jsvectormap 1.7.0, with its MIT license in
+`world-map.LICENSE.txt` — which the `WorldMap` component reads once at startup. The page loads
+no script beyond the shared `nav-toggle.js`: links and tooltips are plain SVG `<a>`/`<title>`.

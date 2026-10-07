@@ -68,6 +68,8 @@ At least one concrete test per module, each tied to the use-case or NFR it verif
 | `gallery` | The reveal-contact endpoint returns only entries with `is_public = true`, and only for an `APPROVED` testimonial | UC-REVEAL-CONTACT |
 | `gallery` | The normal browse/detail response never includes any `ContactMethod` value or the submitter's email | `NFR-CONTACT-CONFIDENTIALITY` |
 | `analytics` | Dashboard aggregate counts include only `APPROVED` testimonials — adding a `PENDING` one doesn't change the stats | UC-VIEW-DASHBOARD |
+| `analytics` | A topic group counts a testimonial once however many of its subtopics it fills; sections of hidden topics and ticks of inactive achievements aren't counted; zero counts are left out; the "recommending" share counts scores of 6 or more | UC-VIEW-DASHBOARD, decisions 28, 30 |
+| `analytics` | With no approved testimonial `/` shows the empty state and the REST summary has empty lists and null score figures; with some, a represented country's map region links to its gallery filter, shaded by its count | UC-VIEW-DASHBOARD alt flow, decision 30 |
 
 ## 3. Acceptance gates
 

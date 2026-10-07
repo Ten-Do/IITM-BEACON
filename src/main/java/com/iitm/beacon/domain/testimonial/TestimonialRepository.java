@@ -32,4 +32,25 @@ public interface TestimonialRepository
             + " where t.status = :status and s.modified = true and s.topic.id in :topicIds")
     List<Testimonial> findDistinctByStatusAndModifiedSectionTopicIdIn(
             @Param("status") TestimonialStatus status, @Param("topicIds") Collection<Long> topicIds);
+
+    /**
+     * Every testimonial of {@code status} in one row (decision 30): how many
+     * there are, their mean score ({@code null} when there are none) and how
+     * many score {@code threshold} or more (0 when there are none). Loads no
+     * entity.
+     */
+    @Query("select new com.iitm.beacon.domain.testimonial.RecommendationScoreSummary("
+            + " count(t), avg(t.recommendationScore),"
+            + " coalesce(sum(case when t.recommendationScore >= :threshold then 1 else 0 end), 0))"
+            + " from Testimonial t where t.status = :status")
+    RecommendationScoreSummary summarizeScoresByStatus(
+            @Param("status") TestimonialStatus status, @Param("threshold") int threshold);
+
+    /**
+     * How many testimonials of {@code status} come from each country, one row
+     * per country that has any (decision 30); unordered.
+     */
+    @Query("select new com.iitm.beacon.domain.testimonial.CountryTestimonialCount(c.code, c.name, count(t))"
+            + " from Testimonial t join t.country c where t.status = :status group by c.code, c.name")
+    List<CountryTestimonialCount> countPerCountryByStatus(@Param("status") TestimonialStatus status);
 }

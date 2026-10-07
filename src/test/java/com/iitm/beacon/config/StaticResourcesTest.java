@@ -518,6 +518,80 @@ class StaticResourcesTest {
         assertThat(ruleBodiesFor(mediaBlock(css, "(max-width: 480px)"), ".gallery-grid")).isEmpty();
     }
 
+    // -- homepage dashboard (analytics/dashboard.html, decision 30) --
+
+    /** Explicit decision: 4 stat cards and 2 lists side by side; on phones 2 stat columns and 1 list column. */
+    @Test
+    void beaconCss_dashboardGrids_haveFourAndTwoColumns_andTwoAndOneOnPhones() throws Exception {
+        String css = beaconCss();
+        String narrow = mediaBlock(css, "(max-width: 720px)");
+
+        assertThat(declarationsFor(topLevelRules(css), ".dashboard-stat-grid"))
+                .contains("display: grid;", "grid-template-columns: repeat(4, minmax(0, 1fr));");
+        assertThat(declarationsFor(topLevelRules(css), ".dashboard-list-grid"))
+                .contains("display: grid;", "grid-template-columns: repeat(2, minmax(0, 1fr));");
+        assertThat(declarationsFor(narrow, ".dashboard-stat-grid"))
+                .contains("grid-template-columns: repeat(2, minmax(0, 1fr));");
+        assertThat(declarationsFor(narrow, ".dashboard-list-grid")).contains("grid-template-columns: minmax(0, 1fr);");
+    }
+
+    /** Only the phone block steps the dashboard grids: no other breakpoint changes their columns in between. */
+    @Test
+    void beaconCss_dashboardGrids_areSteppedOnlyByThePhoneBlock() throws Exception {
+        String css = beaconCss();
+
+        for (String grid : List.of(".dashboard-stat-grid", ".dashboard-list-grid")) {
+            for (String query : List.of("(max-width: 1199px)", "(max-width: 899px)", "(max-width: 559px)",
+                    "(max-width: 480px)")) {
+                assertThat(ruleBodiesFor(mediaBlock(css, query), grid)).as(grid + " in " + query).isEmpty();
+            }
+        }
+    }
+
+    /** The choropleth's five steps, light gold to maroon (decision 30). */
+    @Test
+    void beaconCss_declaresTheFiveMapShadeTokens_andFillsEachShadeWithIt() throws Exception {
+        String css = beaconCss();
+        String flat = topLevelRules(css);
+
+        assertThat(topLevelRule(css, ":root"))
+                .contains(
+                        "--map-shade-1: #f5e3bd;",
+                        "--map-shade-2: #e6c07a;",
+                        "--map-shade-3: #d6a64f;",
+                        "--map-shade-4: #c2603a;",
+                        "--map-shade-5: #ae152d;");
+        for (int shade = 1; shade <= 5; shade++) {
+            assertThat(declarationsFor(flat, ".map-shade-" + shade)).contains("fill: var(--map-shade-" + shade + ");");
+            assertThat(declarationsFor(flat, ".dashboard-map-swatch--" + shade))
+                    .contains("background: var(--map-shade-" + shade + ");");
+        }
+    }
+
+    /** Land is paper with the line colour for borders, on the sand-coloured sea of the mockup. */
+    @Test
+    void beaconCss_mapLandIsPaperOnSand_andALinkedCountryShowsHoverAndKeyboardFocus() throws Exception {
+        String flat = topLevelRules(beaconCss());
+
+        assertThat(declarationsFor(flat, ".dashboard-map")).contains("background: var(--sand);");
+        assertThat(declarationsFor(flat, ".map-region")).contains("fill: var(--paper);", "stroke: var(--line);");
+        assertThat(declarationsFor(flat, ".dashboard-map a:hover .map-region")).contains("stroke: var(--ink);");
+        assertThat(declarationsFor(flat, ".dashboard-map a:focus-visible .map-region")).contains("stroke: var(--ink);");
+    }
+
+    /**
+     * The wordmark is a link home now (decision 30) but must look exactly as
+     * before: the global {@code a:hover} would otherwise underline it and
+     * darken its colour.
+     */
+    @Test
+    void beaconCss_wordmarkLink_keepsItsColourAndNoUnderlineOnHover() throws Exception {
+        String flat = topLevelRules(beaconCss());
+
+        assertThat(declarationsFor(flat, "a.wordmark:hover"))
+                .contains("color: var(--maroon);", "text-decoration: none;");
+    }
+
     /** The small-phone block refines the phone block, so it must come after it. */
     @Test
     void beaconCss_smallPhoneBlockComesAfterThePhoneBlock() throws Exception {
@@ -771,6 +845,8 @@ class StaticResourcesTest {
         ".auth-subtitle strong",
         ".confirmation-note strong",
         ".submission-error-text",
+        ".dashboard-list-label",
+        ".dashboard-chip-name",
     })
     void beaconCss_breaksLongWordsInUserContent(String selector) throws Exception {
         assertThat(declarationsFor(topLevelRules(beaconCss()), selector)).contains("overflow-wrap: anywhere;");

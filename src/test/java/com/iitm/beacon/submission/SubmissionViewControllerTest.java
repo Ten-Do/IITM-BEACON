@@ -1134,6 +1134,19 @@ class SubmissionViewControllerTest {
                 .andExpect(view().name("submission/confirmation"));
     }
 
+    /** The homepage is the dashboard at {@code /} now (decision 30), no longer the gallery. */
+    @Test
+    void confirmation_get_backToHomepage_linksToTheDashboard() throws Exception {
+        String html = mockMvc.perform(
+                        get("/submissions/confirmation").with(authentication(visitor("view-confirm-home@example.com"))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(html).contains("<a class=\"confirmation-btn\" href=\"/\">Back to homepage</a>");
+    }
+
     @Test
     void confirmation_get_unauthenticated_redirectsToVisitorLogin() throws Exception {
         mockMvc.perform(get("/submissions/confirmation"))

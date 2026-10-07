@@ -2,6 +2,16 @@
 
 ## TODO
 
+- **BL-039**: HTTP responses are sent uncompressed — `server.compression` isn't enabled in
+  `application.yml`, and nothing in `docker-compose.yml` sits in front of the app to gzip them.
+  The homepage dashboard (decision 30) now carries the world map inline: about 100 KB of SVG
+  path data in every `/` response, most of a phone's first page load, and SVG paths compress
+  very well. Enable compression for `text/html`, `text/css`, `text/javascript` and
+  `application/json` (with a sensible `min-response-size`), unless the production deployment
+  puts a compressing reverse proxy in front of the app — decide which, and test that a
+  `GET /` with `Accept-Encoding: gzip` comes back compressed. Found while building the
+  dashboard map (M6).
+
 - **BL-038**: Renaming a topic's or achievement's slug in the catalog (decision 28) while a
   visitor has the submission form open breaks that visitor's submit: the form posts sections by
   `topicSlug` and ticks by achievement slug, so the old slug is rejected as "Unknown or inactive
@@ -241,13 +251,6 @@
   it just never reaches the view). Surface it on `adminauth/login-code.html` and
   `submission/login-code.html` once there's a concrete UX for it. Found while implementing the
   `adminauth`/`submission` view layers (M4).
-
-- **BL-006**: `make checkstyle` currently fails with 7 warnings, all outside this milestone's
-  core logic: unused imports in `OtpServiceRateLimitTest`, `VisitorOtpServiceRateLimitTest`,
-  `ModerationServiceListPendingTest` (likely auto-fixable via `make fix`/`spotless:apply`), plus
-  line-length overruns in `OtpServiceTest`, `GalleryViewControllerTest`, and
-  `ModerationServiceListPendingTest` (two lines) needing a manual rewrap. Found while implementing
-  the M4 view layer.
 
 - **BL-005**: SpotBugs `EI_EXPOSE_REP`/`EI_EXPOSE_REP2` findings — `make spotbugs` currently fails
   with 49 Medium findings, entirely in `common.web.PageResponse`; the `gallery` slice's

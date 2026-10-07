@@ -47,8 +47,11 @@ public class SecurityConfig {
     private static final RequestMatcher ADMIN_PAGES =
             new OrRequestMatcher(PATHS.matcher("/moderation/**"), PATHS.matcher("/catalog/**"));
 
-    /** The public gallery's pages: home (a redirect), the list, and one article. */
-    private static final String[] GALLERY_PAGES = {"/", "/gallery", "/gallery/*"};
+    /** The public homepage dashboard (decision 30). */
+    private static final String[] DASHBOARD_PAGES = {"/"};
+
+    /** The public gallery's pages: the list and one article. */
+    private static final String[] GALLERY_PAGES = {"/gallery", "/gallery/*"};
 
     /** The visitor's HTML pages that need a login. */
     private static final RequestMatcher VISITOR_PAGES =
@@ -116,10 +119,18 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/gallery/**")
                         .permitAll()
+                        // The homepage dashboard's figures (decision 30) — public, read-only.
+                        .requestMatchers(HttpMethod.GET, "/api/analytics/summary")
+                        .permitAll()
                         .requestMatchers("/api/moderation/**")
                         .hasRole("ADMIN")
                         .requestMatchers("/api/catalog/**")
                         .hasRole("ADMIN")
+                        // The homepage dashboard (decision 30) is public and read-only.
+                        .requestMatchers(HttpMethod.GET, DASHBOARD_PAGES)
+                        .permitAll()
+                        .requestMatchers(HttpMethod.HEAD, DASHBOARD_PAGES)
+                        .permitAll()
                         // The public gallery pages — the list and one article — are read-only.
                         .requestMatchers(HttpMethod.GET, GALLERY_PAGES)
                         .permitAll()

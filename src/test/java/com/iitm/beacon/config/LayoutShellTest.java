@@ -62,7 +62,8 @@ class LayoutShellTest {
     private TopicRepository topicRepository;
 
     @ParameterizedTest
-    @ValueSource(strings = {"/gallery", "/submissions/login", "/admin/login", "/admin/login/code?email=a@example.com"})
+    @ValueSource(
+            strings = {"/", "/gallery", "/submissions/login", "/admin/login", "/admin/login/code?email=a@example.com"})
     void anonymousPages_declareAnInlineIcon(String path) throws Exception {
         mockMvc.perform(get(path))
                 .andExpect(status().isOk())
@@ -70,7 +71,8 @@ class LayoutShellTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/gallery", "/submissions/login", "/admin/login", "/admin/login/code?email=a@example.com"})
+    @ValueSource(
+            strings = {"/", "/gallery", "/submissions/login", "/admin/login", "/admin/login/code?email=a@example.com"})
     void pagesWithoutInteractiveWidgets_doNotLoadAlpine(String path) throws Exception {
         mockMvc.perform(get(path))
                 .andExpect(status().isOk())
@@ -86,6 +88,7 @@ class LayoutShellTest {
     @ParameterizedTest
     @ValueSource(
             strings = {
+                "/",
                 "/gallery",
                 "/gallery/999999",
                 "/submissions/login",
@@ -198,6 +201,7 @@ class LayoutShellTest {
     @ParameterizedTest
     @ValueSource(
             strings = {
+                "/",
                 "/gallery",
                 "/submissions/login",
                 "/submissions/login/code?email=a@example.com",
@@ -211,6 +215,17 @@ class LayoutShellTest {
     @Test
     void notFoundPage_loadsTheNavToggleScriptOnceDeferred() throws Exception {
         assertLoadsTheNavToggleScriptOnceDeferredInTheHead(html(get("/gallery/999999"), 404));
+    }
+
+    /** The dashboard with data (map, chips, lists): still only the shared burger script, once. */
+    @Test
+    void dashboardWithData_loadsTheNavToggleScriptOnceDeferred() throws Exception {
+        approvedTestimonial();
+
+        String html = html(get("/"));
+
+        assertThat(html).contains("<svg");
+        assertLoadsTheNavToggleScriptOnceDeferredInTheHead(html);
     }
 
     @Test
@@ -241,6 +256,7 @@ class LayoutShellTest {
     void pagesWithTheBurgerButNoWidgets_doNotLoadAlpine() throws Exception {
         Testimonial saved = approvedTestimonial();
 
+        assertThat(html(get("/"))).doesNotContain("/webjars/alpinejs");
         assertThat(html(get("/gallery/{id}", saved.getId()))).doesNotContain("/webjars/alpinejs");
         assertThat(html(get("/gallery/999999"), 404)).doesNotContain("/webjars/alpinejs");
         assertThat(html(get("/submissions/login/code?email=a@example.com"))).doesNotContain("/webjars/alpinejs");

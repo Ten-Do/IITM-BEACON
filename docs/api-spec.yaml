@@ -12,7 +12,7 @@ info:
     (decision 27). See ../use-cases.md for the scenarios behind each endpoint,
     ../decisions.md for the design decisions behind each schema shape, and ../nfr.md for the
     quality attributes they must meet.
-  version: "0.3.0"
+  version: "0.4.0"
 
 servers:
   - url: /api
@@ -739,8 +739,10 @@ paths:
       tags: [analytics]
       summary: Homepage dashboard data (UC-VIEW-DASHBOARD)
       description: >
-        Read-only aggregate query against domain repositories (decision 14) — no separate
-        analytics data store.
+        Read-only aggregate queries against domain repositories (decision 14) — no separate
+        analytics data store. Counts only `APPROVED` testimonials; hidden topics and inactive
+        achievements are left out, and entries with a count of zero are omitted (decision 30).
+        With no approved testimonial every list is empty and both score figures are null.
       responses:
         "200":
           description: Aggregate stats over approved testimonials.
@@ -1169,32 +1171,57 @@ components:
           description: Must be true, per decision 7 — request is rejected otherwise.
 
     AnalyticsSummary:
+      description: Homepage dashboard figures over approved testimonials (decision 30).
       type: object
       properties:
         testimonialsByCountry:
           type: array
+          description: Countries with at least one approved testimonial, by count descending, then by name.
           items:
             type: object
             properties:
               country: { $ref: "#/components/schemas/Country" }
-              count: { type: integer }
+              count: { type: integer, minimum: 1 }
         achievementCounts:
           type: array
+          description: >
+            Active achievements ticked on at least one approved testimonial, by count
+            descending, then by display order.
           items:
             type: object
             properties:
               achievement: { $ref: "#/components/schemas/Achievement" }
-              count: { type: integer }
+              count: { type: integer, minimum: 1 }
         testimonialCountsByTopic:
           type: array
-          description: Counts per top-level topic-catalog entry — a group or a standalone topic (decision 11).
+          description: >
+            Counts per visible top-level topic-catalog entry — an active group or a visible
+            standalone topic (decision 11) — of the approved testimonials with at least one
+            visible section in it; a testimonial counts once per entry. Entries by count
+            descending, then by top-level display order.
           items:
             type: object
             properties:
+              kind: { type: string, enum: [GROUP, STANDALONE] }
+              id:
+                type: integer
+                description: The topic-group id when kind = GROUP, the topic id when kind = STANDALONE.
               label: { type: string }
-              count: { type: integer }
+              count: { type: integer, minimum: 1 }
         totalApprovedTestimonials: { type: integer }
-        averageRecommendationScore: { type: number }
+        averageRecommendationScore:
+          type: number
+          nullable: true
+          description: Mean recommendation score; null when there is no approved testimonial.
+        recommendingPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: >
+            Share of approved testimonials with a recommendation score of 6 or more (decision
+            15, decision 30), rounded to a whole percent; null when there is no approved
+            testimonial.
 
     ErrorResponse:
       description: Uniform error shape returned by @RestControllerAdvice (per CLAUDE.md baseline).

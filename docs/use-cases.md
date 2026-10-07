@@ -537,7 +537,7 @@ while here.
 
 ## UC-VIEW-DASHBOARD: View homepage analytics dashboard
 - **Actor:** Visitor
-- **Preconditions:** at least one `APPROVED` testimonial exists.
+- **Preconditions:** none.
 - **Main flow:** Visitor opens the homepage → system shows a map highlighting countries with
   at least one approved testimonial, plus numeric stat cards aggregating achievement checkbox
   counts, recommendation scores, and testimonial counts per top-level topic group/standalone

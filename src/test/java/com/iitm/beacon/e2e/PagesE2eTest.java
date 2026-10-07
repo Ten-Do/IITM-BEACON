@@ -31,6 +31,7 @@ class PagesE2eTest extends E2eTestBase {
         long id = data().approvedArticle();
         openPage(DevicePreset.MOBILE);
 
+        phoneScreenshots("/", "dashboard");
         phoneScreenshots("/gallery", "gallery-list");
         phoneScreenshots("/gallery/" + id, "gallery-article");
         phoneScreenshots("/gallery/424242", "testimonial-not-found");

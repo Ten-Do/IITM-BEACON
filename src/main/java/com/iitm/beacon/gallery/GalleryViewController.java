@@ -69,11 +69,6 @@ public class GalleryViewController {
         this.galleryService = galleryService;
     }
 
-    @GetMapping("/")
-    public String home() {
-        return "redirect:/gallery";
-    }
-
     @GetMapping("/gallery")
     public String list(
             @RequestParam(required = false) String country,

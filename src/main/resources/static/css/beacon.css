@@ -37,6 +37,14 @@
   --score-9: #527944;
   --score-10: #4b7043;
 
+  /* Homepage map shades (decision 30): a country's number of approved
+     testimonials, in five steps from light gold to maroon */
+  --map-shade-1: #f5e3bd;
+  --map-shade-2: #e6c07a;
+  --map-shade-3: #d6a64f;
+  --map-shade-4: #c2603a;
+  --map-shade-5: #ae152d;
+
   /* Typography */
   --font-base: "Roboto", system-ui, -apple-system, sans-serif;
 
@@ -146,6 +154,13 @@ a:hover {
   letter-spacing: -0.01em;
 }
 
+/* The visitor header's wordmark links home (decision 30) and keeps its look:
+   no underline or darker colour from the global link hover. */
+a.wordmark:hover {
+  color: var(--maroon);
+  text-decoration: none;
+}
+
 .header-nav {
   display: flex;
   align-items: center;
@@ -247,7 +262,9 @@ a:hover {
 .moderation-contact-chip,
 .auth-subtitle strong,
 .confirmation-note strong,
-.submission-error-text {
+.submission-error-text,
+.dashboard-list-label,
+.dashboard-chip-name {
   overflow-wrap: anywhere;
 }
 
@@ -1519,7 +1536,9 @@ input[type="checkbox"].submission-field-input--invalid {
   margin: 0 0 var(--space-4) 0;
 }
 
-.gallery-empty-state {
+/* Also the homepage dashboard's empty state. */
+.gallery-empty-state,
+.dashboard-empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1533,13 +1552,15 @@ input[type="checkbox"].submission-field-input--invalid {
   margin: 0 auto;
 }
 
-.gallery-empty-title {
+.gallery-empty-title,
+.dashboard-empty-title {
   font-size: 17px;
   font-weight: 700;
   margin: 0;
 }
 
-.gallery-empty-hint {
+.gallery-empty-hint,
+.dashboard-empty-hint {
   font-size: 14px;
   color: var(--ink-soft);
   margin: 0;
@@ -2489,6 +2510,354 @@ input[type="checkbox"].submission-field-input--invalid {
   color: rgba(255, 255, 255, 0.7);
 }
 
+/* Homepage dashboard (analytics/dashboard.html) — based on ui-design/Main.dc.html. */
+.dashboard-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-7) 40px;
+  background: var(--maroon);
+  text-align: center;
+}
+
+.dashboard-hero-title {
+  max-width: 640px;
+  margin: 0;
+  color: #fff;
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.dashboard-hero-text {
+  max-width: 520px;
+  margin: 0;
+  color: #f0e4d8;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* On the maroon band the default maroon focus ring would not show. */
+.dashboard-hero :focus-visible {
+  outline-color: #fff;
+}
+
+.dashboard-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Links that look like buttons: a darker shade on hover, not an underline. */
+.dashboard-btn:hover {
+  text-decoration: none;
+}
+
+.dashboard-btn--inverse {
+  background: var(--paper);
+  color: var(--maroon);
+}
+
+.dashboard-btn--inverse:hover {
+  background: var(--gold-soft);
+  color: var(--maroon-dark);
+}
+
+.dashboard-btn--primary {
+  background: var(--maroon);
+  color: #fff;
+}
+
+.dashboard-btn--primary:hover {
+  background: var(--maroon-dark);
+  color: #fff;
+}
+
+.dashboard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  padding: 40px;
+}
+
+/* The gallery's empty-state look (above), at its full width in this column. */
+.dashboard-empty-state {
+  width: 100%;
+}
+
+.dashboard-section-title {
+  margin: 0 0 var(--space-4) 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.dashboard-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+/* -- The map: paper land with line-coloured borders on a sand sea; the
+   countries alumni came from shaded by count, each a link to the gallery. */
+.dashboard-map-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: var(--space-5);
+}
+
+.dashboard-map {
+  padding: var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--sand);
+}
+
+/* The viewBox's proportions, capped so a wide screen still shows the rest
+   of the dashboard; preserveAspectRatio centres the map when capped. */
+.dashboard-map-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 440px;
+}
+
+.map-region {
+  fill: var(--paper);
+  stroke: var(--line);
+  stroke-width: 0.5;
+}
+
+/* After .map-region: same specificity, so the shade's fill wins. */
+.map-shade-1 {
+  fill: var(--map-shade-1);
+}
+
+.map-shade-2 {
+  fill: var(--map-shade-2);
+}
+
+.map-shade-3 {
+  fill: var(--map-shade-3);
+}
+
+.map-shade-4 {
+  fill: var(--map-shade-4);
+}
+
+.map-shade-5 {
+  fill: var(--map-shade-5);
+}
+
+.dashboard-map a:hover .map-region,
+.dashboard-map a:focus-visible .map-region {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+/* "Fewer [five swatches] More" under the map. */
+.dashboard-map-scale {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.dashboard-map-swatch {
+  width: 24px;
+  height: 10px;
+  border-radius: var(--radius-xs);
+}
+
+.dashboard-map-swatch--1 {
+  background: var(--map-shade-1);
+}
+
+.dashboard-map-swatch--2 {
+  background: var(--map-shade-2);
+}
+
+.dashboard-map-swatch--3 {
+  background: var(--map-shade-3);
+}
+
+.dashboard-map-swatch--4 {
+  background: var(--map-shade-4);
+}
+
+.dashboard-map-swatch--5 {
+  background: var(--map-shade-5);
+}
+
+/* -- Country chips: the top six, then "+ N more countries" as a chip too. */
+.dashboard-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Open, the "more" chip takes a row of its own, its countries wrapping under it. */
+.dashboard-chip-more:has(> details[open]) {
+  flex-basis: 100%;
+}
+
+.dashboard-chip-more .dashboard-chip-list {
+  margin-top: var(--space-2);
+}
+
+/* min-height, not height: a long country name wraps onto a second line. */
+.dashboard-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-full);
+  background: var(--gold-soft);
+  color: var(--maroon-dark);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dashboard-chip-count {
+  margin-left: var(--space-1);
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+a.dashboard-chip:hover {
+  text-decoration: none;
+}
+
+a.dashboard-chip:hover .dashboard-chip-name {
+  text-decoration: underline;
+}
+
+/* An inline-flex summary has no disclosure marker; Safari still needs this. */
+.dashboard-chip--summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.dashboard-chip--summary::-webkit-details-marker {
+  display: none;
+}
+
+/* -- Stat cards -- */
+.dashboard-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.dashboard-stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px;
+}
+
+.dashboard-stat-number {
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.dashboard-stat-label {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* -- The two lists: testimonials by topic (links) and achievements (text). */
+.dashboard-list-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.dashboard-list-card {
+  padding: 20px var(--space-5);
+}
+
+/* An <h2> for the outline, sized like the mockup's smaller card title. */
+.dashboard-list-title {
+  margin: 0 0 var(--space-1) 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.dashboard-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-list > li {
+  border-bottom: 1px solid var(--line);
+}
+
+.dashboard-list > li:last-child {
+  border-bottom: none;
+}
+
+.dashboard-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 10px 0;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+a.dashboard-list-row {
+  color: var(--maroon);
+}
+
+a.dashboard-list-row:hover {
+  text-decoration: none;
+}
+
+a.dashboard-list-row:hover .dashboard-list-label {
+  text-decoration: underline;
+}
+
+.dashboard-list-label {
+  min-width: 0;
+}
+
+.dashboard-list-count {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* "Show all (N more)": its own line between the top rows and the rest. */
+.dashboard-list-more {
+  border-top: 1px solid var(--line);
+}
+
+.dashboard-list-more > summary {
+  padding: var(--space-2) 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--maroon);
+}
+
+.dashboard-list-more > .dashboard-list {
+  border-top: 1px solid var(--line);
+}
+
 /* Phones and small tablets (720px and narrower). Everything here overrides
    the rules above at the same specificity, so this block stays last but for
    the small-phone block that refines it. */
@@ -2518,6 +2887,13 @@ input[type="checkbox"].submission-field-input--invalid {
   }
 
   .header-left {
+    min-height: 44px;
+  }
+
+  /* The wordmark link: a 44px tap target, its text where it was. */
+  a.wordmark {
+    display: inline-flex;
+    align-items: center;
     min-height: 44px;
   }
 
@@ -2928,6 +3304,75 @@ input[type="checkbox"].submission-field-input--invalid {
   .submission-btn {
     width: 100%;
   }
+
+  /* -- Homepage dashboard: two stat cards per row, the two lists stacked -- */
+  .dashboard-hero {
+    padding: var(--space-6) var(--space-4);
+  }
+
+  .dashboard-hero-title {
+    font-size: 24px;
+  }
+
+  .dashboard-body {
+    gap: var(--space-6);
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .dashboard-map-card {
+    padding: var(--space-4);
+  }
+
+  .dashboard-map {
+    padding: var(--space-2);
+  }
+
+  .dashboard-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+
+  .dashboard-stat-card {
+    padding: var(--space-4);
+  }
+
+  .dashboard-stat-number {
+    font-size: 24px;
+  }
+
+  .dashboard-list-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-list-card {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  a.dashboard-list-row {
+    min-height: 44px;
+  }
+
+  .dashboard-list-more > summary {
+    padding: var(--space-3) 0;
+  }
+
+  /* Country chips like the topic chips (see the gallery filter above): 32px
+     tall with an invisible tap area 4px above and below, rows 8px apart. */
+  .dashboard-chip-list {
+    gap: var(--space-2) 6px;
+  }
+
+  .dashboard-chip {
+    position: relative;
+    min-height: 32px;
+    font-size: 13px;
+  }
+
+  .dashboard-chip::after {
+    content: "";
+    position: absolute;
+    inset: -4px 0;
+  }
 }
 
 /* Small phones (480px and narrower): tighter cards. */
@@ -2942,7 +3387,8 @@ input[type="checkbox"].submission-field-input--invalid {
   }
 
   .gallery-empty-state,
-  .moderation-empty-state {
+  .moderation-empty-state,
+  .dashboard-empty-state {
     padding: var(--space-7) var(--space-4);
   }
 }

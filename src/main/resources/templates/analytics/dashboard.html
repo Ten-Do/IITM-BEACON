@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{layout/shell :: head('IITM Beacon')}"></head>
+<body>
+<div th:replace="~{layout/header-visitor :: header('home')}"></div>
+
+<!--/*
+  The homepage dashboard (decision 30), based on ui-design/Main.dc.html.
+  Every figure, shade, link and split comes ready from analytics.DashboardView:
+  this template only iterates and branches. The map is plain inline SVG — its
+  links and tooltips are SVG <a>/<title>, with no script at all.
+*/-->
+<main class="dashboard-main" th:with="d=${dashboard}">
+    <section class="dashboard-hero">
+        <h1 class="dashboard-hero-title">See where IITM Beacon alumni have been</h1>
+        <p class="dashboard-hero-text">Real testimonials and photos from exchange students who studied at IIT Madras — browse by country, topic, or just start reading.</p>
+        <a class="dashboard-btn dashboard-btn--inverse" href="/gallery">Browse testimonials</a>
+    </section>
+
+    <div class="dashboard-body">
+        <!--/* No approved testimonial yet (UC-VIEW-DASHBOARD's alternate flow). */-->
+        <section class="dashboard-empty-state" th:if="${d.empty()}">
+            <h2 class="dashboard-empty-title">No testimonials yet</h2>
+            <p class="dashboard-empty-hint">Be the first to share your exchange experience at IIT Madras.</p>
+            <a class="dashboard-btn dashboard-btn--primary" href="/submissions/login">Write your testimonial</a>
+        </section>
+
+        <th:block th:unless="${d.empty()}">
+            <section class="dashboard-section">
+                <h2 class="dashboard-section-title">Where our alumni came from</h2>
+                <div class="dashboard-card dashboard-map-card">
+                    <div class="dashboard-map">
+                        <!--/* No role="img": it would hide the country links inside from assistive technology.
+                               One region per line: a represented country is a shaded path inside a link to
+                               its gallery filter, with its count as the tooltip; any other is a plain path. */-->
+                        <svg class="dashboard-map-svg" xmlns="http://www.w3.org/2000/svg"
+                             th:attr="viewBox=${d.mapViewBox()}" preserveAspectRatio="xMidYMid meet"
+                             aria-label="World map of the countries our alumni came from, shaded by number of testimonials">
+<th:block th:each="region : ${d.mapRegions()}"><a th:if="${region.href() != null}" th:href="@{${region.href()}}"><path th:class="|map-region map-shade-${region.shade()}|" th:attr="d=${region.path()}"><title th:text="${region.title()}">Germany — 12 testimonials</title></path></a><path th:unless="${region.href() != null}" class="map-region" th:attr="d=${region.path()}"/>
+</th:block>
+                        </svg>
+                    </div>
+                    <div class="dashboard-map-scale" aria-hidden="true">
+                        <span>Fewer</span>
+                        <span class="dashboard-map-swatch dashboard-map-swatch--1"></span>
+                        <span class="dashboard-map-swatch dashboard-map-swatch--2"></span>
+                        <span class="dashboard-map-swatch dashboard-map-swatch--3"></span>
+                        <span class="dashboard-map-swatch dashboard-map-swatch--4"></span>
+                        <span class="dashboard-map-swatch dashboard-map-swatch--5"></span>
+                        <span>More</span>
+                    </div>
+                    <ul class="dashboard-chip-list">
+                        <li th:each="chip : ${d.countryChips().first()}">
+                            <a class="dashboard-chip" th:href="@{${chip.href()}}"><span class="dashboard-chip-name" th:text="${chip.name()}">Germany</span><span class="dashboard-chip-count" th:text="${chip.count()}">12</span></a>
+                        </li>
+                        <li class="dashboard-chip-more" th:unless="${d.countryChips().rest().isEmpty()}">
+                            <details>
+                                <summary class="dashboard-chip dashboard-chip--summary"
+                                         th:with="n=${d.countryChips().rest().size()}"
+                                         th:text="|+ ${n} more ${n == 1 ? 'country' : 'countries'}|">+ 11 more countries</summary>
+                                <ul class="dashboard-chip-list">
+                                    <li th:each="chip : ${d.countryChips().rest()}">
+                                        <a class="dashboard-chip" th:href="@{${chip.href()}}"><span class="dashboard-chip-name" th:text="${chip.name()}">Spain</span><span class="dashboard-chip-count" th:text="${chip.count()}">1</span></a>
+                                    </li>
+                                </ul>
+                            </details>
+                        </li>
+                    </ul>
+                </div>
+            </section>
+
+            <section class="dashboard-section">
+                <h2 class="dashboard-section-title">By the numbers</h2>
+                <div class="dashboard-stat-grid">
+                    <div class="dashboard-card dashboard-stat-card">
+                        <span class="dashboard-stat-number" th:text="${d.totalApprovedTestimonials()}">128</span>
+                        <span class="dashboard-stat-label">Approved testimonials</span>
+                    </div>
+                    <div class="dashboard-card dashboard-stat-card">
+                        <span class="dashboard-stat-number" th:style="|color: var(--score-${d.averageScoreColour()})|"
+                              th:text="${d.averageScore()}">8.1</span>
+                        <span class="dashboard-stat-label">Average recommendation score</span>
+                    </div>
+                    <div class="dashboard-card dashboard-stat-card">
+                        <span class="dashboard-stat-number" th:text="${d.countriesRepresented()}">17</span>
+                        <span class="dashboard-stat-label">Countries represented</span>
+                    </div>
+                    <div class="dashboard-card dashboard-stat-card">
+                        <span class="dashboard-stat-number" th:text="|${d.recommendingPercent()}%|">64%</span>
+                        <span class="dashboard-stat-label">Recommend the exchange (score 6+)</span>
+                    </div>
+                </div>
+            </section>
+
+            <div class="dashboard-list-grid"
+                 th:unless="${d.topicRows().first().isEmpty() and d.achievementRows().first().isEmpty()}">
+                <section class="dashboard-card dashboard-list-card" th:unless="${d.topicRows().first().isEmpty()}">
+                    <h2 class="dashboard-list-title">Testimonials by topic</h2>
+                    <ul class="dashboard-list">
+                        <li th:each="row : ${d.topicRows().first()}">
+                            <a class="dashboard-list-row" th:href="@{${row.href()}}"><span class="dashboard-list-label" th:text="${row.label()}">Academics</span><span class="dashboard-list-count" th:text="${row.count()}">96</span></a>
+                        </li>
+                    </ul>
+                    <details class="dashboard-list-more" th:unless="${d.topicRows().rest().isEmpty()}">
+                        <summary th:text="|Show all (${d.topicRows().rest().size()} more)|">Show all (3 more)</summary>
+                        <ul class="dashboard-list">
+                            <li th:each="row : ${d.topicRows().rest()}">
+                                <a class="dashboard-list-row" th:href="@{${row.href()}}"><span class="dashboard-list-label" th:text="${row.label()}">Romance</span><span class="dashboard-list-count" th:text="${row.count()}">3</span></a>
+                            </li>
+                        </ul>
+                    </details>
+                </section>
+
+                <section class="dashboard-card dashboard-list-card"
+                         th:unless="${d.achievementRows().first().isEmpty()}">
+                    <h2 class="dashboard-list-title">Most common achievements</h2>
+                    <ul class="dashboard-list">
+                        <li th:each="row : ${d.achievementRows().first()}">
+                            <div class="dashboard-list-row"><span class="dashboard-list-label" th:text="${row.label()}">Made new friends here</span><span class="dashboard-list-count" th:text="${row.count()}">102</span></div>
+                        </li>
+                    </ul>
+                    <details class="dashboard-list-more" th:unless="${d.achievementRows().rest().isEmpty()}">
+                        <summary th:text="|Show all (${d.achievementRows().rest().size()} more)|">Show all (3 more)</summary>
+                        <ul class="dashboard-list">
+                            <li th:each="row : ${d.achievementRows().rest()}">
+                                <div class="dashboard-list-row"><span class="dashboard-list-label" th:text="${row.label()}">Missed home a lot at some point</span><span class="dashboard-list-count" th:text="${row.count()}">3</span></div>
+                            </li>
+                        </ul>
+                    </details>
+                </section>
+            </div>
+        </th:block>
+    </div>
+</main>
+</body>
+</html>

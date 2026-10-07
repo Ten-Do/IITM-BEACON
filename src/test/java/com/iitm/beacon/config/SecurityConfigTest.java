@@ -31,8 +31,9 @@ import org.springframework.test.web.servlet.MockMvc;
  *       handler found" 404 instead of blocking it with 401/403. Every other
  *       view-layer route group ({@code /}, {@code /gallery/**}, {@code
  *       /submissions/login/**}, {@code /admin/login/**}) now has its own
- *       real controller — see {@code gallery.GalleryViewControllerTest},
- *       {@code submission.SubmissionViewControllerTest}, and {@code
+ *       real controller — see {@code analytics.AnalyticsViewControllerTest},
+ *       {@code gallery.GalleryViewControllerTest}, {@code
+ *       submission.SubmissionViewControllerTest}, and {@code
  *       adminauth.AdminAuthViewControllerTest} instead.
  * </ul>
  */

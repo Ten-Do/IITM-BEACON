@@ -526,15 +526,14 @@ class GalleryContactRevealTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/", "/gallery", "/gallery/1", "/gallery/1/contact/extra", "/gallery/1/other"})
+    @ValueSource(strings = {"/gallery", "/gallery/1", "/gallery/1/contact/extra", "/gallery/1/other"})
     void postToAnyOtherGalleryPath_isBlockedBySecurity(String path) throws Exception {
         mockMvc.perform(post(path).header("Origin", SITE)).andExpect(status().isUnauthorized());
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"/", "/gallery"})
-    void headOfThePublicPages_isStillAllowed(String path) throws Exception {
-        assertThat(perform(head(path)).getStatus()).isBetween(200, 399);
+    @Test
+    void headOfTheGalleryList_isStillAllowed() throws Exception {
+        assertThat(perform(head("/gallery")).getStatus()).isEqualTo(200);
     }
 
     /** Only a plain number (that fits an id) is a testimonial id: anything else is no such page, not an error. */

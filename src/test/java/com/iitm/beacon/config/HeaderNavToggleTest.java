@@ -148,6 +148,7 @@ class HeaderNavToggleTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
+        "/",
         "/gallery",
         "/gallery?q=nothing-matches-this-at-all",
         "/submissions/login",
@@ -180,12 +181,54 @@ class HeaderNavToggleTest {
         assertTogglesTheHeaderNav(html(get("/gallery").with(authentication(visitor()))), "visitor-nav");
     }
 
+    /** Homepage first (decision 30), then the gallery and the submission login — all inside the menu. */
     @Test
-    void visitorHeaderNav_keepsBothLinksInsideTheMenu() throws Exception {
+    void visitorHeaderNav_keepsAllThreeLinksInsideTheMenu_homepageFirst() throws Exception {
         String header = header(html(get("/gallery")));
         String nav = elements(header, "nav").get(0);
 
-        assertThat(nav).contains("href=\"/gallery\"", "href=\"/submissions/login\"");
+        List<String> hrefs = openingTags(nav, "a").stream()
+                .map(tag -> attribute(tag, "href").orElseThrow())
+                .toList();
+        assertThat(hrefs).containsExactly("/", "/gallery", "/submissions/login");
+        assertThat(elements(nav, "a").get(0)).contains(">Homepage</a>");
+    }
+
+    /** The wordmark links home too (decision 30) — outside the nav, so it stays visible when the menu collapses. */
+    @ParameterizedTest
+    @ValueSource(strings = {"/", "/gallery", "/submissions/login"})
+    void visitorHeaderWordmark_linksToTheHomepage(String path) throws Exception {
+        String header = header(html(get(path)));
+        String nav = elements(header, "nav").get(0);
+
+        List<String> wordmarks = elements(header, "a").stream()
+                .filter(link -> attribute(openingTags(link, "a").get(0), "class")
+                        .filter("wordmark"::equals)
+                        .isPresent())
+                .toList();
+        assertThat(wordmarks).singleElement().satisfies(link -> {
+            assertThat(attribute(openingTags(link, "a").get(0), "href")).contains("/");
+            assertThat(link).contains(">IITM Beacon</a>");
+            assertThat(nav).doesNotContain(link);
+        });
+    }
+
+    @Test
+    void visitorHeaderWordmark_linksHomeOnALoginProtectedPageToo() throws Exception {
+        String header = header(html(get("/submissions/confirmation").with(authentication(visitor()))));
+
+        assertThat(header).contains("<a class=\"wordmark\" href=\"/\">IITM Beacon</a>");
+    }
+
+    /** Only the page's own nav item is marked active: on the gallery, not Homepage. */
+    @Test
+    void visitorHeaderNav_onTheGallery_doesNotMarkHomepageActive() throws Exception {
+        String nav = elements(header(html(get("/gallery"))), "nav").get(0);
+
+        List<String> active = openingTags(nav, "a").stream()
+                .filter(tag -> attribute(tag, "class").orElse("").contains("active"))
+                .toList();
+        assertThat(active).singleElement().satisfies(tag -> assertThat(attribute(tag, "href")).contains("/gallery"));
     }
 
     // -- admin header --

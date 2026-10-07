@@ -864,3 +864,57 @@ standalone chip `topicIds`. The two are combined with OR, like the chips within 
 topic 10 both exist once the admin creates a group). With one shared parameter the server had to
 guess which table an id belonged to, so creating a group could silently turn a topic filter into
 a group filter. Two parameters remove the guess.
+
+## 30. Homepage dashboard
+
+**Decision:** The homepage `/` is the analytics dashboard (UC-VIEW-DASHBOARD), served by
+`analytics.AnalyticsViewController` from the same `AnalyticsService` that answers
+`GET /api/analytics/summary`; `/` no longer redirects to `/gallery`. The visitor header gains a
+first "Homepage" item, and its "IITM Beacon" wordmark links to `/`.
+
+What it counts, always over `APPROVED` testimonials only (decision 14 — no read model):
+- **Totals:** the number of approved testimonials, their average recommendation score (shown
+  with one decimal, in the colour of that figure rounded to a whole score — 7.46 shows as "7.5"
+  in score 8's colour), the number of countries they come from,
+  and the share recommending the exchange — a score of 6 or more, the point where the scale
+  turns green (decision 15), shown as a whole percent. A testimonial whose sections are all
+  hidden (decision 28) still counts here, as it still shows in the gallery. With no approved
+  testimonial the average and the share are absent.
+- **Per country:** approved testimonials per country.
+- **Per topic:** for every visible top-level catalog entry (decision 11) — an active topic group,
+  or a visible standalone topic — the number of approved testimonials with at least one visible
+  section in it. A testimonial with three Academics subtopics counts once for Academics.
+- **Per achievement:** ticks of active achievements on approved testimonials.
+
+Entries with a count of zero are left out, both from the page and from the REST answer. Lists are
+sorted by count, highest first; ties go by country name, by the catalog's top-level display
+order, and by the achievement's display order.
+
+The page follows `ui-design/Main.dc.html`: a hero linking to the gallery; a world map with the
+countries' chips under it; four stat cards; and two lists, testimonials by topic and the most
+common achievements, each showing its top 5 rows with the rest behind a "Show all" `<details>`.
+The country chips show the top 6, the rest behind "+ N more countries". A country (map region or
+chip) links to `/gallery?country=XX`, a topic row to `/gallery?groupIds=N` or `?topicIds=N`
+(decision 29); achievements have no gallery filter and stay plain text. With no approved
+testimonial the page shows the hero and an empty state inviting the visitor to write one.
+
+The map is a choropleth rendered entirely on the server as inline SVG: no map library, no
+script. The country outlines are the 173 region paths of jsvectormap 1.7.0's
+`dist/maps/world.js` (MIT, derived from Natural Earth), converted once to
+`src/main/resources/analytics/world-map.json` (ISO 3166-1 alpha-2 code → SVG path; source file
+sha256 `de3c2c21cf63bdd95a4cfc477a566a4b189579daeb26157e8ecb101000224edd`), with the license in
+`world-map.LICENSE.txt` beside it. A represented country's path is wrapped in an SVG link to its
+gallery filter and carries a `<title>` ("Germany — 12 testimonials") for the tooltip; its shade
+is one of five steps, `ceil(5 · count / max)`, from `--map-shade-1` (light gold) to
+`--map-shade-5` (maroon), explained by a "Fewer … More" scale. Countries too small for the map
+(e.g. Singapore, Malta, Hong Kong, Bahrain) appear only in the chips.
+
+**Rationale:** The dashboard is the visitor's first page, so it belongs at `/`; the gallery stays
+one click away. Counting the way the gallery shows things — approved only, hidden topics and
+inactive achievements left out — keeps every number consistent with what a click on it shows.
+A server-rendered SVG map keeps the page within decision 21's "no SPA" rule: links, tooltips and
+shading work without JavaScript, there is nothing to load or initialise on the client, and the
+e2e screenshots stay deterministic. jsvectormap, the MIT library considered first, isn't
+published as a WebJar on Maven Central, and the WebJar that is (jvectormap) is AGPL/commercial
+and needs jQuery; reusing jsvectormap's map data alone avoids both. Shading by count rather than
+one highlight colour shows at a glance where most alumni come from.
