@@ -4,10 +4,10 @@ The M7 verification pass (`milestones.md`): how each Quality Attribute Scenario 
 shown to hold, and what the last run measured. `test_plan.md` says *what* is tested and why;
 this file records the evidence. Update it whenever a run is repeated or a test moves.
 
-- **Date of this pass:** 2026-10-07.
-- **Automated suite:** `./mvnw test` (unit, repository, MockMvc and real-server tests on H2,
-  plus the PostgreSQL 16 tests through Testcontainers — needs Docker). Browser end-to-end tests:
-  `make e2e`.
+- **Date of this pass:** 2026-10-07; performance re-run 2026-10-11 after the N+1 fix
+  (decision 35).
+- **Automated suite:** `./mvnw test` (unit, repository, MockMvc and real-server tests, all on
+  PostgreSQL 16 through Testcontainers — needs Docker). Browser end-to-end tests: `make e2e`.
 - **Performance run:** `make perf` (see §2).
 - Open points found by the pass are tracked in `security-review.md` and `BACKLOG.md`, not here.
 
@@ -15,10 +15,10 @@ this file records the evidence. Update it whenever a run is repeated or a test m
 
 | NFR | Verified by | Result |
 |---|---|---|
-| `NFR-GALLERY-PERFORMANCE` | `make perf`, gallery scenarios | met — p95 ≤ 82 ms (limit 2 s), §2 |
-| `NFR-SEARCH-PERFORMANCE` | `make perf`, filter/search scenarios | met — p95 ≤ 166 ms (limit 1 s), §2 |
-| `NFR-MODERATION-QUEUE-PERFORMANCE` | `make perf`, moderation scenarios | met — p95 ≤ 190 ms (limit 2 s), §2 |
-| `NFR-DASHBOARD-PERFORMANCE` | `make perf`, dashboard scenarios | met — p95 ≤ 68 ms (limit 2 s), §2 |
+| `NFR-GALLERY-PERFORMANCE` | `make perf`, gallery scenarios | met — p95 ≤ 49 ms (limit 2 s), §2 |
+| `NFR-SEARCH-PERFORMANCE` | `make perf`, filter/search scenarios | met — p95 ≤ 173 ms (limit 1 s), §2 |
+| `NFR-MODERATION-QUEUE-PERFORMANCE` | `make perf`, moderation scenarios | met — p95 ≤ 66 ms (limit 2 s), §2 |
+| `NFR-DASHBOARD-PERFORMANCE` | `make perf`, dashboard scenarios | met — p95 ≤ 99 ms (limit 2 s), §2 |
 | `NFR-ADMIN-OTP-BRUTEFORCE` | automated tests, §3.1 | met |
 | `NFR-VISITOR-OTP-BRUTEFORCE` | automated tests, §3.2 | met |
 | `NFR-CONTACT-CONFIDENTIALITY` | automated tests, §3.3 | met |
@@ -38,33 +38,39 @@ sent → full body received, measured by the client; percentiles are nearest-ran
 passes when every response is a 200 and its p95 is within the NFR. The full report is written
 to `target/perf/results.md`.
 
-**Run of 2026-10-07** — 12 CPUs, 3.9 GB heap, OpenJDK 21.0.12, Spring Boot 3.5.16, PostgreSQL
-16.14 in Docker Desktop (every SQL round trip crosses the VM boundary), client in the same JVM
-as the app. Dataset: 500 approved / 60 pending / 40 rejected testimonials, 40 countries (the
-largest, DE, has 108), 2420 sections (answers 305–1499 chars, avg 936), 3667 photo rows, 932
-encrypted contacts, 1543 achievement ticks. Run twice; the numbers agreed.
+**Run of 2026-10-11** (after the N+1 fix, decision 35) — 12 CPUs, 3.9 GB heap, OpenJDK
+21.0.12, Spring Boot 3.5.16, PostgreSQL 16.14 (Testcontainers, `fsync=off`) in Docker Desktop
+(every SQL round trip crosses the VM boundary), HikariCP pool of 10 as in production, client in
+the same JVM as the app. Dataset (same seed as the first run): 500 approved / 60 pending / 40
+rejected testimonials, 40 countries (the largest, DE, has 108), 2420 sections (answers 305–1499
+chars, avg 936), 3667 photo rows, 932 encrypted contacts, 1543 achievement ticks. Run twice;
+the numbers agreed. "SQL before" is the 2026-10-07 run of the previous code.
 
-| Scenario | Request | NFR (p95 ≤) | p95 sequential | p95 5 concurrent | SQL / request | Result |
-|---|---|---|---:|---:|---:|---|
-| Gallery page, first page | `/gallery` | GALLERY (2 s) | 82 ms | 67 ms | 110 | pass |
-| Gallery API, first page | `/api/gallery/testimonials` | GALLERY (2 s) | 44 ms | 57 ms | 106 | pass |
-| Filter: country | `?country=DE` | SEARCH (1 s) | 45 ms | 57 ms | 90 | pass |
-| Filter: topic group | `?groupIds=1` | SEARCH (1 s) | 55 ms | 51 ms | 91 | pass |
-| Filter: standalone topic | `?topicIds=28` | SEARCH (1 s) | 36 ms | 58 ms | 101 | pass |
-| Search: common word (500 hits) | `?q=campus` | SEARCH (1 s) | 75 ms | 166 ms | 106 | pass |
-| Search: rare word (3 hits) | `?q=kolam` | SEARCH (1 s) | 28 ms | 73 ms | 26 | pass |
-| Combined: country + group + search | API | SEARCH (1 s) | 86 ms | 129 ms | 82 | pass |
-| Combined, gallery page | `/gallery?…` | SEARCH (1 s) | 115 ms | 160 ms | 86 | pass |
-| Moderation queue page | `/moderation/queue` | MODERATION-QUEUE (2 s) | 113 ms | 190 ms | 348 | pass |
-| Moderation API, pending | `/api/moderation/testimonials/pending` | MODERATION-QUEUE (2 s) | 111 ms | 174 ms | 348 | pass |
-| Dashboard page | `/` | DASHBOARD (2 s) | 22 ms | 68 ms | 5 | pass |
-| Analytics API, summary | `/api/analytics/summary` | DASHBOARD (2 s) | 10 ms | 13 ms | 5 | pass |
+| Scenario | Request | NFR (p95 ≤) | p95 sequential | p95 5 concurrent | SQL / request | SQL before | Result |
+|---|---|---|---:|---:|---:|---:|---|
+| Gallery page, first page | `/gallery` | GALLERY (2 s) | 49 ms | 33 ms | 6 | 110 | pass |
+| Gallery API, first page | `/api/gallery/testimonials` | GALLERY (2 s) | 21 ms | 13 ms | 3 | 106 | pass |
+| Filter: country | `?country=DE` | SEARCH (1 s) | 23 ms | 11 ms | 3 | 90 | pass |
+| Filter: topic group | `?groupIds=1` | SEARCH (1 s) | 27 ms | 16 ms | 4 | 91 | pass |
+| Filter: standalone topic | `?topicIds=28` | SEARCH (1 s) | 21 ms | 13 ms | 4 | 101 | pass |
+| Search: common word (500 hits) | `?q=campus` | SEARCH (1 s) | 100 ms | 173 ms | 3 | 106 | pass |
+| Search: rare word (3 hits) | `?q=kolam` | SEARCH (1 s) | 60 ms | 66 ms | 2 | 26 | pass |
+| Combined: country + group + search | API | SEARCH (1 s) | 87 ms | 137 ms | 4 | 82 | pass |
+| Combined, gallery page | `/gallery?…` | SEARCH (1 s) | 100 ms | 167 ms | 7 | 86 | pass |
+| Moderation queue page | `/moderation/queue` | MODERATION-QUEUE (2 s) | 66 ms | 63 ms | 7 | 348 | pass |
+| Moderation API, pending | `/api/moderation/testimonials/pending` | MODERATION-QUEUE (2 s) | 28 ms | 29 ms | 7 | 348 | pass |
+| Dashboard page | `/` | DASHBOARD (2 s) | 40 ms | 99 ms | 5 | 5 | pass |
+| Analytics API, summary | `/api/analytics/summary` | DASHBOARD (2 s) | 20 ms | 25 ms | 5 | 5 | pass |
 
-All 26 measurements pass; the worst p95 is about a tenth of its limit. Two observations that
-are not misses: a page of 20 cards issues about 110 SQL statements and a moderation page about
-350 (one query per lazily loaded collection — `BACKLOG.md`), and the common-word search is the
-slowest public filter (an unindexed `LIKE '%word%'` over all section text, which grows with the
-amount of text). Only the default page size (20) and the first page were measured.
+All 26 measurements pass; the worst p95 is under a fifth of its limit. The statement count no
+longer depends on the page size: the gallery and moderation pages issue a fixed handful of
+queries (pinned by the `*SqlStatementsTest` tests). The machine was slower on this day than on
+2026-10-07 — the unchanged dashboard went from 22 to 40 ms — so the previous code was measured
+again on it for comparison (p95 sequential / concurrent): gallery page 158 / 160 ms, gallery API
+101 / 132 ms, moderation queue page 291 / 406 ms, moderation API 255 / 383 ms — the list pages
+are now 3–9× faster. The common-word search stays the slowest public filter (an unindexed
+`LIKE '%word%'` over all section text, which grows with the amount of text). Only the default
+page size (20) and the first page were measured.
 
 ## 3. Security and other NFRs
 
@@ -96,7 +102,7 @@ under `src/test/java/com/iitm/beacon/`.
 
 | Claim | Tests |
 |---|---|
-| Login email and every contact value stored as ciphertext (no plaintext or part of it in any column, IV + tag present, same value stored twice differs) | `domain/testimonial/ContactConfidentialityAtRestTest`, `ContactMethodRepositoryTest`, `TestimonialRepositoryTest`, `domain/PostgresMigrationParityTest` (round trip on PostgreSQL) |
+| Login email and every contact value stored as ciphertext (no plaintext or part of it in any column, IV + tag present, same value stored twice differs) | `domain/testimonial/ContactConfidentialityAtRestTest`, `ContactMethodRepositoryTest`, `TestimonialRepositoryTest`, `testsupport/SharedTestDatabaseTest` (longest email round trip) — all on PostgreSQL |
 | Unreadable without the key (wrong key, flipped bit, truncation, tampering) | `common/crypto/EncryptedValueConverterKeyTest`, `EncryptedValueConverterTest` |
 | No public response carries a contact value or login email (gallery list/detail, REST and pages, homepage, analytics, catalogs); searching for one finds nothing | `gallery/PublicResponsesHideContactsTest`, `GalleryControllerTest`, `GalleryViewControllerTest` |
 | Contacts revealed only one testimonial at a time, only its public ones, only if approved | `gallery/GalleryServiceRevealContactTest`, `gallery/GalleryContactRevealTest` |

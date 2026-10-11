@@ -111,7 +111,7 @@ class TestimonialRepositoryRetentionTest extends AbstractRepositoryTest {
         return testimonialRepository.saveAndFlush(t);
     }
 
-    // -- findByStatusAndRejectedAtBeforeOrderByIdAsc --
+    // -- findIdsByStatusAndRejectedAtBefore --
 
     @Test
     void findDue_returnsOnlyRejectedTestimonialsRejectedStrictlyBeforeTheCutoff_inIdOrder() {
@@ -123,10 +123,9 @@ class TestimonialRepositoryRetentionTest extends AbstractRepositoryTest {
         testimonial(TestimonialStatus.APPROVED, LONG_BEFORE);
         entityManager.clear();
 
-        List<Testimonial> due = testimonialRepository.findByStatusAndRejectedAtBeforeOrderByIdAsc(
-                TestimonialStatus.REJECTED, CUTOFF);
+        List<Long> due = testimonialRepository.findIdsByStatusAndRejectedAtBefore(TestimonialStatus.REJECTED, CUTOFF);
 
-        assertThat(due).extracting(Testimonial::getId).containsExactly(longAgo.getId(), justBefore.getId());
+        assertThat(due).containsExactly(longAgo.getId(), justBefore.getId());
     }
 
     /** No rejection time is no evidence of an old rejection: such a row is never due. */
@@ -134,16 +133,16 @@ class TestimonialRepositoryRetentionTest extends AbstractRepositoryTest {
     void findDue_rejectedWithoutARejectionTime_isNotDue() {
         testimonial(TestimonialStatus.REJECTED, null);
 
-        assertThat(testimonialRepository.findByStatusAndRejectedAtBeforeOrderByIdAsc(
-                TestimonialStatus.REJECTED, CUTOFF)).isEmpty();
+        assertThat(testimonialRepository.findIdsByStatusAndRejectedAtBefore(TestimonialStatus.REJECTED, CUTOFF))
+                .isEmpty();
     }
 
     @Test
     void findDue_nothingDue_returnsAnEmptyList() {
         testimonial(TestimonialStatus.REJECTED, CUTOFF.plus(1, ChronoUnit.DAYS));
 
-        assertThat(testimonialRepository.findByStatusAndRejectedAtBeforeOrderByIdAsc(
-                TestimonialStatus.REJECTED, CUTOFF)).isEmpty();
+        assertThat(testimonialRepository.findIdsByStatusAndRejectedAtBefore(TestimonialStatus.REJECTED, CUTOFF))
+                .isEmpty();
     }
 
     // -- deleteByIdAndStatusAndRejectedAtBefore --

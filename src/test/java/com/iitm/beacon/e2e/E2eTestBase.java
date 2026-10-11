@@ -9,6 +9,7 @@ import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.CDPSession;
+import com.microsoft.playwright.Clock;
 import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
@@ -39,7 +40,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
  * Base class for browser end-to-end tests: the real application on a random
- * port (test configuration, H2) driven by headless Chromium through
+ * port (test configuration, the shared PostgreSQL test database) driven by
+ * headless Chromium through
  * Playwright. A test drives a page into a state and asserts only with
  * screenshots, compared against baselines by {@link ScreenshotAssert}.
  *
@@ -50,15 +52,30 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  * <p>One Chromium per test class; every {@link #openPage(DevicePreset)}
  * creates a fresh, isolated browser context, closed after the test. Every
  * test starts with no testimonials ({@link E2eData#clear()}): all e2e
- * classes share one Spring context and one in-memory H2 database. OTP codes
+ * classes share one Spring context and one database. OTP codes
  * are captured from a mocked {@link OtpMailer} by the login helpers.
+ *
+ * <p>The test configuration allows 1000 code requests per email a minute, so
+ * a test may log in as often as it needs. Here that is 1000 per 1000 minutes:
+ * the same 1000 requests are available at once (the rate limiter starts
+ * full), while the code pages' "Resend code" waits the window over the limit
+ * — 60 s, as with the shipped one request a minute — rather than 1 s.
  */
 @Tag("e2e")
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = {
+            "visitor.otp.request-window-per-email=PT1000M",
+            "admin.otp.request-window-per-email=PT1000M"
+        })
 @Import(E2eData.class)
 public abstract class E2eTestBase {
 
     private static final double ACTION_TIMEOUT_MS = 10_000;
+
+    /** Where {@link #pauseClock()} starts the page's clock, and the moment it then stops it at. */
+    private static final String CLOCK_START = "2026-01-01T09:00:00Z";
+    private static final String CLOCK_PAUSED_AT = "2026-01-01T10:00:00Z";
 
     /** Nothing moves, fades or blinks while a screenshot is taken. */
     private static final String STABILIZING_CSS = """
@@ -173,6 +190,19 @@ public abstract class E2eTestBase {
 
     protected void navigate(String path) {
         currentPage.navigate(url(path));
+    }
+
+    /**
+     * Stops the clock (time and timers) of the current page's browser
+     * context, from now on and in every page it opens after this — until a
+     * test moves it on with {@code page().clock().runFor(…)}, or {@code
+     * resume()}s it. Whatever counts down by it, like the code pages'
+     * "Resend code", holds still for a screenshot. Call it before opening
+     * the page whose clock should stand still.
+     */
+    protected void pauseClock() {
+        currentPage.clock().install(new Clock.InstallOptions().setTime(CLOCK_START));
+        currentPage.clock().pauseAt(CLOCK_PAUSED_AT);
     }
 
     protected E2eData data() {

@@ -60,7 +60,7 @@ their UUID name, so `/uploads/**` answers `Cache-Control: max-age=31536000, priv
 (a missing one `no-store`) — `private`, so no shared cache keeps a deleted photo (decision 34).
 
 **Rationale:** Filesystem storage matches a lightweight, containerized deployment target and
-avoids bloating Postgres/H2 with binary data — simpler than external object storage for MVP
+avoids bloating Postgres with binary data — simpler than external object storage for MVP
 scope. Attaching photos to the specific section they illustrate (rather than to one
 undifferentiated pile per testimonial) is both a better authoring experience and gives every
 photo a meaningful topic tag for free; the free-form tag then lets the submitter add finer
@@ -452,7 +452,7 @@ until `SubmissionService` exists; this is the only red check in the whole suite 
 decision. Separately, introducing the `SecurityConfigLocationTest` rule surfaced a real
 contradiction in this file's sibling `architecture.md` §3 (the `config/` bullet said Spring
 Security config belongs there; the `adminauth/` bullet listed `SecurityConfig` as one of its own
-files) — resolved by moving `SecurityConfig` (and its `H2ConsoleSecurityTest`) from `adminauth` to
+files) — resolved by moving `SecurityConfig` (and its tests) from `adminauth` to
 `config`, matching `architecture.md`'s `config/` description, and correcting the `adminauth/`
 bullet. All findings from Checkstyle/SpotBugs' first real run were fixed immediately rather than
 left as debt: `make fix` handled the mechanical import issues; 7 over-length lines were rewrapped
@@ -785,7 +785,8 @@ compose service `e2e` (profile `tools`), built from `Dockerfile.e2e` — the
 `pom.xml`, with the project's Temurin 21 JDK copied in — started by `make e2e`;
 `make e2e-update-screenshots` (re)writes the baselines that are missing or out of tolerance.
 Surefire excludes the `e2e` tag by default, and the Maven profile `e2e` runs only that tag.
-`E2eTestBase` boots the real app on a random port (test configuration, H2), captures OTP codes
+`E2eTestBase` boots the real app on a random port (test configuration, PostgreSQL 16 through
+Testcontainers — decision 35), captures OTP codes
 from a mocked `OtpMailer`, and opens isolated desktop (1280×800) or mobile (390×844, touch)
 browser contexts with a pinned locale, time zone and colour scheme. A test drives the page into
 a state (clicks, keys, swipes) and asserts only with a screenshot — no hard-coded colours,
@@ -1025,7 +1026,7 @@ Thymeleaf adds to every `<form method="post">` that uses `th:action` (a guard te
 form on `th:action`). The masked token is refused in the header, and a blank header is refused
 even with a valid field. The token is renewed at every login (decision 23). A CSRF failure is
 a 403 with no side effect and never a login redirect — the JSON "Access denied" under `/api/**`,
-the HTML error page on a page (decision 33) — with the one exception below. The dev-only H2 console is exempt. `JSESSIONID` is
+the HTML error page on a page (decision 33) — with the one exception below. `JSESSIONID` is
 `SameSite=Lax` too (`server.servlet.session.cookie.same-site`).
 
 The multipart submission form posts its `_csrf` in the multipart body. Because the CSRF check
@@ -1120,9 +1121,10 @@ plain http. Five settings make that safe (M7 security review, `security-review.m
   'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self';
   connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors
   'self'` — with `'unsafe-eval'` and `img-src blob:` added only on `/submissions/form` (Alpine's
-  expressions and the photo picker's previews); and `Referrer-Policy: same-origin`. Templates
+  expressions and the photo picker's previews); `Referrer-Policy: same-origin`; and, site-wide,
+  `X-Frame-Options: SAMEORIGIN`, the older browsers' form of `frame-ancestors 'self'`. Templates
   have no inline scripts, styles or event handlers (score colours are `score-N` classes, the
-  no-JavaScript styles `noscript.css`), guarded by a test. The dev-only H2 console has no CSP.
+  no-JavaScript styles `noscript.css`), guarded by a test.
 - **Asset caching.** CSS and JavaScript are linked through content-versioned URLs
   (`/css/beacon-<md5>.css`, Spring's resource chain; templates use `@{...}`) and WebJars through
   their versioned paths; those answer `Cache-Control: max-age=31536000, private, immutable`.
@@ -1141,3 +1143,69 @@ that no template relies on inline code; `'unsafe-eval'` stays confined to the on
 runs Alpine. Versioned, long-cached assets stop phones from re-downloading the stylesheet and
 scripts on every page.
 
+
+## 35. PostgreSQL only; pages read through per-level queries
+
+**Decision:** PostgreSQL 16 is the only database, in every environment. H2 is removed (the
+driver, the dev file database and the dev-only H2 console with its `SecurityConfig`
+exemptions). The test suite runs on one shared PostgreSQL 16 container per test JVM
+(Testcontainers): every Spring context uses its database `beacon_test`
+(`testsupport.SharedTestDatabase`), a class may name a database of its own
+(`testsupport.PostgresContainerSupport`), and a migration test migrates a fresh empty one. The
+`dev` profile names no database: `./mvnw spring-boot:test-run -Dspring-boot.run.profiles=dev`
+starts the app through `TestBeaconApplication` on a throwaway container. `make e2e` reaches
+Docker from its container through the mounted Docker socket. So `./mvnw test`, the dev run and
+`make e2e` all need Docker.
+
+A page or operation costs a fixed number of SQL statements, whatever the number of
+testimonials, sections, photos, tags, contacts or achievement ticks it touches:
+- **Read paths** (gallery list, card covers, filter, article, contact reveal, topic catalogs,
+  moderation queue and API, the visitor's own testimonial) never walk lazy associations. They
+  run dedicated queries returning projection records (`domain.testimonial`: `TestimonialSummary`,
+  `TestimonialHeader`, `VisibleSection`, `TestimonialCover`, `SectionPhoto`, `PhotoTagText`,
+  `ContactMethodValue`; `domain.achievement.AchievementTick`) — one query per nesting level,
+  keyed by the list of parent ids — and the slice's service assembles its DTOs. The gallery's
+  filters stay a `Specification`, driving a projection page. Encrypted columns are selected
+  through JPQL only, so `EncryptedValueConverter` decrypts them; native SQL (the card cover's
+  `DISTINCT ON`) never touches them.
+- **Write paths** (approve, the retention purge, catalog deletes and re-pending, submission
+  create/edit) keep the entities they change but load them with `JOIN FETCH`/`IN` queries; only
+  the per-row inserts, updates and deletes grow with the data. The purge keeps its per-testimonial
+  conditional delete (decision 3).
+- Collections that had no defined order now have one: photos and contacts in display order,
+  achievement ticks in catalog order, a visitor's own sections in display order, tags in the
+  order they were added; pending testimonials created at the same instant by id; and, on a tied
+  display order, topic groups before standalone topics.
+- Tests (`*SqlStatementsTest`, counting statements with `testsupport.SqlStatementCounter`) pin
+  each operation: the count for one item equals the count for many.
+
+**Rationale:** Lazy loading cost about 110 statements per gallery page and 350 per moderation
+page (M7 performance pass), growing with the page size the API allows up to 100. Per-page queries
+bring them to 3–7 (`nfr-verification.md` §2) and the gallery and moderation pages answer 3–9×
+faster. With PostgreSQL the only database, tests run on what production runs — the
+H2-vs-PostgreSQL parity test is gone — and queries may use PostgreSQL features. Testcontainers
+needs no setup beyond Docker, which the project already requires.
+
+## 36. "Resend code" waits out the per-email request limit in the browser
+
+**Decision:** On both login code pages (visitor and admin) "Resend code" can't be pressed until
+the server would accept one more per-email code request. `static/js/resend-cooldown.js` disables
+the button on page load, counts down in its label ("Resend code in 59s") and enables it again at
+zero. The wait is the actor's `request-window-per-email / request-limit-per-email`, in whole
+seconds rounded up (60 s with the defaults); the server computes it (`common.otp.OtpResendWait`)
+and renders it as the button's `data-resend-wait-seconds`. A reload, a back/forward-cache
+restore or a wrong code (whose answer re-renders the page) starts it over; without JavaScript
+the button works as before.
+
+The server's limits and responses are unchanged. In particular the visitor's login
+(`SubmissionViewController`, email step and resend) is an exception to decision 21: it does not
+catch `TooManyRequestsException`, so a request that bypasses the page still gets the HTML 429
+error page (decision 33). The admin's login keeps its inline error.
+
+**Rationale:** The page no longer offers a request the server would refuse, so a visitor doesn't
+run into the limit by simply pressing "Resend code". Rendering the visitor's code page instead
+of the 429 would echo the typed email and a per-session CSRF token, making the rate-limited
+answer differ between emails and break NFR-VISITOR-OTP-BRUTEFORCE's "indistinguishable"
+guarantee; a plain 429 is the same for every email. The admin's page has no such requirement to
+meet (its code page already shows the typed email conditionally), so it keeps decision 21's
+inline error.

@@ -3,14 +3,14 @@ package com.iitm.beacon.domain.contacttype;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import com.iitm.beacon.testsupport.PostgresContainerSupport;
+import com.iitm.beacon.testsupport.PostgresContainerSupport.Database;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.flywaydb.core.Flyway;
@@ -26,7 +26,7 @@ import org.junit.jupiter.params.provider.ValueSource;
  * V17 ({@code contact_type.value_pattern}, decision 5): every seeded type
  * gets its validation pattern — stored without {@code ^}/{@code $}, matched
  * against the whole (trimmed) value — and a type added by hand is left with
- * none. Same private-in-memory-H2 approach as {@link
+ * none. Same fresh-database-of-its-own approach as {@link
  * ContactTypeNameMigrationTest}, so the shared test database is never
  * migrated twice.
  *
@@ -46,13 +46,9 @@ class ContactTypeValuePatternMigrationTest {
 
     private static final Map<String, String> MIGRATED_PATTERNS = new HashMap<>();
 
-    private static String freshDatabaseUrl() {
-        return "jdbc:h2:mem:v17-" + UUID.randomUUID() + ";MODE=PostgreSQL;NON_KEYWORDS=VALUE;DB_CLOSE_DELAY=-1";
-    }
-
-    private static Flyway flywayUpTo(String url, String version) {
+    private static Flyway flywayUpTo(Database database, String version) {
         return Flyway.configure()
-                .dataSource(url, "sa", "")
+                .dataSource(database.url(), database.username(), database.password())
                 .locations("classpath:db/migration")
                 .target(MigrationVersion.fromVersion(version))
                 .load();
@@ -69,9 +65,9 @@ class ContactTypeValuePatternMigrationTest {
 
     @BeforeAll
     static void migrateOnceAndReadTheSeededPatterns() throws Exception {
-        String url = freshDatabaseUrl();
-        flywayUpTo(url, "17").migrate();
-        try (Connection connection = DriverManager.getConnection(url, "sa", "")) {
+        Database database = PostgresContainerSupport.freshDatabase();
+        flywayUpTo(database, "17").migrate();
+        try (Connection connection = database.connect()) {
             for (String slug : EXPECTED_PATTERNS.keySet()) {
                 MIGRATED_PATTERNS.put(slug, patternOf(connection, slug));
             }
@@ -170,17 +166,17 @@ class ContactTypeValuePatternMigrationTest {
 
     @Test
     void v17_handAddedContactTypeWithUnknownSlug_keepsANullPatternAndDoesNotBlockTheMigration() throws Exception {
-        String url = freshDatabaseUrl();
-        flywayUpTo(url, "16").migrate();
-        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+        Database database = PostgresContainerSupport.freshDatabase();
+        flywayUpTo(database, "16").migrate();
+        try (Connection connection = database.connect();
                 Statement statement = connection.createStatement()) {
             statement.executeUpdate("INSERT INTO contact_type (slug, name, label, display_order)"
                     + " VALUES ('signal', 'Signal', 'phone number', 6)");
         }
 
-        flywayUpTo(url, "17").migrate();
+        flywayUpTo(database, "17").migrate();
 
-        try (Connection connection = DriverManager.getConnection(url, "sa", "")) {
+        try (Connection connection = database.connect()) {
             assertThat(patternOf(connection, "signal")).isNull();
             assertThat(patternOf(connection, "email")).isEqualTo(EXPECTED_PATTERNS.get("email"));
         }
@@ -188,10 +184,10 @@ class ContactTypeValuePatternMigrationTest {
 
     @Test
     void v17_afterwardsATypeWithoutAPatternCanStillBeAddedByHand() throws Exception {
-        String url = freshDatabaseUrl();
-        flywayUpTo(url, "17").migrate();
+        Database database = PostgresContainerSupport.freshDatabase();
+        flywayUpTo(database, "17").migrate();
 
-        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+        try (Connection connection = database.connect();
                 Statement statement = connection.createStatement()) {
             statement.executeUpdate("INSERT INTO contact_type (slug, name, label, display_order)"
                     + " VALUES ('matrix', 'Matrix', '@user:server', 7)");

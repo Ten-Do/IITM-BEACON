@@ -12,13 +12,17 @@ import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.config.PhotoStorageProperties;
 import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
+import com.iitm.beacon.domain.achievement.TestimonialAchievementRepository;
 import com.iitm.beacon.domain.contacttype.ContactTypeRepository;
 import com.iitm.beacon.domain.country.CountryRepository;
+import com.iitm.beacon.domain.testimonial.ContactMethodRepository;
 import com.iitm.beacon.domain.testimonial.Photo;
+import com.iitm.beacon.domain.testimonial.PhotoRepository;
+import com.iitm.beacon.domain.testimonial.PhotoTagRepository;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
-import com.iitm.beacon.domain.topic.TopicGroupRepository;
+import com.iitm.beacon.domain.testimonial.TestimonialSectionRepository;
 import com.iitm.beacon.domain.topic.TopicRepository;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.PhotoInput;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.SectionInput;
@@ -67,10 +71,22 @@ class SubmissionServicePhotoFilesTransactionTest {
     private TestimonialRepository testimonialRepository;
 
     @Autowired
-    private TopicRepository topicRepository;
+    private TestimonialSectionRepository testimonialSectionRepository;
 
     @Autowired
-    private TopicGroupRepository topicGroupRepository;
+    private PhotoRepository photoRepository;
+
+    @Autowired
+    private PhotoTagRepository photoTagRepository;
+
+    @Autowired
+    private ContactMethodRepository contactMethodRepository;
+
+    @Autowired
+    private TestimonialAchievementRepository testimonialAchievementRepository;
+
+    @Autowired
+    private TopicRepository topicRepository;
 
     @Autowired
     private AchievementRepository achievementRepository;
@@ -288,6 +304,11 @@ class SubmissionServicePhotoFilesTransactionTest {
         PhotoStorageProperties properties = TestPhotoStorage.properties(uploadsRoot);
         return new SubmissionService(
                 repository,
+                testimonialSectionRepository,
+                photoRepository,
+                photoTagRepository,
+                contactMethodRepository,
+                testimonialAchievementRepository,
                 topicRepository,
                 achievementRepository,
                 contactTypeRepository,
@@ -300,7 +321,6 @@ class SubmissionServicePhotoFilesTransactionTest {
                         new PhotoFileDeleter(properties)),
                 properties,
                 clock,
-                topicGroupRepository,
                 validator);
     }
 

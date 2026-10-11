@@ -7,11 +7,10 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 
 /**
  * Shared base for every repository test. {@code Replace.NONE} is essential:
- * without it, {@code @DataJpaTest}'s own auto-configuration silently swaps in
- * a default embedded H2 datasource that ignores the custom
- * {@code NON_KEYWORDS=VALUE;MODE=PostgreSQL} URL from
- * src/test/resources/application.yml, reintroducing the H2/Postgres
- * portability problems that URL exists to fix.
+ * without it, {@code @DataJpaTest}'s own auto-configuration tries to swap
+ * in an embedded database instead of the shared PostgreSQL test database
+ * every test context runs on ({@code testsupport.SharedTestDatabase}) — and
+ * fails, as the project has no embedded database.
  *
  * <p>{@code @DataJpaTest}'s type-exclude filter also drops beans discovered
  * purely via {@code @ConfigurationPropertiesScan} (like {@link

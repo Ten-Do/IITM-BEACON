@@ -7,6 +7,7 @@ import com.iitm.beacon.domain.achievement.AchievementRepository;
 import com.iitm.beacon.domain.achievement.TestimonialAchievementRepository;
 import com.iitm.beacon.domain.country.CountryRepository;
 import com.iitm.beacon.domain.testimonial.Photo;
+import com.iitm.beacon.domain.testimonial.PhotoRepository;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSectionRepository;
@@ -61,6 +62,9 @@ class CatalogAdminServicePhotoFilesTest {
     private TestimonialRepository testimonialRepository;
 
     @Autowired
+    private PhotoRepository photoRepository;
+
+    @Autowired
     private CountryRepository countryRepository;
 
     @Autowired
@@ -86,6 +90,7 @@ class CatalogAdminServicePhotoFilesTest {
                 testimonialRepository,
                 testimonialSectionRepository,
                 testimonialAchievementRepository,
+                photoRepository,
                 new PhotoFileDeleter(TestPhotoStorage.properties(uploadsRoot)));
         fixtures = new CatalogFixtures(
                 topicGroupRepository, topicRepository, achievementRepository, testimonialRepository,

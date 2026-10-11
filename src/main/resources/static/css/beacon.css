@@ -3116,6 +3116,19 @@ button.catalog-pill:not([aria-busy="true"]):active,
   }
 }
 
+/* "Resend code" while it waits out the code request limit
+   (static/js/resend-cooldown.js disables it): dimmed, and no hover or press
+   effect. After the hover and press rules: same specificity, so this wins. */
+.auth-btn-ghost:disabled,
+.auth-btn-ghost:disabled:hover,
+.auth-btn-ghost:disabled:active {
+  background: transparent;
+  color: var(--ink-soft);
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Busy: a progress cursor, and a small spinner after the label, turning
    like the reveal button's — which keeps its own, at its left edge. */
 button[aria-busy="true"] {

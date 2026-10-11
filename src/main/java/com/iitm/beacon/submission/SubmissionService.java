@@ -8,21 +8,30 @@ import com.iitm.beacon.common.error.TestimonialAlreadyExistsException;
 import com.iitm.beacon.config.PhotoStorageProperties;
 import com.iitm.beacon.domain.achievement.Achievement;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
+import com.iitm.beacon.domain.achievement.AchievementTick;
 import com.iitm.beacon.domain.achievement.TestimonialAchievement;
+import com.iitm.beacon.domain.achievement.TestimonialAchievementRepository;
 import com.iitm.beacon.domain.contacttype.ContactType;
 import com.iitm.beacon.domain.contacttype.ContactTypeRepository;
 import com.iitm.beacon.domain.country.Country;
 import com.iitm.beacon.domain.country.CountryRepository;
 import com.iitm.beacon.domain.testimonial.ContactMethod;
+import com.iitm.beacon.domain.testimonial.ContactMethodRepository;
 import com.iitm.beacon.domain.testimonial.Photo;
+import com.iitm.beacon.domain.testimonial.PhotoRepository;
 import com.iitm.beacon.domain.testimonial.PhotoTag;
+import com.iitm.beacon.domain.testimonial.PhotoTagRepository;
+import com.iitm.beacon.domain.testimonial.PhotoTagText;
+import com.iitm.beacon.domain.testimonial.SectionPhoto;
 import com.iitm.beacon.domain.testimonial.Testimonial;
+import com.iitm.beacon.domain.testimonial.TestimonialHeader;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
+import com.iitm.beacon.domain.testimonial.TestimonialSectionRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
+import com.iitm.beacon.domain.testimonial.VisibleSection;
 import com.iitm.beacon.domain.topic.Topic;
 import com.iitm.beacon.domain.topic.TopicGroup;
-import com.iitm.beacon.domain.topic.TopicGroupRepository;
 import com.iitm.beacon.domain.topic.TopicRepository;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.ContactMethodInput;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.PhotoInput;
@@ -33,8 +42,6 @@ import java.time.Instant;
 import java.time.Year;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -43,7 +50,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.BiPredicate;
+import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -58,6 +67,11 @@ import org.springframework.web.multipart.MultipartFile;
  * Core service for the write side of the {@code submission} slice
  * (UC-CREATE-TESTIMONIAL, UC-EDIT-TESTIMONIAL, decision 18) and for routing a
  * just-verified visitor to create vs. edit (UC-VISITOR-LOGIN, decision 6).
+ *
+ * <p>None of it costs more queries for a bigger testimonial (BL-049): the
+ * visitor's own testimonial is read one level at a time — as projections
+ * to show it, as entities to edit it — and the topics, contact types and
+ * achievements a submission names are each looked up in one query.
  */
 @Service
 public class SubmissionService {
@@ -68,8 +82,12 @@ public class SubmissionService {
             "Photos need some text — write something here, or remove the photos.";
 
     private final TestimonialRepository testimonialRepository;
+    private final TestimonialSectionRepository testimonialSectionRepository;
+    private final PhotoRepository photoRepository;
+    private final PhotoTagRepository photoTagRepository;
+    private final ContactMethodRepository contactMethodRepository;
+    private final TestimonialAchievementRepository testimonialAchievementRepository;
     private final TopicRepository topicRepository;
-    private final TopicGroupRepository topicGroupRepository;
     private final AchievementRepository achievementRepository;
     private final ContactTypeRepository contactTypeRepository;
     private final CountryRepository countryRepository;
@@ -81,6 +99,11 @@ public class SubmissionService {
 
     public SubmissionService(
             TestimonialRepository testimonialRepository,
+            TestimonialSectionRepository testimonialSectionRepository,
+            PhotoRepository photoRepository,
+            PhotoTagRepository photoTagRepository,
+            ContactMethodRepository contactMethodRepository,
+            TestimonialAchievementRepository testimonialAchievementRepository,
             TopicRepository topicRepository,
             AchievementRepository achievementRepository,
             ContactTypeRepository contactTypeRepository,
@@ -89,9 +112,13 @@ public class SubmissionService {
             PhotoStorageService photoStorageService,
             PhotoStorageProperties photoStorageProperties,
             Clock clock,
-            TopicGroupRepository topicGroupRepository,
             Validator validator) {
         this.testimonialRepository = testimonialRepository;
+        this.testimonialSectionRepository = testimonialSectionRepository;
+        this.photoRepository = photoRepository;
+        this.photoTagRepository = photoTagRepository;
+        this.contactMethodRepository = contactMethodRepository;
+        this.testimonialAchievementRepository = testimonialAchievementRepository;
         this.topicRepository = topicRepository;
         this.achievementRepository = achievementRepository;
         this.contactTypeRepository = contactTypeRepository;
@@ -100,7 +127,6 @@ public class SubmissionService {
         this.photoStorageService = photoStorageService;
         this.photoStorageProperties = photoStorageProperties;
         this.clock = clock;
-        this.topicGroupRepository = topicGroupRepository;
         this.validator = validator;
     }
 
@@ -172,22 +198,31 @@ public class SubmissionService {
      * write about any active topic, not just ones already covered by an
      * approved testimonial. An active group left with zero active subtopics
      * is still dropped (nothing to fill in), same reasoning as the gallery
-     * side just substituting "active" for "has an approved testimonial".
+     * side just substituting "active" for "has an approved testimonial". The
+     * topics come with their groups in one query; entries of equal top-level
+     * display order keep the groups first, by id, then the standalone
+     * topics, by id.
      */
     @Transactional(readOnly = true)
     public List<TopicCatalogEntryDto> listTopicCatalog() {
-        List<Topic> allTopics = topicRepository.findAll();
-        Map<Long, List<Topic>> topicsByGroupId = allTopics.stream()
-                .filter(t -> t.getTopicGroup() != null)
-                .collect(Collectors.groupingBy(t -> t.getTopicGroup().getId()));
+        List<Topic> allTopics = topicRepository.findAllWithTopicGroupOrderById();
+        Map<Long, TopicGroup> groupsById = new TreeMap<>();
+        Map<Long, List<Topic>> topicsByGroupId = new TreeMap<>();
+        for (Topic topic : allTopics) {
+            TopicGroup group = topic.getTopicGroup();
+            if (group != null) {
+                groupsById.put(group.getId(), group);
+                topicsByGroupId.computeIfAbsent(group.getId(), groupId -> new ArrayList<>()).add(topic);
+            }
+        }
 
         List<OrderedCatalogEntry> entries = new ArrayList<>();
 
-        for (TopicGroup group : topicGroupRepository.findAll()) {
+        for (TopicGroup group : groupsById.values()) {
             if (!group.isActive()) {
                 continue;
             }
-            List<TopicPickDto> subtopics = topicsByGroupId.getOrDefault(group.getId(), List.of()).stream()
+            List<TopicPickDto> subtopics = topicsByGroupId.get(group.getId()).stream()
                     .filter(Topic::isVisible)
                     .sorted(Comparator.comparing(Topic::getDisplayOrder))
                     .map(t -> new TopicPickDto(t.getId(), t.getSlug(), t.getLabel(), t.getGuidingPrompt()))
@@ -317,56 +352,70 @@ public class SubmissionService {
         return new SubmissionResultResponse(saved.getId(), saved.getStatus());
     }
 
-    /** Loads the visitor's own testimonial for editing (UC-EDIT-TESTIMONIAL). */
+    /**
+     * The visitor's own testimonial as the edit form and {@code GET
+     * /submissions/mine} show it (UC-EDIT-TESTIMONIAL): only sections of
+     * visible topics, in display order, and ticks of visible achievements
+     * (decision 28) — {@link #edit} leaves the hidden ones untouched. Read
+     * one level at a time: the testimonial, its sections, their photos, the
+     * photos' tags, its achievement ticks, its contact methods.
+     */
     @Transactional(readOnly = true)
     public TestimonialSubmissionView loadMine(String email) {
         String hash = emailLookupHashService.hash(email);
-        Testimonial testimonial = testimonialRepository
-                .findByEmailLookupHash(hash)
+        TestimonialHeader header = testimonialRepository
+                .findHeaderByEmailLookupHash(hash)
                 .orElseThrow(() -> new NotFoundException("No testimonial exists yet for this visitor."));
-        return toView(testimonial);
-    }
-
-    /**
-     * The author's own testimonial as the edit form and {@code GET
-     * /submissions/mine} show it: only sections of visible topics and ticks
-     * of visible achievements (decision 28) — {@link #edit} leaves the
-     * hidden ones untouched.
-     */
-    private TestimonialSubmissionView toView(Testimonial testimonial) {
-        List<TestimonialSubmissionView.SectionView> sections = testimonial.getSections().stream()
-                .filter(SubmissionService::isVisible)
+        List<Long> ids = List.of(header.id());
+        List<VisibleSection> sections = testimonialSectionRepository.findVisibleByTestimonialIdIn(ids);
+        Map<Long, List<TestimonialSubmissionView.PhotoRef>> photosBySectionId = photosBySectionId(sections);
+        List<TestimonialSubmissionView.SectionView> sectionViews = sections.stream()
                 .map(section -> new TestimonialSubmissionView.SectionView(
-                        section.getTopic().getSlug(),
-                        section.getAnswerText(),
-                        section.getPhotos().stream()
-                                .map(photo -> new TestimonialSubmissionView.PhotoRef(
-                                        photoStorageService.urlFor(photo.getFilePath()),
-                                        photo.getTags().stream()
-                                                .map(PhotoTag::getTagText)
-                                                .toList()))
-                                .toList()))
+                        section.topicSlug(),
+                        section.answerText(),
+                        photosBySectionId.getOrDefault(section.id(), List.of())))
                 .toList();
-        List<String> achievementSlugs = testimonial.getAchievements().stream()
-                .map(TestimonialAchievement::getAchievement)
-                .filter(Achievement::isVisible)
-                .map(Achievement::getSlug)
+        List<String> achievementSlugs = testimonialAchievementRepository.findVisibleTicksByTestimonialIdIn(ids).stream()
+                .map(AchievementTick::slug)
                 .toList();
-        List<TestimonialSubmissionView.ContactMethodView> contactMethods = testimonial.getContactMethods().stream()
-                .map(cm -> new TestimonialSubmissionView.ContactMethodView(
-                        cm.getContactType().getSlug(), cm.getValue(), cm.isPublic()))
-                .toList();
+        List<TestimonialSubmissionView.ContactMethodView> contactMethods =
+                contactMethodRepository.findValuesByTestimonialIdIn(ids).stream()
+                        .map(cm -> new TestimonialSubmissionView.ContactMethodView(
+                                cm.typeSlug(), cm.value(), cm.isPublic()))
+                        .toList();
         return new TestimonialSubmissionView(
-                testimonial.getFirstName(),
-                testimonial.getLastName(),
-                testimonial.getRollNumber(),
-                testimonial.getAdmissionYear(),
-                testimonial.getCountry().getCode(),
-                testimonial.getRecommendationScore(),
-                sections,
+                header.firstName(),
+                header.lastName(),
+                header.rollNumber(),
+                header.admissionYear(),
+                header.countryCode(),
+                header.recommendationScore(),
+                sectionViews,
                 achievementSlugs,
                 contactMethods,
-                testimonial.isDataProcessingConsent());
+                header.dataProcessingConsent());
+    }
+
+    /** The sections' photos in display order, each with its url and tags, by section id. */
+    private Map<Long, List<TestimonialSubmissionView.PhotoRef>> photosBySectionId(List<VisibleSection> sections) {
+        if (sections.isEmpty()) {
+            return Map.of();
+        }
+        List<SectionPhoto> photos =
+                photoRepository.findSectionPhotosBySectionIdIn(sections.stream().map(VisibleSection::id).toList());
+        Map<Long, List<String>> tagsByPhotoId = photos.isEmpty()
+                ? Map.of()
+                : photoTagRepository.findTextsByPhotoIdIn(photos.stream().map(SectionPhoto::id).toList()).stream()
+                        .collect(Collectors.groupingBy(
+                                PhotoTagText::photoId,
+                                Collectors.mapping(PhotoTagText::tagText, Collectors.toList())));
+        return photos.stream().collect(Collectors.groupingBy(
+                SectionPhoto::sectionId,
+                Collectors.mapping(
+                        photo -> new TestimonialSubmissionView.PhotoRef(
+                                photoStorageService.urlFor(photo.filePath()),
+                                tagsByPhotoId.getOrDefault(photo.id(), List.of())),
+                        Collectors.toList())));
     }
 
     /**
@@ -393,8 +442,9 @@ public class SubmissionService {
             UnaryOperator<List<FieldViolation>> reportAs) {
         String hash = emailLookupHashService.hash(email);
         Testimonial testimonial = testimonialRepository
-                .findByEmailLookupHash(hash)
+                .findWithSectionTopicsByEmailLookupHash(hash)
                 .orElseThrow(() -> new NotFoundException("No testimonial exists yet for this visitor."));
+        loadForEdit(testimonial);
 
         List<FieldViolation> violations = new ArrayList<>();
         ValidatedRefs refs = validateCommonRules(req, violations);
@@ -513,6 +563,25 @@ public class SubmissionService {
 
         Testimonial saved = testimonialRepository.save(testimonial);
         return new SubmissionResultResponse(saved.getId(), saved.getStatus());
+    }
+
+    /**
+     * Loads the rest of what {@link #edit} compares or replaces — the
+     * sections came with their topics already — one level at a time: the
+     * sections' photos, the photos' tags, the contact methods, the
+     * achievement ticks with their achievements. The queries' results are
+     * not needed: each fills the collections of entities already in this
+     * persistence context, so walking them — and the orphan removals at
+     * flush — cost no further statement.
+     */
+    private void loadForEdit(Testimonial testimonial) {
+        List<Long> sectionIds = testimonial.getSections().stream().map(TestimonialSection::getId).toList();
+        if (!sectionIds.isEmpty()) {
+            testimonialSectionRepository.findWithPhotosByIdIn(sectionIds);
+            photoRepository.findWithTagsBySectionIdIn(sectionIds);
+        }
+        testimonialRepository.findWithContactMethodsById(testimonial.getId());
+        testimonialRepository.findWithAchievementsById(testimonial.getId());
     }
 
     /**
@@ -730,15 +799,16 @@ public class SubmissionService {
         return country;
     }
 
+    /** The ticked achievements, each once, in the order first ticked — all looked up in one query. */
     private List<Achievement> resolveAchievements(List<String> slugs, List<FieldViolation> violations) {
+        Set<String> distinctSlugs = new LinkedHashSet<>(slugs);
+        Map<String, Achievement> bySlug = distinctSlugs.isEmpty()
+                ? Map.of()
+                : achievementRepository.findBySlugIn(distinctSlugs).stream()
+                        .collect(Collectors.toMap(Achievement::getSlug, Function.identity()));
         List<Achievement> result = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
-        for (String slug : slugs) {
-            if (!seen.add(slug)) {
-                continue;
-            }
-            achievementRepository
-                    .findBySlug(slug)
+        for (String slug : distinctSlugs) {
+            Optional.ofNullable(bySlug.get(slug))
                     .filter(Achievement::isVisible)
                     .ifPresentOrElse(
                             result::add,
@@ -751,19 +821,26 @@ public class SubmissionService {
     /**
      * Resolves each contact method's type and checks its (already trimmed)
      * value against the type's {@code valuePattern}. A blank type slug or
-     * value is left to Bean Validation.
+     * value is left to Bean Validation. Every type is looked up in one query.
      */
     private Map<String, ContactType> resolveContactMethods(
             List<ContactMethodInput> contactMethods, List<FieldViolation> violations) {
-        Map<String, Optional<ContactType>> lookedUp = new HashMap<>();
+        Set<String> typeSlugs = contactMethods.stream()
+                .map(ContactMethodInput::typeSlug)
+                .filter(slug -> !isBlank(slug))
+                .collect(Collectors.toSet());
+        Map<String, ContactType> typesBySlug = typeSlugs.isEmpty()
+                ? Map.of()
+                : contactTypeRepository.findBySlugIn(typeSlugs).stream()
+                        .collect(Collectors.toMap(ContactType::getSlug, Function.identity()));
         Map<String, ContactType> result = new LinkedHashMap<>();
         for (int j = 0; j < contactMethods.size(); j++) {
             ContactMethodInput cm = contactMethods.get(j);
             if (isBlank(cm.typeSlug())) {
                 continue;
             }
-            Optional<ContactType> contactType = lookedUp.computeIfAbsent(
-                    cm.typeSlug(), slug -> contactTypeRepository.findBySlug(slug).filter(ContactType::isActive));
+            Optional<ContactType> contactType =
+                    Optional.ofNullable(typesBySlug.get(cm.typeSlug())).filter(ContactType::isActive);
             if (contactType.isEmpty()) {
                 violations.add(new FieldViolation(
                         "contactMethods[" + j + "].typeSlug", "Unknown or inactive contact type: " + cm.typeSlug()));
@@ -819,6 +896,7 @@ public class SubmissionService {
             // Already reported at `sections` by Bean Validation (@NotEmpty).
             return List.of();
         }
+        Map<String, Topic> topicsBySlug = topicsBySlug(sections);
         List<FilledSection> filled = new ArrayList<>();
         boolean anyAnswered = false;
         for (int i = 0; i < sections.size(); i++) {
@@ -834,7 +912,7 @@ public class SubmissionService {
             if (isBlank(section.topicSlug())) {
                 continue;
             }
-            Optional<Topic> topic = topicRepository.findBySlug(section.topicSlug()).filter(Topic::isVisible);
+            Optional<Topic> topic = Optional.ofNullable(topicsBySlug.get(section.topicSlug())).filter(Topic::isVisible);
             if (topic.isEmpty()) {
                 violations.add(new FieldViolation(
                         path + ".topicSlug", "Unknown or inactive topic: " + section.topicSlug()));
@@ -859,6 +937,22 @@ public class SubmissionService {
             violations.add(new FieldViolation("sections", TestimonialSubmissionRequest.AT_LEAST_ONE_SECTION_MESSAGE));
         }
         return filled;
+    }
+
+    /**
+     * The topics the answered sections name, by slug, with their groups —
+     * what deciding their visibility needs — in one query; none for no slug.
+     */
+    private Map<String, Topic> topicsBySlug(List<SectionInput> sections) {
+        Set<String> slugs = sections.stream()
+                .filter(section -> !isBlank(section.answer()) && !isBlank(section.topicSlug()))
+                .map(SectionInput::topicSlug)
+                .collect(Collectors.toSet());
+        if (slugs.isEmpty()) {
+            return Map.of();
+        }
+        return topicRepository.findWithTopicGroupBySlugIn(slugs).stream()
+                .collect(Collectors.toMap(Topic::getSlug, Function.identity()));
     }
 
     private void checkTotalPhotoCount(List<FilledSection> filledSections, List<FieldViolation> violations) {

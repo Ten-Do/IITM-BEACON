@@ -106,11 +106,10 @@ import org.springframework.web.servlet.FlashMapManager;
  *
  * <p>Every response carries a Content-Security-Policy ({@link
  * #SITE_POLICY}; the submission form's {@link #SUBMISSION_FORM_POLICY} adds
- * what Alpine.js and the photo picker need; none for the dev-only H2
- * console) and {@code Referrer-Policy: same-origin}. Before the CSRF check —
- * the first thing that reads a request's body — {@link
- * NonUploadMultipartFilter} refuses a large multipart body anywhere but the
- * submission endpoints.
+ * what Alpine.js and the photo picker need) and {@code Referrer-Policy:
+ * same-origin}. Before the CSRF check — the first thing that reads a
+ * request's body — {@link NonUploadMultipartFilter} refuses a large
+ * multipart body anywhere but the submission endpoints.
  */
 @Configuration
 @EnableWebSecurity
@@ -135,16 +134,13 @@ public class SecurityConfig {
     /** The submission form: the one page running Alpine.js, and the photo picker's previews. */
     private static final RequestMatcher SUBMISSION_FORM = PATHS.matcher("/submissions/form");
 
-    /** The dev-only H2 console: its own pages, inline scripts and all. */
-    private static final RequestMatcher H2_CONSOLE = PATHS.matcher("/h2-console/**");
-
     /**
-     * The Content-Security-Policy of every response but the submission form's
-     * and the dev-only H2 console's: scripts, styles, fonts, fetches and
-     * frames of this site only — no inline script or style, no event handler
-     * attribute, no {@code eval} — images of this site or {@code data:} URLs
-     * (the pages' empty icon), no plugin, no foreign {@code <base>} or form
-     * target, and no framing but by this site's own pages.
+     * The Content-Security-Policy of every response but the submission
+     * form's: scripts, styles, fonts, fetches and frames of this site only —
+     * no inline script or style, no event handler attribute, no {@code eval}
+     * — images of this site or {@code data:} URLs (the pages' empty icon), no
+     * plugin, no foreign {@code <base>} or form target, and no framing but by
+     * this site's own pages.
      */
     static final String SITE_POLICY = contentSecurityPolicy("'self'", "'self' data:");
 
@@ -253,9 +249,7 @@ public class SecurityConfig {
         // After the CSRF check, like any other 405; before the logout itself.
         http.addFilterBefore(new LogoutMethodFilter(errorResponses), LogoutFilter.class);
         http.csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository)
-                        .csrfTokenRequestHandler(CSRF_REQUEST_HANDLER)
-                        // The dev-only H2 console's own pages post without the app's token.
-                        .ignoringRequestMatchers(H2_CONSOLE))
+                        .csrfTokenRequestHandler(CSRF_REQUEST_HANDLER))
                 .securityContext(sc -> sc.securityContextRepository(securityContextRepository))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .requestCache(rc -> rc.requestCache(requestCache))
@@ -263,8 +257,6 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/auth/otp/**", "/api/submissions/otp/**")
                         .permitAll()
                         .requestMatchers("/error")
-                        .permitAll()
-                        .requestMatchers("/h2-console/**")
                         .permitAll()
                         .requestMatchers("/uploads/**")
                         .permitAll()
@@ -320,7 +312,7 @@ public class SecurityConfig {
                         .addHeaderWriter(new DelegatingRequestMatcherHeaderWriter(
                                 SUBMISSION_FORM, new ContentSecurityPolicyHeaderWriter(SUBMISSION_FORM_POLICY)))
                         .addHeaderWriter(new DelegatingRequestMatcherHeaderWriter(
-                                new NegatedRequestMatcher(new OrRequestMatcher(SUBMISSION_FORM, H2_CONSOLE)),
+                                new NegatedRequestMatcher(SUBMISSION_FORM),
                                 new ContentSecurityPolicyHeaderWriter(SITE_POLICY))))
                 .exceptionHandling(eh -> eh
                         .authenticationEntryPoint(authenticationEntryPoint(apiEntryPoint, pageNotFound))

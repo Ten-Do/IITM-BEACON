@@ -3,20 +3,24 @@ package com.iitm.beacon.gallery;
 import com.iitm.beacon.common.error.NotFoundException;
 import com.iitm.beacon.common.web.PageResponse;
 import com.iitm.beacon.config.PhotoUrlResolver;
-import com.iitm.beacon.domain.achievement.Achievement;
-import com.iitm.beacon.domain.achievement.TestimonialAchievement;
+import com.iitm.beacon.domain.achievement.AchievementTick;
+import com.iitm.beacon.domain.achievement.TestimonialAchievementRepository;
 import com.iitm.beacon.domain.country.Country;
-import com.iitm.beacon.domain.testimonial.ContactMethod;
-import com.iitm.beacon.domain.testimonial.Photo;
-import com.iitm.beacon.domain.testimonial.PhotoTag;
+import com.iitm.beacon.domain.testimonial.ContactMethodRepository;
+import com.iitm.beacon.domain.testimonial.PhotoRepository;
+import com.iitm.beacon.domain.testimonial.PhotoTagRepository;
+import com.iitm.beacon.domain.testimonial.PhotoTagText;
+import com.iitm.beacon.domain.testimonial.SectionPhoto;
 import com.iitm.beacon.domain.testimonial.Testimonial;
+import com.iitm.beacon.domain.testimonial.TestimonialCover;
+import com.iitm.beacon.domain.testimonial.TestimonialHeader;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
-import com.iitm.beacon.domain.testimonial.TestimonialSection;
 import com.iitm.beacon.domain.testimonial.TestimonialSectionRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
+import com.iitm.beacon.domain.testimonial.TestimonialSummary;
+import com.iitm.beacon.domain.testimonial.VisibleSection;
 import com.iitm.beacon.domain.topic.Topic;
 import com.iitm.beacon.domain.topic.TopicGroup;
-import com.iitm.beacon.domain.topic.TopicGroupRepository;
 import com.iitm.beacon.domain.topic.TopicRepository;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -26,6 +30,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -40,6 +46,11 @@ import org.springframework.transaction.annotation.Transactional;
  * UC-SEARCH-KEYWORD, UC-EXPAND-TESTIMONIAL, UC-REVEAL-CONTACT). Only ever
  * exposes {@code TestimonialStatus.APPROVED} testimonials (CLAUDE.md: "a
  * testimonial is never publicly visible until an admin approves it").
+ *
+ * <p>Every read costs a fixed number of queries (BL-049): projections of
+ * just what is shown, one query per level — a page's cards, then their
+ * covers; an article, then its sections, their photos, the photos' tags —
+ * never one more per card, section or photo.
  */
 @Service
 @Transactional(readOnly = true)
@@ -58,20 +69,29 @@ public class GalleryService {
 
     private final TestimonialRepository testimonialRepository;
     private final TestimonialSectionRepository testimonialSectionRepository;
+    private final PhotoRepository photoRepository;
+    private final PhotoTagRepository photoTagRepository;
+    private final ContactMethodRepository contactMethodRepository;
+    private final TestimonialAchievementRepository testimonialAchievementRepository;
     private final TopicRepository topicRepository;
-    private final TopicGroupRepository topicGroupRepository;
     private final PhotoUrlResolver photoUrlResolver;
 
     public GalleryService(
             TestimonialRepository testimonialRepository,
             TestimonialSectionRepository testimonialSectionRepository,
+            PhotoRepository photoRepository,
+            PhotoTagRepository photoTagRepository,
+            ContactMethodRepository contactMethodRepository,
+            TestimonialAchievementRepository testimonialAchievementRepository,
             TopicRepository topicRepository,
-            TopicGroupRepository topicGroupRepository,
             PhotoUrlResolver photoUrlResolver) {
         this.testimonialRepository = testimonialRepository;
         this.testimonialSectionRepository = testimonialSectionRepository;
+        this.photoRepository = photoRepository;
+        this.photoTagRepository = photoTagRepository;
+        this.contactMethodRepository = contactMethodRepository;
+        this.testimonialAchievementRepository = testimonialAchievementRepository;
         this.topicRepository = topicRepository;
-        this.topicGroupRepository = topicGroupRepository;
         this.photoUrlResolver = photoUrlResolver;
     }
 
@@ -96,9 +116,11 @@ public class GalleryService {
                 TestimonialSpecifications.matchesQuery(q),
                 TestimonialSpecifications.newestApprovalFirst());
 
-        Page<Testimonial> page = testimonialRepository.findAll(spec, withoutSort(pageable));
-        List<TestimonialCardDto> content =
-                page.getContent().stream().map(this::toCard).toList();
+        Page<TestimonialSummary> page = testimonialRepository.findSummaries(spec, withoutSort(pageable));
+        Map<Long, TestimonialCover> covers = coversOf(page.getContent());
+        List<TestimonialCardDto> content = page.getContent().stream()
+                .map(summary -> toCard(summary, covers.get(summary.id())))
+                .toList();
         return PageResponse.of(content, page);
     }
 
@@ -107,7 +129,7 @@ public class GalleryService {
      * any id. Once any id is given, a testimonial must have a section of one
      * of the visible topics they resolve to — an unknown or invisible id
      * resolves to nothing, so a filter of only such ids matches nothing
-     * (api-spec.yaml).
+     * (api-spec.yaml). All ids are resolved in one query.
      */
     private Specification<Testimonial> topicFilter(List<Long> groupIds, List<Long> topicIds) {
         Set<Long> requestedGroupIds = nonNullIds(groupIds);
@@ -115,20 +137,8 @@ public class GalleryService {
         if (requestedGroupIds.isEmpty() && requestedTopicIds.isEmpty()) {
             return null;
         }
-        Set<Long> visibleTopicIds = new HashSet<>();
-        for (Long groupId : requestedGroupIds) {
-            topicGroupRepository.findById(groupId)
-                    .filter(TopicGroup::isActive)
-                    .ifPresent(group -> topicRepository.findByTopicGroupId(group.getId()).stream()
-                            .filter(Topic::isVisible)
-                            .forEach(topic -> visibleTopicIds.add(topic.getId())));
-        }
-        for (Long topicId : requestedTopicIds) {
-            topicRepository.findById(topicId)
-                    .filter(Topic::isVisible)
-                    .ifPresent(topic -> visibleTopicIds.add(topic.getId()));
-        }
-        return TestimonialSpecifications.hasAnyTopic(visibleTopicIds);
+        return TestimonialSpecifications.hasAnyTopic(
+                topicRepository.findVisibleIdsByTopicGroupIdInOrIdIn(requestedGroupIds, requestedTopicIds));
     }
 
     /** The same page, unsorted: a sort would replace the gallery's own order. */
@@ -145,31 +155,42 @@ public class GalleryService {
         return ids.stream().filter(Objects::nonNull).collect(Collectors.toSet());
     }
 
-    private TestimonialCardDto toCard(Testimonial testimonial) {
-        List<TestimonialSection> ordered = visibleSectionsInDisplayOrder(testimonial);
-        TestimonialSection first = ordered.isEmpty() ? null : ordered.get(0);
-        String previewText = first == null ? "" : truncate(first.getAnswerText());
-        String thumbnailUrl = first == null ? null : firstPhotoUrl(first);
+    /**
+     * Every card's cover, by testimonial id, in one query — none for an
+     * empty page. The answer is fetched one character longer than a preview,
+     * so {@link #truncate} can still tell a longer one.
+     */
+    private Map<Long, TestimonialCover> coversOf(List<TestimonialSummary> summaries) {
+        if (summaries.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> ids = summaries.stream().map(TestimonialSummary::id).toList();
+        return testimonialSectionRepository.findCoversByTestimonialIdIn(ids, PREVIEW_MAX_LENGTH + 1).stream()
+                .collect(Collectors.toMap(TestimonialCover::testimonialId, Function.identity()));
+    }
+
+    /**
+     * A card: the preview and cover photo come from the testimonial's first
+     * visible section in display order ({@code null} {@code cover} when it
+     * has none) — the cover is that section's first photo's thumbnail, or
+     * its full-size file for a legacy photo.
+     */
+    private TestimonialCardDto toCard(TestimonialSummary summary, TestimonialCover cover) {
+        String previewText = cover == null ? "" : truncate(cover.answerStart());
+        String thumbnailUrl = cover == null || cover.photoFilePath() == null
+                ? null
+                : thumbnailUrl(cover.photoThumbnailPath(), cover.photoFilePath());
         return new TestimonialCardDto(
-                testimonial.getId(),
-                toCountryDto(testimonial.getCountry()),
-                testimonial.getRecommendationScore(),
+                summary.id(),
+                new CountryDto(summary.countryCode(), summary.countryName()),
+                summary.recommendationScore(),
                 previewText,
                 thumbnailUrl);
     }
 
-    /** The card cover: the section's first photo's thumbnail (its full-size file for a legacy photo). */
-    private String firstPhotoUrl(TestimonialSection section) {
-        return section.getPhotos().stream()
-                .sorted(Comparator.comparing(Photo::getDisplayOrder))
-                .findFirst()
-                .map(this::thumbnailUrl)
-                .orElse(null);
-    }
-
-    private String thumbnailUrl(Photo photo) {
-        String path = photo.getThumbnailPath() != null ? photo.getThumbnailPath() : photo.getFilePath();
-        return photoUrlResolver.resolve(path);
+    /** The thumbnail's URL, or the full-size file's for a legacy photo stored before thumbnails. */
+    private String thumbnailUrl(String thumbnailPath, String filePath) {
+        return photoUrlResolver.resolve(thumbnailPath != null ? thumbnailPath : filePath);
     }
 
     private String truncate(String text) {
@@ -187,122 +208,97 @@ public class GalleryService {
     }
 
     /**
-     * Orders a testimonial's sections for both display and "first section"
-     * selection: primarily by the owning topic-group's display order (or
-     * the topic's own display order for a standalone topic), then by the
-     * topic's own display order within its group (0 for a standalone
-     * topic) — groups and standalone topics share one flat top-level
-     * ordering range (see {@code V13__seed_topic_groups_and_topics.sql}).
-     */
-    private List<TestimonialSection> sectionsInDisplayOrder(Testimonial testimonial) {
-        return testimonial.getSections().stream()
-                .sorted(Comparator.comparingInt(this::topLevelOrder).thenComparingInt(this::withinGroupOrder))
-                .toList();
-    }
-
-    /**
-     * {@link #sectionsInDisplayOrder}, leaving out sections whose topic is
-     * not visible (decision 28) — the only sections the public ever sees.
-     */
-    private List<TestimonialSection> visibleSectionsInDisplayOrder(Testimonial testimonial) {
-        return sectionsInDisplayOrder(testimonial).stream()
-                .filter(section -> section.getTopic().isVisible())
-                .toList();
-    }
-
-    private int topLevelOrder(TestimonialSection section) {
-        Topic topic = section.getTopic();
-        return topic.getTopicGroup() != null ? topic.getTopicGroup().getDisplayOrder() : topic.getDisplayOrder();
-    }
-
-    private int withinGroupOrder(TestimonialSection section) {
-        Topic topic = section.getTopic();
-        return topic.getTopicGroup() != null ? topic.getDisplayOrder() : 0;
-    }
-
-    /**
      * Full public detail for one testimonial (UC-EXPAND-TESTIMONIAL). A
      * PENDING/REJECTED testimonial must be indistinguishable from a
      * nonexistent one to an unauthenticated caller (CLAUDE.md), so both
      * "no such id" and "not approved" throw the exact same {@link
-     * NotFoundException}.
+     * NotFoundException}. Only sections of visible topics, in display order
+     * — by their group's display order (a standalone topic's own, on the
+     * same top-level range), then their topic's within the group — and only
+     * ticks of visible achievements show (decision 28).
      */
     public TestimonialDetailDto getDetail(Long id) {
-        Testimonial testimonial = testimonialRepository
-                .findById(id)
-                .filter(t -> t.getStatus() == TestimonialStatus.APPROVED)
+        TestimonialHeader header = testimonialRepository
+                .findHeaderByIdAndStatus(id, TestimonialStatus.APPROVED)
                 .orElseThrow(() -> new NotFoundException(TESTIMONIAL_NOT_FOUND_MESSAGE));
-        return toDetail(testimonial);
-    }
-
-    private TestimonialDetailDto toDetail(Testimonial testimonial) {
         List<TestimonialSectionViewDto> sections =
-                visibleSectionsInDisplayOrder(testimonial).stream().map(this::toSectionView).toList();
-        List<String> achievementSlugs = testimonial.getAchievements().stream()
-                .map(TestimonialAchievement::getAchievement)
-                .filter(Achievement::isVisible)
-                .map(Achievement::getSlug)
+                sectionViews(testimonialSectionRepository.findVisibleByTestimonialIdIn(List.of(id)));
+        List<String> achievementSlugs = testimonialAchievementRepository
+                .findVisibleTicksByTestimonialIdIn(List.of(id)).stream()
+                .map(AchievementTick::slug)
                 .toList();
-        boolean hasRevealableContact =
-                testimonial.getContactMethods().stream().anyMatch(ContactMethod::isPublic);
         return new TestimonialDetailDto(
-                testimonial.getId(),
-                displayName(testimonial),
-                toCountryDto(testimonial.getCountry()),
-                testimonial.getRecommendationScore(),
-                testimonial.getStatus().name(),
+                header.id(),
+                displayName(header),
+                new CountryDto(header.countryCode(), header.countryName()),
+                header.recommendationScore(),
+                header.status().name(),
                 sections,
                 achievementSlugs,
-                hasRevealableContact);
+                contactMethodRepository.existsByTestimonialIdAndIsPublicTrue(id));
     }
 
-    private TestimonialSectionViewDto toSectionView(TestimonialSection section) {
-        List<PhotoRefDto> photos = section.getPhotos().stream()
-                .sorted(Comparator.comparing(Photo::getDisplayOrder))
-                .map(this::toPhotoRef)
+    /** The sections as shown, each with its photos (in display order) and their tags — one query per level. */
+    private List<TestimonialSectionViewDto> sectionViews(List<VisibleSection> sections) {
+        Map<Long, List<PhotoRefDto>> photosBySectionId = photosBySectionId(sections);
+        return sections.stream()
+                .map(section -> new TestimonialSectionViewDto(
+                        section.topicSlug(),
+                        section.topicLabel(),
+                        section.answerText(),
+                        photosBySectionId.getOrDefault(section.id(), List.of()),
+                        section.modified()))
                 .toList();
-        return new TestimonialSectionViewDto(
-                section.getTopic().getSlug(),
-                section.getTopic().getLabel(),
-                section.getAnswerText(),
-                photos,
-                section.isModified());
     }
 
-    private PhotoRefDto toPhotoRef(Photo photo) {
-        List<String> tags =
-                photo.getTags().stream().map(PhotoTag::getTagText).toList();
+    private Map<Long, List<PhotoRefDto>> photosBySectionId(List<VisibleSection> sections) {
+        if (sections.isEmpty()) {
+            return Map.of();
+        }
+        List<SectionPhoto> photos =
+                photoRepository.findSectionPhotosBySectionIdIn(sections.stream().map(VisibleSection::id).toList());
+        Map<Long, List<String>> tagsByPhotoId = tagsByPhotoId(photos);
+        return photos.stream().collect(Collectors.groupingBy(
+                SectionPhoto::sectionId,
+                Collectors.mapping(photo -> toPhotoRef(photo, tagsByPhotoId.getOrDefault(photo.id(), List.of())),
+                        Collectors.toList())));
+    }
+
+    private Map<Long, List<String>> tagsByPhotoId(List<SectionPhoto> photos) {
+        if (photos.isEmpty()) {
+            return Map.of();
+        }
+        return photoTagRepository.findTextsByPhotoIdIn(photos.stream().map(SectionPhoto::id).toList()).stream()
+                .collect(Collectors.groupingBy(
+                        PhotoTagText::photoId, Collectors.mapping(PhotoTagText::tagText, Collectors.toList())));
+    }
+
+    private PhotoRefDto toPhotoRef(SectionPhoto photo, List<String> tags) {
         return new PhotoRefDto(
-                photoUrlResolver.resolve(photo.getFilePath()),
-                thumbnailUrl(photo),
-                photo.getWidth(),
-                photo.getHeight(),
+                photoUrlResolver.resolve(photo.filePath()),
+                thumbnailUrl(photo.thumbnailPath(), photo.filePath()),
+                photo.width(),
+                photo.height(),
                 tags);
     }
 
     /** "First name + last-initial." (decision 10), e.g. "David J." */
-    private String displayName(Testimonial testimonial) {
-        String lastInitial =
-                testimonial.getLastName().substring(0, 1).toUpperCase(Locale.ROOT);
-        return testimonial.getFirstName() + " " + lastInitial + ".";
+    private String displayName(TestimonialHeader header) {
+        String lastInitial = header.lastName().substring(0, 1).toUpperCase(Locale.ROOT);
+        return header.firstName() + " " + lastInitial + ".";
     }
 
     /**
      * Reveals a testimonial's public contact methods on demand
-     * (UC-REVEAL-CONTACT, decisions 5, 6). Unknown id, not-approved, and
-     * approved-but-zero-public-contact-methods all throw the exact same
-     * {@link NotFoundException} as {@link #getDetail(Long)} — deliberately
-     * indistinguishable to the caller (api-spec.yaml).
+     * (UC-REVEAL-CONTACT, decisions 5, 6), in display order. Unknown id,
+     * not-approved, and approved-but-zero-public-contact-methods all throw
+     * the exact same {@link NotFoundException} as {@link #getDetail(Long)} —
+     * deliberately indistinguishable to the caller (api-spec.yaml).
      */
     public List<ContactMethodViewDto> revealContact(Long id) {
-        Testimonial testimonial = testimonialRepository
-                .findById(id)
-                .filter(t -> t.getStatus() == TestimonialStatus.APPROVED)
-                .orElseThrow(() -> new NotFoundException(TESTIMONIAL_NOT_FOUND_MESSAGE));
-
-        List<ContactMethodViewDto> publicContacts = testimonial.getContactMethods().stream()
-                .filter(ContactMethod::isPublic)
-                .map(cm -> new ContactMethodViewDto(cm.getContactType().getSlug(), cm.getValue()))
+        List<ContactMethodViewDto> publicContacts = contactMethodRepository
+                .findPublicValuesByTestimonialIdAndStatus(id, TestimonialStatus.APPROVED).stream()
+                .map(contact -> new ContactMethodViewDto(contact.typeSlug(), contact.value()))
                 .toList();
         if (publicContacts.isEmpty()) {
             throw new NotFoundException(TESTIMONIAL_NOT_FOUND_MESSAGE);
@@ -327,24 +323,33 @@ public class GalleryService {
      * least one APPROVED-testimonial section — groups nest only their
      * qualifying visible subtopics; a group left with zero qualifying
      * subtopics (or an inactive group) is dropped entirely; a standalone
-     * topic appears only if it directly qualifies and is visible.
+     * topic appears only if it directly qualifies and is visible. The
+     * topics come with their groups in one query; entries of equal top-level
+     * display order keep the groups first, by id, then the standalone
+     * topics, by id.
      */
     public List<TopicCatalogEntryDto> listTopicCatalogWithApproved() {
         Set<Long> qualifyingTopicIds = new HashSet<>(
                 testimonialSectionRepository.findDistinctTopicIdsByTestimonialStatus(TestimonialStatus.APPROVED));
 
-        List<Topic> allTopics = topicRepository.findAll();
-        Map<Long, List<Topic>> topicsByGroupId = allTopics.stream()
-                .filter(t -> t.getTopicGroup() != null)
-                .collect(Collectors.groupingBy(t -> t.getTopicGroup().getId()));
+        List<Topic> allTopics = topicRepository.findAllWithTopicGroupOrderById();
+        Map<Long, TopicGroup> groupsById = new TreeMap<>();
+        Map<Long, List<Topic>> topicsByGroupId = new TreeMap<>();
+        for (Topic topic : allTopics) {
+            TopicGroup group = topic.getTopicGroup();
+            if (group != null) {
+                groupsById.put(group.getId(), group);
+                topicsByGroupId.computeIfAbsent(group.getId(), groupId -> new ArrayList<>()).add(topic);
+            }
+        }
 
         List<OrderedEntry> entries = new ArrayList<>();
 
-        for (TopicGroup group : topicGroupRepository.findAll()) {
+        for (TopicGroup group : groupsById.values()) {
             if (!group.isActive()) {
                 continue;
             }
-            List<TopicPickDto> subtopics = topicsByGroupId.getOrDefault(group.getId(), List.of()).stream()
+            List<TopicPickDto> subtopics = topicsByGroupId.get(group.getId()).stream()
                     .filter(Topic::isVisible)
                     .filter(t -> qualifyingTopicIds.contains(t.getId()))
                     .sorted(Comparator.comparing(Topic::getDisplayOrder))

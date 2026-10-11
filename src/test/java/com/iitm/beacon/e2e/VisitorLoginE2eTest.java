@@ -13,7 +13,8 @@ import org.junit.jupiter.api.Test;
  * PagesE2eTest}): a code typed in lowercase shows in upper case and is
  * accepted; a double click on "Verify" logs in, instead of sending the
  * one-time code twice and failing on the second (static/js/form-submit.js);
- * "Send code" shows it is busy while its request is on its way.
+ * "Send code" shows it is busy while its request is on its way; "Resend
+ * code" waits out the code request limit (static/js/resend-cooldown.js).
  */
 class VisitorLoginE2eTest extends E2eTestBase {
 
@@ -67,5 +68,26 @@ class VisitorLoginE2eTest extends E2eTestBase {
 
         held.get().resume();
         page().waitForURL("**/submissions/login/code");
+    }
+
+    /**
+     * Disabled, counting down from the full wait (60 s), a second later at
+     * 59 s, and enabled again once the wait is over. The page's clock is
+     * paused, so only the test moves it on.
+     */
+    @Test
+    void resendCode_waitsOutTheCodeRequestLimit_thenIsAvailableAgain() {
+        openPage(DevicePreset.DESKTOP);
+        pauseClock();
+        requestVisitorLoginCode(VISITOR);
+        Locator resend = button("Resend code");
+
+        assertScreenshot(resend, "resend-code-waiting-60s");
+
+        page().clock().runFor(1_000);
+        assertScreenshot(resend, "resend-code-waiting-59s");
+
+        page().clock().runFor(59_000);
+        assertScreenshot(resend, "resend-code-available-again");
     }
 }

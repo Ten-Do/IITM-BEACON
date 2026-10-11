@@ -17,12 +17,17 @@ import com.iitm.beacon.common.error.TestimonialNotPendingException;
 import com.iitm.beacon.config.NotificationMailer;
 import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.config.PhotoUrlResolver;
+import com.iitm.beacon.domain.achievement.TestimonialAchievementRepository;
 import com.iitm.beacon.domain.contacttype.ContactTypeRepository;
 import com.iitm.beacon.domain.country.CountryRepository;
 import com.iitm.beacon.domain.testimonial.ContactMethod;
+import com.iitm.beacon.domain.testimonial.ContactMethodRepository;
+import com.iitm.beacon.domain.testimonial.PhotoRepository;
+import com.iitm.beacon.domain.testimonial.PhotoTagRepository;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
+import com.iitm.beacon.domain.testimonial.TestimonialSectionRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.domain.topic.TopicRepository;
 import com.iitm.beacon.testsupport.LogCapture;
@@ -54,6 +59,21 @@ class ModerationServiceRejectTest {
     private TestimonialRepository testimonialRepository;
 
     @Autowired
+    private TestimonialSectionRepository testimonialSectionRepository;
+
+    @Autowired
+    private PhotoRepository photoRepository;
+
+    @Autowired
+    private PhotoTagRepository photoTagRepository;
+
+    @Autowired
+    private ContactMethodRepository contactMethodRepository;
+
+    @Autowired
+    private TestimonialAchievementRepository testimonialAchievementRepository;
+
+    @Autowired
     private CountryRepository countryRepository;
 
     @Autowired
@@ -70,6 +90,11 @@ class ModerationServiceRejectTest {
         notificationMailer = mock(NotificationMailer.class);
         moderationService = new ModerationService(
                 testimonialRepository,
+                testimonialSectionRepository,
+                photoRepository,
+                photoTagRepository,
+                contactMethodRepository,
+                testimonialAchievementRepository,
                 notificationMailer,
                 new PhotoUrlResolver(),
                 mock(PhotoFileDeleter.class),
@@ -264,7 +289,15 @@ class ModerationServiceRejectTest {
 
         NotificationMailer working = mock(NotificationMailer.class);
         moderationService = new ModerationService(
-                testimonialRepository, working, new PhotoUrlResolver(), mock(PhotoFileDeleter.class),
+                testimonialRepository,
+                testimonialSectionRepository,
+                photoRepository,
+                photoTagRepository,
+                contactMethodRepository,
+                testimonialAchievementRepository,
+                working,
+                new PhotoUrlResolver(),
+                mock(PhotoFileDeleter.class),
                 new MutableClock(FIXED_NOW));
         moderationService.reject(saved.getId(), "reason");
 

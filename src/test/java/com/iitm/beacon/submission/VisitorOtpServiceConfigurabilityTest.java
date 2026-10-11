@@ -125,4 +125,29 @@ class VisitorOtpServiceConfigurabilityTest {
         assertThat(service.verify(EMAIL, code))
                 .isEqualTo(new VisitorOtpVerifyResult.Rejected(RejectionReason.NO_PENDING_OTP));
     }
+
+    // -- how long "Resend code" waits: one per-email request's share of the window --
+
+    private VisitorOtpService serviceWithEmailLimit(int requestLimitPerEmail, Duration requestWindowPerEmail) {
+        VisitorOtpProperties properties = new VisitorOtpProperties(
+                Duration.ofMinutes(5), 5, requestLimitPerEmail, requestWindowPerEmail, 5, Duration.ofMinutes(1));
+        return new VisitorOtpService(
+                properties, new OtpCodeGenerator(), otpMailer, clock, mock(RateLimiterService.class));
+    }
+
+    @Test
+    void resendWaitSeconds_isThePerEmailWindowOverThePerEmailLimit() {
+        assertThat(serviceWithEmailLimit(4, Duration.ofMinutes(3)).resendWaitSeconds()).isEqualTo(45);
+    }
+
+    /** The per-IP limit is shared by everyone behind one address: it never sets the wait. */
+    @Test
+    void resendWaitSeconds_ignoresThePerIpLimit() {
+        VisitorOtpProperties properties = new VisitorOtpProperties(
+                Duration.ofMinutes(5), 5, 1, Duration.ofMinutes(2), 1, Duration.ofHours(1));
+        VisitorOtpService service = new VisitorOtpService(
+                properties, new OtpCodeGenerator(), otpMailer, clock, mock(RateLimiterService.class));
+
+        assertThat(service.resendWaitSeconds()).isEqualTo(120);
+    }
 }

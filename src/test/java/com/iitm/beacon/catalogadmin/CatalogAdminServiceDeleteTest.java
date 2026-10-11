@@ -90,6 +90,7 @@ class CatalogAdminServiceDeleteTest {
                 testimonialRepository,
                 testimonialSectionRepository,
                 testimonialAchievementRepository,
+                photoRepository,
                 photoFileDeleter);
         fixtures = new CatalogFixtures(
                 topicGroupRepository, topicRepository, achievementRepository, testimonialRepository,

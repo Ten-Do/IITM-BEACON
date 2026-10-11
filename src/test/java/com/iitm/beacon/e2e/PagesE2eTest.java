@@ -13,7 +13,8 @@ import org.junit.jupiter.api.Test;
  * too wide would show as a wider screenshot. And the short pages on a
  * desktop, where the sand background must reach the bottom of the screen.
  * The generic error page (decision 33) is shown for an unknown page (404)
- * and a malformed parameter (400).
+ * and a malformed parameter (400). The login code pages are taken with the
+ * page's clock paused: "Resend code" shows its countdown at the full wait.
  */
 class PagesE2eTest extends E2eTestBase {
 
@@ -47,6 +48,7 @@ class PagesE2eTest extends E2eTestBase {
         phoneScreenshots("/gallery?page=abc", "error-page-bad-request");
         phoneScreenshots("/submissions/login", "visitor-login");
         requestVisitorLoginCode(VISITOR);
+        pauseClock();
         phoneScreenshots("/submissions/login/code", "visitor-login-code");
         phoneScreenshots("/admin/login", "admin-login");
         requestAdminLoginCode();
@@ -92,10 +94,12 @@ class PagesE2eTest extends E2eTestBase {
         desktopScreenshot("/no-such-page", "error-page-not-found");
         desktopScreenshot("/submissions/login", "visitor-login");
         requestVisitorLoginCode(VISITOR);
+        pauseClock();
         desktopScreenshot("/submissions/login/code", "visitor-login-code");
         desktopScreenshot("/admin/login", "admin-login");
         requestAdminLoginCode();
         desktopScreenshot("/admin/login/code", "admin-login-code");
+        page().clock().resume();
 
         loginAsVisitor(VISITOR);
         navigate("/submissions/confirmation");

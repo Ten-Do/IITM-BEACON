@@ -14,19 +14,72 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface TestimonialRepository
-        extends JpaRepository<Testimonial, Long>, JpaSpecificationExecutor<Testimonial> {
+        extends JpaRepository<Testimonial, Long>, JpaSpecificationExecutor<Testimonial>, TestimonialSummaryQueries {
+
+    /** The select and from of every {@link TestimonialHeader} query, for its where to follow. */
+    String HEADER = "select new com.iitm.beacon.domain.testimonial.TestimonialHeader("
+            + " t.id, t.firstName, t.lastName, t.rollNumber, t.admissionYear, t.email, c.code, c.name,"
+            + " t.recommendationScore, t.status, t.dataProcessingConsent, t.identityModified, t.scoreModified,"
+            + " t.createdAt, t.reviewedAt)"
+            + " from Testimonial t join t.country c";
 
     Optional<Testimonial> findByEmailLookupHash(String emailLookupHash);
 
-    Page<Testimonial> findByStatusOrderByCreatedAtAsc(TestimonialStatus status, Pageable pageable);
+    /** The header of testimonial {@code id} — only if it has {@code status}. */
+    @Query(HEADER + " where t.id = :id and t.status = :status")
+    Optional<TestimonialHeader> findHeaderByIdAndStatus(
+            @Param("id") Long id, @Param("status") TestimonialStatus status);
+
+    /** The header of the testimonial with this {@code email_lookup_hash}, whatever its status. */
+    @Query(HEADER + " where t.emailLookupHash = :emailLookupHash")
+    Optional<TestimonialHeader> findHeaderByEmailLookupHash(@Param("emailLookupHash") String emailLookupHash);
 
     /**
-     * Every testimonial of {@code status} whose {@code rejectedAt} is strictly
-     * before {@code cutoff}, in id order — with {@code REJECTED}, the ones due
-     * for the purge (UC-PURGE-REJECTED, decision 3). A {@code null}
-     * {@code rejectedAt} is never before anything.
+     * A page of the headers of every testimonial of {@code status}, oldest
+     * first ({@code createdAt}, then id for equal times, so a page boundary
+     * never repeats or skips one).
      */
-    List<Testimonial> findByStatusAndRejectedAtBeforeOrderByIdAsc(TestimonialStatus status, Instant cutoff);
+    @Query(value = HEADER + " where t.status = :status order by t.createdAt, t.id",
+            countQuery = "select count(t) from Testimonial t where t.status = :status")
+    Page<TestimonialHeader> findHeadersByStatusOldestFirst(
+            @Param("status") TestimonialStatus status, Pageable pageable);
+
+    /**
+     * The ids of every testimonial of {@code status} whose {@code rejectedAt}
+     * is strictly before {@code cutoff}, in id order — with {@code REJECTED},
+     * the ones due for the purge (UC-PURGE-REJECTED, decision 3). A {@code
+     * null} {@code rejectedAt} is never before anything.
+     */
+    @Query("select t.id from Testimonial t where t.status = :status and t.rejectedAt < :cutoff order by t.id")
+    List<Long> findIdsByStatusAndRejectedAtBefore(
+            @Param("status") TestimonialStatus status, @Param("cutoff") Instant cutoff);
+
+    /**
+     * Testimonial {@code id} with its sections, their topics and the topics'
+     * groups loaded in the same query — what deciding each section's
+     * visibility (decision 28) needs.
+     */
+    @Query("select t from Testimonial t left join fetch t.sections s left join fetch s.topic tp"
+            + " left join fetch tp.topicGroup where t.id = :id")
+    Optional<Testimonial> findWithSectionTopicsById(@Param("id") Long id);
+
+    /** {@link #findWithSectionTopicsById}, for the testimonial with this {@code email_lookup_hash}. */
+    @Query("select t from Testimonial t left join fetch t.sections s left join fetch s.topic tp"
+            + " left join fetch tp.topicGroup where t.emailLookupHash = :emailLookupHash")
+    Optional<Testimonial> findWithSectionTopicsByEmailLookupHash(@Param("emailLookupHash") String emailLookupHash);
+
+    /** Testimonial {@code id} with its contact methods loaded in the same query. */
+    @Query("select t from Testimonial t left join fetch t.contactMethods where t.id = :id")
+    Optional<Testimonial> findWithContactMethodsById(@Param("id") Long id);
+
+    /** Testimonial {@code id} with its achievement ticks, and their achievements, loaded in the same query. */
+    @Query("select t from Testimonial t left join fetch t.achievements ta left join fetch ta.achievement"
+            + " where t.id = :id")
+    Optional<Testimonial> findWithAchievementsById(@Param("id") Long id);
+
+    /** The testimonials of {@code ids}, each with its sections loaded in the same query; unknown ids are ignored. */
+    @Query("select t from Testimonial t left join fetch t.sections where t.id in :ids")
+    List<Testimonial> findWithSectionsByIdIn(@Param("ids") Collection<Long> ids);
 
     /**
      * Deletes testimonial {@code id} only if it still has {@code status} and a

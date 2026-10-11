@@ -12,11 +12,16 @@ import com.iitm.beacon.config.PhotoStorageProperties;
 import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
 import com.iitm.beacon.domain.achievement.TestimonialAchievement;
+import com.iitm.beacon.domain.achievement.TestimonialAchievementRepository;
 import com.iitm.beacon.domain.contacttype.ContactTypeRepository;
 import com.iitm.beacon.domain.country.CountryRepository;
+import com.iitm.beacon.domain.testimonial.ContactMethodRepository;
+import com.iitm.beacon.domain.testimonial.PhotoRepository;
+import com.iitm.beacon.domain.testimonial.PhotoTagRepository;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
+import com.iitm.beacon.domain.testimonial.TestimonialSectionRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.domain.topic.TopicGroupRepository;
 import com.iitm.beacon.domain.topic.TopicRepository;
@@ -67,6 +72,21 @@ class SubmissionServiceVisibilityTest {
     private TestimonialRepository testimonialRepository;
 
     @Autowired
+    private TestimonialSectionRepository testimonialSectionRepository;
+
+    @Autowired
+    private PhotoRepository photoRepository;
+
+    @Autowired
+    private PhotoTagRepository photoTagRepository;
+
+    @Autowired
+    private ContactMethodRepository contactMethodRepository;
+
+    @Autowired
+    private TestimonialAchievementRepository testimonialAchievementRepository;
+
+    @Autowired
     private TopicRepository topicRepository;
 
     @Autowired
@@ -106,6 +126,11 @@ class SubmissionServiceVisibilityTest {
                 TestPhotoStorage.photoCountLimits(uploadsRoot, MAX_PHOTOS, MAX_PHOTOS_PER_SECTION);
         submissionService = new SubmissionService(
                 testimonialRepository,
+                testimonialSectionRepository,
+                photoRepository,
+                photoTagRepository,
+                contactMethodRepository,
+                testimonialAchievementRepository,
                 topicRepository,
                 achievementRepository,
                 contactTypeRepository,
@@ -118,7 +143,6 @@ class SubmissionServiceVisibilityTest {
                         new PhotoFileDeleter(properties)),
                 properties,
                 clock,
-                topicGroupRepository,
                 validator);
         catalog = CatalogVisibilityFixture.create(topicGroupRepository, topicRepository, achievementRepository);
     }

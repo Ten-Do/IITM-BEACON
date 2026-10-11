@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
+import com.iitm.beacon.testsupport.LoginCodeSteps;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -61,7 +62,7 @@ class StaticAssetCachingTest {
     @ValueSource(strings = {
         "/css/beacon.css", "/css/noscript.css", "/js/nav-toggle.js", "/js/photo-viewer.js", "/js/session-check.js",
         "/js/contact-reveal.js", "/js/submission-form.js", "/js/collapsible.js",
-        "/js/form-submit.js"
+        "/js/form-submit.js", "/js/resend-cooldown.js"
     })
     void ownFile_isVersionedByTheMd5OfItsContent(String path) throws Exception {
         byte[] content = perform(get(path)).getContentAsByteArray();
@@ -102,6 +103,15 @@ class StaticAssetCachingTest {
                 "src=\"" + versioned("/webjars/alpinejs/dist/cdn.min.js") + "\"",
                 "src=\"" + versioned("/js/session-check.js") + "\"",
                 "href=\"" + versioned("/css/noscript.css") + "\"");
+    }
+
+    @Test
+    void loginCodePage_rendersTheResendCooldownScriptAtItsVersionedUrl() throws Exception {
+        String html = perform(LoginCodeSteps.page(mockMvc, LoginCodeSteps.VISITOR_CODE_PAGE)).getContentAsString();
+
+        assertThat(html)
+                .contains("src=\"" + versioned("/js/resend-cooldown.js") + "\"")
+                .doesNotContain("\"/js/resend-cooldown.js\"");
     }
 
     // -- the cache headers --

@@ -96,19 +96,11 @@
   delete. Move the pattern into `config.PhotoFileDeleter` (e.g. `deleteAfterCommit(photos)`) and
   make the three callers use it, keeping their tests green. Found during M7.
 
-- **BL-049**: Listing pages load lazily, one query per collection (N+1): a gallery page of 20
-  cards issues about 110 SQL statements and a moderation queue page of 20 about 350 (sections,
-  photos per section, tags per photo, contacts, achievements). Every performance NFR still
-  passes with a wide margin (`nfr-verification.md` §2), but the cost grows with the page size —
-  the API allows `size` up to 100. Fetch what a page shows in a bounded number of queries (fetch
-  joins / `@EntityGraph` / batch fetching), and pin the statement count per page in a test.
-  Found in the M7 performance pass.
-
 - **BL-048**: The production jar carries `application-dev.yml` (with the dev default encryption
-  key and pepper) and the H2 driver, though neither is used under `prod`. Keep dev-only
-  configuration and the H2 dependency out of the prod artifact (e.g. a Maven profile for dev, or
-  excluding the file at packaging), without breaking `make` targets, tests and local runs.
-  Found in the M7 security review (SR-24).
+  key and pepper), though it is never used under `prod`. Keep it out of the prod artifact (e.g.
+  move it to the test classpath next to `TestBeaconApplication`, or exclude it at packaging),
+  without breaking `make` targets, tests and the dev run. Found in the M7 security review
+  (SR-24); the H2 driver it also named is gone (decision 35).
 
 - **BL-047**: A submission can carry any number of contact methods — `TestimonialSubmissionRequest`
   has no `@Size` on its contact list (the form offers one row per contact type). Decide a cap
@@ -136,11 +128,6 @@
   every encryption — a blocking entropy source on some systems and a new instance each time.
   Use one shared non-blocking `SecureRandom` (e.g. `new SecureRandom()` / `DRBG`) and keep the
   IV-uniqueness tests green. Found in the M7 security review (SR-19).
-
-- **BL-042**: `SecurityConfig` permits `/h2-console/**` (and exempts it from CSRF) and sets
-  `X-Frame-Options: SAMEORIGIN` in every profile, though the console exists only in `dev`.
-  Apply that matcher, the CSRF exemption and the relaxed framing only in `dev`, and test that
-  `prod` denies the path. Found in the M7 security review (SR-18).
 
 - **BL-041**: `config.PhotoFileDeleter` resolves a stored `file_path`/`thumbnail_path` against the
   uploads root without checking that the result stays inside it — an absolute path or `..` in
@@ -287,25 +274,14 @@
   goes for `GET /admin/login/code` (the visitor's `/submissions/login/code` redirects). Redirect
   an `ADMIN` session to `/moderation/queue`. Found while fixing the BUGS.md batch.
 
-- **BL-018**: `SubmissionViewController.requestOtp` (`POST /submissions/login`, also used by the
-  code page's "Resend code") doesn't catch `TooManyRequestsException`, contradicting decision 21
-  (a View-Controller turns it into an inline error). With the default visitor limit of one
-  request per email per minute, pressing "Resend code" within a minute shows the browser
-  `GlobalExceptionHandler`'s raw JSON 429. Catch it and re-render the code page with a readable
-  error, as `AdminAuthViewController` does. Found while fixing the BUGS.md batch.
-
 - **BL-016**: `src/test/resources/application.yml` shadows `src/main/resources/application.yml`
-  on the test classpath, so tests never load the main file — `jpa.open-in-view: false`,
-  `hibernate.ddl-auto: validate`, and `flyway.enabled` are never exercised by the suite, and
-  every main-file setting a test depends on has to be duplicated by hand (the upload limits
-  already are, guarded by `config/UploadLimitsConfigTest` and its siblings). One consequence: no
-  H2 test validates the entities against the migrated schema — `BeaconApplicationTests`' Javadoc
-  claims it does, but with `ddl-auto` shadowed Boot's default with Flyway is `none` (a schema
-  drift left it green); only `domain.PostgresMigrationParityTest` (M7, on Postgres) checks it, and
-  it sets the main-file settings itself through `testsupport.PostgresContainerSupport`. Rename the
-  test file to a profile overlay (e.g. `application-test.yml` + an active `test` profile) so it
-  layers on top of the main file instead of replacing it, and fix that Javadoc. Found while fixing
-  the BUGS.md batch.
+  on the test classpath, so tests never load the main file, and every main-file setting a test
+  depends on has to be duplicated by hand — the database settings, upload limits, session and
+  cookie settings already are, each guarded by a drift test (`config/DatabaseSettingsConfigTest`,
+  `config/UploadLimitsConfigTest` and their siblings). Rename the test file to a profile overlay
+  (e.g. `application-test.yml` + an active `test` profile) so it layers on top of the main file
+  instead of replacing it, and drop the copies and their drift tests. Found while fixing the
+  BUGS.md batch.
 
 - **BL-015**: The seeded guiding prompt of the `general` topic is "Anything else you'd like to
   add. (mandatory catch-all)" (V13) — the "(mandatory catch-all)" note is spec wording from
@@ -335,7 +311,7 @@
   `adminauth`/`submission` view layers (M4).
 
 - **BL-005**: SpotBugs `EI_EXPOSE_REP`/`EI_EXPOSE_REP2` findings — `make spotbugs` currently fails
-  with 49 Medium findings, entirely in `common.web.PageResponse`; the `gallery` slice's
+  with 68 Medium findings (2026-10-11), in `common.web.PageResponse`; the `gallery` slice's
   `PhotoRefDto`/`TestimonialSectionViewDto`/`TestimonialDetailDto`/`TopicCatalogEntryDto`; the
   `moderation` slice's `ModerationPhotoRefDto`/`ModerationSectionViewDto`/
   `ModerationTestimonialDetailDto`; and the `submission` slice's mutable `SectionFormEntry`/
@@ -351,7 +327,11 @@
   existing constructor-injected-service-field exemptions). Records added since hold lists without
   a copy too and widen the set (count not re-run): `moderation.ModerationQueueCardDto`,
   `submission.TopicCatalogEntryDto`, `GalleryViewController.SectionBlock`;
-  `analytics.AnalyticsSummaryDto`/`DashboardView` already copy. Found while implementing the
+  `analytics.AnalyticsSummaryDto`/`DashboardView` already copy. The constructor-injected
+  repository fields are flagged too (`EI_EXPOSE_REP2`): `testimonialRepository`, and since the
+  N+1 fix (decision 35) `photoRepository` in `GalleryService`, `ModerationService`,
+  `SubmissionService` and `CatalogAdminService`; extend the service-field exemption to them.
+  Found while implementing the
   `gallery` slice (M4) and extended while implementing `submission`'s view layer (M4); `mvn test`
   itself is unaffected since SpotBugs isn't bound to the `test` phase.
 

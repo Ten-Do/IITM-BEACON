@@ -52,7 +52,7 @@ C4Container
 
     System_Boundary(beacon, "IITM Beacon") {
         Container(app, "Spring Boot app", "Java, Spring Boot", "Serves REST API + Thymeleaf pages; hosts gallery/submission/moderation/catalogadmin/adminauth/analytics slices")
-        ContainerDb(db, "PostgreSQL / H2", "Postgres (prod), H2 (dev/test)", "Testimonial, TestimonialSection, Photo, PhotoTag, Achievement, TestimonialAchievement, Country, TopicGroup, Topic, ContactType, ContactMethod tables")
+        ContainerDb(db, "PostgreSQL", "PostgreSQL 16 (prod: docker-compose; dev/test: Testcontainers)", "Testimonial, TestimonialSection, Photo, PhotoTag, Achievement, TestimonialAchievement, Country, TopicGroup, Topic, ContactType, ContactMethod tables")
         ContainerDb(volume, "Uploads volume", "Docker volume", "Stores uploaded photo files")
     }
 
@@ -712,7 +712,11 @@ endpoint, so it has no `api-spec.yaml` entry.
   first_name ILIKE %:q% OR last_name ILIKE %:q%)]` — a section is visible when its topic is
   (decision 28).
 - Implemented as `Specification`s (`gallery.TestimonialSpecifications`), paginated
-  (`Pageable`/`Page<T>`).
+  (`Pageable`/`Page<T>`). The specification drives a projection page
+  (`TestimonialSummaryQueries`: id, country, score — no entity is loaded); the requested group and
+  topic ids resolve to visible topic ids in one query, and the page's card covers (first visible
+  section's preview and first photo) come from one more. A page costs the same few statements
+  whatever its size (decision 35).
 - Order (decision 31): `ORDER BY reviewed_at DESC NULLS LAST, id DESC`, set inside the criteria
   query by `TestimonialSpecifications.newestApprovalFirst()` as a portable
   `CASE WHEN reviewed_at IS NULL ...` (Spring Data's `Sort` can't express null precedence on a
@@ -752,13 +756,15 @@ endpoint, so it has no `api-spec.yaml` entry.
   `app.jar` in the runtime image, run as the unprivileged user `beacon`.
 - Tooling: `make perf` (performance pass on the host, Testcontainers — `nfr-verification.md`)
   and `make cve-scan` (Trivy over the freshly built image — `security-review.md`). The normal
-  `./mvnw test` needs a reachable Docker daemon for its PostgreSQL tests.
+  `./mvnw test`, the dev run and `make e2e` (through the mounted Docker socket) need a reachable
+  Docker daemon: every one of them runs on PostgreSQL through Testcontainers.
 - Known risk: a submission with many photos takes a long time to convert synchronously (§7);
   a proxy in front of the app needs a request timeout long enough for it, until that open
   question is decided.
 - `application.yml` profiles:
-  - `dev`: H2, OTP logged (not emailed, recipient masked) for both admin and visitor login,
-    relaxed local config.
+  - `dev`: a throwaway PostgreSQL 16 started by Testcontainers (`./mvnw spring-boot:test-run
+    -Dspring-boot.run.profiles=dev`, through `TestBeaconApplication`; decision 35), OTP logged
+    (not emailed, recipient masked) for both admin and visitor login, relaxed local config.
   - `prod`: Postgres, real SMTP, Flyway migrations (no `ddl-auto=update` in prod, per baseline
     rules).
 - Secrets/config via environment variables only (`ADMIN_EMAIL`, SMTP credentials, DB
@@ -866,6 +872,12 @@ architecture level because they're time-based or easy to get subtly wrong withou
   start; its tests invoke it explicitly. Every full application context (`@SpringBootTest`)
   still constructs `PhotoImageProcessor`, whose WebP encoder check needs the native libwebp to
   load wherever the suite runs.
+- Every test runs on PostgreSQL 16 through Testcontainers (decision 35): all Spring contexts
+  share the database `beacon_test` in one container per test JVM, so the suite needs a
+  reachable Docker daemon.
+- SQL statement counts (decision 35): each read page and write operation has a test that its
+  statement count for one item equals the count for many (`*SqlStatementsTest`,
+  `testsupport.SqlStatementCounter`) — a lazy association walked in a loop fails it.
 
 ## 17. View layer: Thymeleaf pages alongside the REST API (decision 21)
 
@@ -994,7 +1006,7 @@ a page load or a form-POST redirect. Each `XxxViewController` therefore catches 
 responds the way a browser navigation needs: redirect back to the same page (approve/reject on a
 now-stale item, per decision 18's own note that the admin's queue can go stale under concurrent
 review), re-render the current form with an inline error (a wrong OTP code, a rate-limited
-request, a failed validation), or render a small in-slice not-found page (an unknown or
+request — except on the visitor's login, see below — a failed validation), or render a small in-slice not-found page (an unknown or
 not-yet/no-longer-approved testimonial id — the gallery detail page's 404 is deliberately
 identical for "doesn't exist" and "exists but isn't approved," the same privacy property the REST
 `GET /gallery/testimonials/{id}` already has; the contact reveal likewise answers 404 with an
@@ -1006,6 +1018,14 @@ form couldn't be read, so nothing was saved. Please check it and send it again."
 View-Controller doesn't handle itself — a malformed parameter, an unsupported method, a CSRF
 failure, an unexpected exception — reaches `GlobalExceptionHandler`, which answers a page with
 the generic HTML error page (`templates/error/page.html`, §15, decision 33), never JSON.
+
+The visitor's login is the one exception to the inline rate-limit error (decision 36):
+`SubmissionViewController`'s email step and "Resend code" leave `TooManyRequestsException` to
+`GlobalExceptionHandler`, which answers the HTML 429 error page. Re-rendering the code page
+would echo the typed email and a per-session CSRF token, so the rate-limited answer would
+differ between emails (NFR-VISITOR-OTP-BRUTEFORCE); the plain 429 is the same for every email.
+The page itself keeps a visitor from reaching it: `static/js/resend-cooldown.js` disables
+"Resend code" until the per-email limit allows another code, on the admin's code page too.
 
 **Submission form.** The REST `POST /api/submissions` contract takes one multipart `payload` part
 (a JSON `TestimonialSubmissionRequest`) plus photo files keyed by `fileRef` — not something a

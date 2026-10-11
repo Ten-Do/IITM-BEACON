@@ -1,5 +1,6 @@
 package com.iitm.beacon.domain.achievement;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -7,6 +8,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface AchievementRepository extends JpaRepository<Achievement, Long> {
 
     Optional<Achievement> findBySlug(String slug);
+
+    /** The achievements holding one of {@code slugs} — exact matches, inactive ones included — each once. */
+    List<Achievement> findBySlugIn(Collection<String> slugs);
 
     /** Exact, case-sensitive slug match, inactive achievements included (decision 28). */
     boolean existsBySlug(String slug);

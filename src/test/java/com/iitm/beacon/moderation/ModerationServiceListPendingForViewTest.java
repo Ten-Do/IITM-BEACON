@@ -10,15 +10,20 @@ import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.achievement.Achievement;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
 import com.iitm.beacon.domain.achievement.TestimonialAchievement;
+import com.iitm.beacon.domain.achievement.TestimonialAchievementRepository;
 import com.iitm.beacon.domain.contacttype.ContactType;
 import com.iitm.beacon.domain.contacttype.ContactTypeRepository;
 import com.iitm.beacon.domain.country.Country;
 import com.iitm.beacon.domain.country.CountryRepository;
 import com.iitm.beacon.domain.testimonial.ContactMethod;
+import com.iitm.beacon.domain.testimonial.ContactMethodRepository;
 import com.iitm.beacon.domain.testimonial.Photo;
+import com.iitm.beacon.domain.testimonial.PhotoRepository;
+import com.iitm.beacon.domain.testimonial.PhotoTagRepository;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
+import com.iitm.beacon.domain.testimonial.TestimonialSectionRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.domain.topic.Topic;
 import com.iitm.beacon.domain.topic.TopicRepository;
@@ -46,6 +51,21 @@ class ModerationServiceListPendingForViewTest {
     private TestimonialRepository testimonialRepository;
 
     @Autowired
+    private TestimonialSectionRepository testimonialSectionRepository;
+
+    @Autowired
+    private PhotoRepository photoRepository;
+
+    @Autowired
+    private PhotoTagRepository photoTagRepository;
+
+    @Autowired
+    private ContactMethodRepository contactMethodRepository;
+
+    @Autowired
+    private TestimonialAchievementRepository testimonialAchievementRepository;
+
+    @Autowired
     private CountryRepository countryRepository;
 
     @Autowired
@@ -63,6 +83,11 @@ class ModerationServiceListPendingForViewTest {
     void setUp() {
         moderationService = new ModerationService(
                 testimonialRepository,
+                testimonialSectionRepository,
+                photoRepository,
+                photoTagRepository,
+                contactMethodRepository,
+                testimonialAchievementRepository,
                 mock(NotificationMailer.class),
                 new PhotoUrlResolver(),
                 mock(PhotoFileDeleter.class),

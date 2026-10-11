@@ -11,6 +11,7 @@ import com.iitm.beacon.domain.achievement.Achievement;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
 import com.iitm.beacon.domain.achievement.TestimonialAchievementRepository;
 import com.iitm.beacon.domain.country.CountryRepository;
+import com.iitm.beacon.domain.testimonial.PhotoRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSectionRepository;
 import com.iitm.beacon.domain.topic.TopicGroupRepository;
@@ -51,6 +52,9 @@ class CatalogAdminServiceAchievementTest {
     private TestimonialRepository testimonialRepository;
 
     @Autowired
+    private PhotoRepository photoRepository;
+
+    @Autowired
     private CountryRepository countryRepository;
 
     private CatalogAdminService service;
@@ -65,6 +69,7 @@ class CatalogAdminServiceAchievementTest {
                 testimonialRepository,
                 testimonialSectionRepository,
                 testimonialAchievementRepository,
+                photoRepository,
                 mock(PhotoFileDeleter.class));
         fixtures = new CatalogFixtures(
                 topicGroupRepository, topicRepository, achievementRepository, testimonialRepository,

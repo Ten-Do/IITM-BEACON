@@ -71,9 +71,19 @@ services:
     volumes:
       - .:/workspace
       - maven-repo:/root/.m2
+      # The tests' PostgreSQL 16 runs in a sibling container that
+      # Testcontainers starts through the host's Docker daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Testcontainers reaches the sibling containers' published ports through
+    # the host: the bridge gateway it would pick by itself doesn't reach them
+    # all from this service's network (its Ryuk sidecar listens on IPv6 only
+    # under Docker Desktop).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       # Browsers are baked into the image; never download others at runtime.
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
     # Chromium needs more shared memory than Docker's 64 MB default.
     ipc: host
     entrypoint: ["mvn", "-Pe2e", "test"]

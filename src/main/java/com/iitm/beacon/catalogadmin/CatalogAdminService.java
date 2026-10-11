@@ -10,6 +10,7 @@ import com.iitm.beacon.domain.achievement.AchievementRepository;
 import com.iitm.beacon.domain.achievement.TestimonialAchievement;
 import com.iitm.beacon.domain.achievement.TestimonialAchievementRepository;
 import com.iitm.beacon.domain.testimonial.Photo;
+import com.iitm.beacon.domain.testimonial.PhotoRepository;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
@@ -80,6 +81,7 @@ public class CatalogAdminService {
     private final TestimonialRepository testimonialRepository;
     private final TestimonialSectionRepository testimonialSectionRepository;
     private final TestimonialAchievementRepository testimonialAchievementRepository;
+    private final PhotoRepository photoRepository;
     private final PhotoFileDeleter photoFileDeleter;
 
     public CatalogAdminService(
@@ -89,6 +91,7 @@ public class CatalogAdminService {
             TestimonialRepository testimonialRepository,
             TestimonialSectionRepository testimonialSectionRepository,
             TestimonialAchievementRepository testimonialAchievementRepository,
+            PhotoRepository photoRepository,
             PhotoFileDeleter photoFileDeleter) {
         this.topicGroupRepository = topicGroupRepository;
         this.topicRepository = topicRepository;
@@ -96,6 +99,7 @@ public class CatalogAdminService {
         this.testimonialRepository = testimonialRepository;
         this.testimonialSectionRepository = testimonialSectionRepository;
         this.testimonialAchievementRepository = testimonialAchievementRepository;
+        this.photoRepository = photoRepository;
         this.photoFileDeleter = photoFileDeleter;
     }
 
@@ -341,10 +345,14 @@ public class CatalogAdminService {
         return toDto(saved);
     }
 
-    /** Deletes the achievement and every tick of it. */
+    /**
+     * Deletes the achievement and every tick of it; the ticks come with their
+     * testimonials' tick lists, which they leave, in one query.
+     */
     public void deleteAchievement(Long id) {
         Achievement achievement = findAchievement(id);
-        List<TestimonialAchievement> ticks = testimonialAchievementRepository.findByAchievementId(id);
+        List<TestimonialAchievement> ticks =
+                testimonialAchievementRepository.findWithTestimonialTicksByAchievementId(id);
         for (TestimonialAchievement tick : ticks) {
             tick.getTestimonial().getAchievements().remove(tick);
         }
@@ -434,13 +442,22 @@ public class CatalogAdminService {
     /**
      * Removes every section filed under {@code topicIds} from its owning
      * testimonial (orphan removal deletes it with its photos and tags) and
-     * flushes, so the topics can be deleted next.
+     * flushes, so the topics can be deleted next. What that touches is
+     * loaded one level at a time, for all the sections at once: the sections
+     * with their testimonials and photos, the testimonials' section lists
+     * they leave, and the photos' tags the removal cascades to.
      */
     private SectionRemoval removeSectionsOf(Collection<Long> topicIds) {
         if (topicIds.isEmpty()) {
             return new SectionRemoval(0, List.of());
         }
-        List<TestimonialSection> sections = testimonialSectionRepository.findByTopicIdIn(topicIds);
+        List<TestimonialSection> sections =
+                testimonialSectionRepository.findWithTestimonialAndPhotosByTopicIdIn(topicIds);
+        if (!sections.isEmpty()) {
+            testimonialRepository.findWithSectionsByIdIn(
+                    sections.stream().map(section -> section.getTestimonial().getId()).distinct().toList());
+            photoRepository.findWithTagsBySectionIdIn(sections.stream().map(TestimonialSection::getId).toList());
+        }
         List<Photo> photos = new ArrayList<>();
         for (TestimonialSection section : sections) {
             photos.addAll(section.getPhotos());

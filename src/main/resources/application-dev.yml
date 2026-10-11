@@ -1,12 +1,8 @@
+# The dev profile names no database: run it through TestBeaconApplication
+# (src/test/java), which starts a throwaway PostgreSQL 16 in Docker and points
+# the app at it:
+#   ./mvnw spring-boot:test-run -Dspring-boot.run.profiles=dev
 spring:
-  datasource:
-    url: jdbc:h2:file:./data/beacon-dev;MODE=PostgreSQL;NON_KEYWORDS=VALUE;AUTO_SERVER=TRUE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: ""
-  h2:
-    console:
-      enabled: true
   mail:
     host: ${MAIL_HOST:localhost}
     port: ${MAIL_PORT:1025}

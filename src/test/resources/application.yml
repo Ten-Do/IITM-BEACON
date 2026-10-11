@@ -1,17 +1,35 @@
 spring:
+  # No datasource URL here: testsupport.SharedTestDatabase points every test
+  # context at the shared PostgreSQL 16 test container, unless the test class
+  # names a database of its own (testsupport.PostgresContainerSupport).
   datasource:
-    url: jdbc:h2:mem:beacon_test;MODE=PostgreSQL;NON_KEYWORDS=VALUE;DB_CLOSE_DELAY=-1
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: ""
+    hikari:
+      # Every context the test framework keeps cached (up to 32) holds its own
+      # pool open against that one server (PostgresContainerSupport raises its
+      # connection limit to match; PostgresContainerSupportTest checks the two
+      # fit). Connections beyond the first are opened only when needed.
+      maximum-pool-size: 5
+      minimum-idle: 1
+  # The main file's database settings, repeated verbatim (see below).
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
   mail:
     host: localhost
     port: 1025
     username: test
     password: test
   # This file shadows src/main/resources/application.yml on the test classpath,
-  # so the upload and photo limits and the session timeout and cookie are
-  # repeated here verbatim (defaults only); config.UploadLimitsConfigTest,
+  # so the database settings above, the upload and photo limits and the session
+  # timeout and cookie are repeated here verbatim (defaults only);
+  # config.DatabaseSettingsConfigTest, config.UploadLimitsConfigTest,
   # config.SessionTimeoutConfigTest, config.SessionCookieConfigTest and
   # config.SecureCookieConfigTest fail if the two copies drift apart.
   servlet:

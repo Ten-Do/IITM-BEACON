@@ -35,10 +35,14 @@
                 <button type="submit" class="auth-btn auth-btn-primary">Verify</button>
             </form>
             <form method="post" th:action="@{/admin/login/resend}">
-                <button type="submit" class="auth-btn-ghost">Resend code</button>
+                <!-- Enabled here, so it works without JavaScript; static/js/resend-cooldown.js disables it,
+                     with a countdown, until the per-email code request limit lets another request through. -->
+                <button type="submit" class="auth-btn-ghost"
+                        th:data-resend-wait-seconds="${resendWaitSeconds}">Resend code</button>
             </form>
         </div>
     </div>
 </main>
+<script defer th:src="@{/js/resend-cooldown.js}"></script>
 </body>
 </html>

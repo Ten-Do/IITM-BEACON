@@ -15,13 +15,15 @@ below: those tests are written after the implementation, never test-first. Five 
   expiry/attempt logic. OTP logic and the rejected-testimonial retention job both inject a
   `Clock` (`architecture.md` §16) so expiry/30-day-window behavior is testable without waiting on
   real time.
-- **Repository/integration** — Spring Data JPA repositories against H2, including the query
-  behind the gallery's combined country/topic/keyword filter (decision 8) and the encrypted-field
-  round-trip. Plus a real PostgreSQL 16 (Testcontainers, `testsupport.PostgresContainerSupport`,
-  one container per test JVM, one database per test class) for what H2's PostgreSQL mode could
-  hide: the Flyway migration set, the entities' schema validation and the seed data
-  (`domain.PostgresMigrationParityTest`). These run in the normal `./mvnw test`, so the suite
-  needs a reachable Docker daemon.
+- **Repository/integration** — Spring Data JPA repositories against a real PostgreSQL 16
+  (Testcontainers, decision 35: one container per test JVM, every context on its database
+  `beacon_test` through `testsupport.SharedTestDatabase`, a class's own database or a fresh one
+  for a migration test through `testsupport.PostgresContainerSupport`), including the query
+  behind the gallery's combined country/topic/keyword filter (decision 8), the projection queries
+  the pages read through, and the encrypted-field round-trip. Every context migrates with Flyway
+  and validates the entities against the result, as production does. The suite needs a reachable
+  Docker daemon. SQL statement counts are pinned per page and write operation
+  (`*SqlStatementsTest`): one item costs as many statements as many.
 - **Web layer** — `MockMvc` against controllers: request validation (`@Valid` + Bean Validation),
   file-upload handling, and centralized error mapping (`@RestControllerAdvice`). Every
   state-changing request sends its CSRF token the way real clients do, through
@@ -56,7 +58,8 @@ At least one concrete test per module, each tied to the use-case or NFR it verif
 |---|---|---|
 | `domain` | `EncryptedValueConverter` round-trips a value (encrypt → store → decrypt) and produces different ciphertext for the same plaintext on two separate calls | decision 6 / `NFR-CONTACT-CONFIDENTIALITY` |
 | `domain` | `TestimonialRepository.findByEmailLookupHash(...)` resolves the correct row for a normalized email | UC-VISITOR-LOGIN routing |
-| `domain` | Every Flyway migration applies on PostgreSQL 16, the entities validate against the result, and its columns, keys and seed rows equal those of H2 migrated from the same scripts | BL-003, deployment parity |
+| `domain` | Every Flyway migration applies on PostgreSQL 16 with none pending and the entities validate against the result (`testsupport.SharedTestDatabaseTest`) | BL-003, decision 35 |
+| every slice | Each read page and write operation costs the same number of SQL statements for one item as for many (`*SqlStatementsTest`) | decision 35 |
 | `common` | A validation failure on any endpoint maps to HTTP 400 with an actionable message and no stack trace or internal detail in the body | `NFR-ERROR-TRANSPARENCY` |
 | every slice | A malformed path id answers 404, a malformed/missing parameter or part 400, an unsupported method 405 with `Allow`, 406/415 as such — JSON `ErrorResponse` under `/api/**`, the HTML error page on pages — with a fixed message, no exception text and no ERROR log; an unreadable submission-form field redirects back to the form | `NFR-ERROR-TRANSPARENCY`, decision 33 |
 | `common` | A server error answers a generic body to JSON, HTML and XML clients (real server too), and `/error` never includes trace, exception, message or binding errors | `NFR-ERROR-TRANSPARENCY` |
@@ -88,6 +91,7 @@ At least one concrete test per module, each tied to the use-case or NFR it verif
 | `config` | A multipart request to anything but the submission endpoints is refused from its headers when over 16 KB (413) or of unknown length (411), without its body being read; the submission endpoints keep their upload limits | decisions 32, 34 |
 | `gallery`, `moderation` | The largest addressable page answers an empty page; the next one (offset overflow) a 400 | decision 33 |
 | `adminauth`, `submission` | The login email never appears in a URL, link or form between the two steps (kept in the session, removed at login); a code that can't be emailed gets the success response byte for byte and a WARN without the address; dev/test logs mask the recipient | decisions 4, 17, `NFR-CONTACT-CONFIDENTIALITY` |
+| `adminauth`, `submission` | Both code pages render "Resend code" enabled, carrying its wait — the per-email request window over the per-email limit, in whole seconds rounded up (non-default limits, also on the admin's rate-limited render; a non-positive limit or window is refused) — and they alone load `resend-cooldown.js`, which disables the button with a countdown and enables it again when the wait is over (e2e) | UC-VISITOR-LOGIN, UC-ADMIN-OTP-VERIFY |
 | `moderation` | A reject whose email can't be sent leaves the testimonial `PENDING`: REST 503 with the fixed message, the page back on the queue with the message and the reason kept | UC-REJECT-TESTIMONIAL alt flow, decision 33 |
 | `config` | `POST /logout` with a token ends the session (the old id gets 401), expires the cookies and redirects an admin to `/admin/login`, anyone else to `/`; without a token 403, other methods 405; the header shows "Log out" only where intended | decision 23 |
 | `submission` | Saving an edit leaves sections of invisible topics (with photos) and ticks of inactive achievements untouched | UC-EDIT-TESTIMONIAL, decision 28 |

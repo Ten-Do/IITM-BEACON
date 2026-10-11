@@ -5,6 +5,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.iitm.beacon.common.EmailNormalizer;
 import com.iitm.beacon.common.error.TooManyRequestsException;
 import com.iitm.beacon.common.otp.OtpCodeGenerator;
+import com.iitm.beacon.common.otp.OtpResendWait;
 import com.iitm.beacon.common.ratelimit.RateLimiterService;
 import com.iitm.beacon.config.OtpMailer;
 import com.iitm.beacon.config.VisitorOtpProperties;
@@ -101,6 +102,15 @@ public class VisitorOtpService {
         } catch (MailException ex) {
             log.warn("A visitor login code could not be emailed ({})", ex.getClass().getSimpleName());
         }
+    }
+
+    /**
+     * How long, in seconds, the code page's "Resend code" waits before it can
+     * be pressed: the per-email request limit's time for one more request
+     * ({@link OtpResendWait}). The limit itself still holds on the server.
+     */
+    public long resendWaitSeconds() {
+        return OtpResendWait.seconds(otpProperties.requestLimitPerEmail(), otpProperties.requestWindowPerEmail());
     }
 
     public VisitorOtpVerifyResult verify(String rawEmail, String rawCode) {

@@ -132,4 +132,35 @@ class OtpServiceConfigurabilityTest {
         assertThat(service.verify(ADMIN_EMAIL, code))
                 .isEqualTo(new OtpVerifyResult.Rejected(RejectionReason.NO_PENDING_OTP));
     }
+
+    // -- how long "Resend code" waits: one per-email request's share of the window --
+
+    private OtpService serviceWithLimits(
+            int requestLimitPerEmail,
+            Duration requestWindowPerEmail,
+            int requestLimitPerIp,
+            Duration requestWindowPerIp) {
+        AdminOtpProperties properties = new AdminOtpProperties(Duration.ofMinutes(5), 5,
+                requestLimitPerEmail, requestWindowPerEmail, requestLimitPerIp, requestWindowPerIp);
+        return new OtpService(
+                new AdminProperties(ADMIN_EMAIL),
+                properties,
+                new OtpCodeGenerator(),
+                otpMailer,
+                clock,
+                mock(RateLimiterService.class));
+    }
+
+    @Test
+    void resendWaitSeconds_isThePerEmailWindowOverThePerEmailLimit_roundedUp() {
+        assertThat(serviceWithLimits(3, Duration.ofSeconds(100), 5, Duration.ofMinutes(1)).resendWaitSeconds())
+                .isEqualTo(34);
+    }
+
+    /** The per-IP limit is shared by everyone behind one address: it never sets the wait. */
+    @Test
+    void resendWaitSeconds_ignoresThePerIpLimit() {
+        assertThat(serviceWithLimits(1, Duration.ofMinutes(2), 1, Duration.ofHours(1)).resendWaitSeconds())
+                .isEqualTo(120);
+    }
 }

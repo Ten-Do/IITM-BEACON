@@ -78,7 +78,11 @@ class SecurityConfigUnknownPageTest {
                 // Not the API: neither /api itself nor under /api/ (common.web.ApiRequests).
                 "/apix",
                 "/apiary/topics",
-                "/API/moderation/session");
+                "/API/moderation/session",
+                // Where the dev-only H2 console used to be: no database console is
+                // served any more, and its path keeps no exemption of its own.
+                "/h2-console",
+                "/h2-console/login.jsp");
     }
 
     static Stream<Arguments> rolesAndUnknownPages() {
@@ -260,9 +264,10 @@ class SecurityConfigUnknownPageTest {
 
     // -- the response headers are there --
 
-    @Test
-    void anonymous404Page_carriesTheSecurityHeaders() throws Exception {
-        assertSecurityHeaders(mockMvc.perform(get("/no-such-page")).andReturn().getResponse());
+    @ParameterizedTest
+    @ValueSource(strings = {"/no-such-page", "/h2-console/login.jsp"})
+    void anonymous404Page_carriesTheSecurityHeaders(String path) throws Exception {
+        assertSecurityHeaders(mockMvc.perform(get(path)).andReturn().getResponse());
     }
 
     @ParameterizedTest
@@ -274,9 +279,10 @@ class SecurityConfigUnknownPageTest {
 
     // -- a CSRF failure is still checked first: a 403 --
 
-    @Test
-    void anonymousPostWithoutTheToken_isStillTheHtml403Page() throws Exception {
-        MockHttpServletResponse response = mockMvc.perform(post("/no-such-page")).andReturn().getResponse();
+    @ParameterizedTest
+    @ValueSource(strings = {"/no-such-page", "/h2-console/login.do"})
+    void anonymousPostWithoutTheToken_isStillTheHtml403Page(String path) throws Exception {
+        MockHttpServletResponse response = mockMvc.perform(post(path)).andReturn().getResponse();
 
         assertHtmlErrorPage(response, 403);
         assertNotRedirected(response);

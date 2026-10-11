@@ -7,7 +7,7 @@ target/
 *.iml
 .vscode/
 
-# Local H2 database files
+# Local dev data (the dev run's uploads)
 data/
 
 # Environment / secrets

@@ -95,6 +95,33 @@ class AchievementRepositoryTest extends AbstractRepositoryTest {
                 .containsExactly(tieFirst.getId(), tieSecond.getId(), late.getId());
     }
 
+    // -- findBySlugIn: every achievement a submission ticks, in one query --
+
+    @Test
+    void findBySlugIn_findsExactSlugsOnly_inactiveOnesIncluded() {
+        Achievement active = achievementRepository.saveAndFlush(achievement("fixture_in_active", 5, true));
+        Achievement inactive = achievementRepository.saveAndFlush(achievement("fixture_in_inactive", 6, false));
+
+        List<Achievement> found = achievementRepository.findBySlugIn(
+                List.of(active.getSlug(), inactive.getSlug(), "FIXTURE_IN_ACTIVE", "fixture_in_unknown"));
+
+        assertThat(found).extracting(Achievement::getSlug)
+                .containsExactlyInAnyOrder(active.getSlug(), inactive.getSlug());
+    }
+
+    @Test
+    void findBySlugIn_sameSlugTwice_findsItOnce() {
+        Achievement active = achievementRepository.saveAndFlush(achievement("fixture_in_twice", 5, true));
+
+        assertThat(achievementRepository.findBySlugIn(List.of(active.getSlug(), active.getSlug())))
+                .extracting(Achievement::getId).containsExactly(active.getId());
+    }
+
+    @Test
+    void findBySlugIn_noSlugs_findsNothing() {
+        assertThat(achievementRepository.findBySlugIn(List.of())).isEmpty();
+    }
+
     private static Achievement achievement(String slug, int displayOrder, boolean active) {
         return Achievement.builder()
                 .slug(slug)

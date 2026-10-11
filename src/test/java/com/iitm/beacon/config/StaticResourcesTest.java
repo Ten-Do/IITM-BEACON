@@ -764,6 +764,61 @@ class StaticResourcesTest {
                         "animation: gallery-reveal-spin 0.7s linear infinite;");
     }
 
+    // -- "Resend code" waiting out the code request limit (static/js/resend-cooldown.js) --
+
+    private String resendCooldownJs() throws Exception {
+        return mockMvc.perform(get("/js/resend-cooldown.js"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/javascript"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+    }
+
+    /**
+     * Its behaviour runs in a browser (e2e); this pins the contract with the
+     * markup of the two login code pages: driven by the button's data
+     * attribute only, it disables the button itself (the real attribute: the
+     * button has sent nothing yet, so nothing is lost, and a disabled button
+     * can't send its form), starts over on a page restored from the
+     * back/forward cache, and is plain JS — no framework, no module, no
+     * inline style (the Content-Security-Policy blocks them).
+     */
+    @Test
+    void resendCooldownJs_isAPlainScriptDrivenByTheButtonsWaitAttribute() throws Exception {
+        String js = withoutComments(resendCooldownJs());
+
+        assertThat(js).contains("'use strict'", "data-resend-wait-seconds", ".disabled");
+        assertThat(js).contains("'pageshow'", ".persisted");
+        assertThat(js).doesNotContain(
+                "Alpine", "import ", "export ", "fetch(", "window.location", ".style", "innerHTML");
+    }
+
+    /**
+     * Disabled while it waits, "Resend code" looks it — dimmed, with a
+     * not-allowed cursor — and gets no hover or press effect. The hover and
+     * press rules have the same specificity, so this one comes after them.
+     */
+    @Test
+    void beaconCss_aDisabledResendButton_looksDisabled_withoutHoverOrPressEffect() throws Exception {
+        String css = withoutComments(beaconCss());
+        String flat = topLevelRules(css);
+
+        for (String selector : new String[] {
+            ".auth-btn-ghost:disabled", ".auth-btn-ghost:disabled:hover", ".auth-btn-ghost:disabled:active"
+        }) {
+            assertThat(declarationsFor(flat, selector)).as(selector).contains(
+                    "background: transparent;",
+                    "color: var(--ink-soft);",
+                    "opacity: 0.6;",
+                    "cursor: not-allowed;",
+                    "transform: none;");
+        }
+        assertThat(css.indexOf(".auth-btn-ghost:disabled:hover"))
+                .isGreaterThan(css.lastIndexOf(".auth-btn-ghost" + NOT_BUSY + ":hover"))
+                .isGreaterThan(css.lastIndexOf(".auth-btn-ghost" + NOT_BUSY + ":active"));
+    }
+
     // -- gallery cards (gallery/list.html): the whole card is the link to its article --
 
     /**

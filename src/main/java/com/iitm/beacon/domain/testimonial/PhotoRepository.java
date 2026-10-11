@@ -1,5 +1,6 @@
 package com.iitm.beacon.domain.testimonial;
 
+import java.util.Collection;
 import java.util.List;
 import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -34,4 +35,25 @@ public interface PhotoRepository extends JpaRepository<Photo, Long> {
             @Param("thumbnailPath") String thumbnailPath,
             @Param("width") int width,
             @Param("height") int height);
+
+    /**
+     * The photos of every section in {@code sectionIds}, section by section
+     * in id order, each section's in display order (then id).
+     */
+    @Query("select new com.iitm.beacon.domain.testimonial.SectionPhoto("
+            + " p.id, p.section.id, p.filePath, p.thumbnailPath, p.width, p.height)"
+            + " from Photo p where p.section.id in :sectionIds order by p.section.id, p.displayOrder, p.id")
+    List<SectionPhoto> findSectionPhotosBySectionIdIn(@Param("sectionIds") Collection<Long> sectionIds);
+
+    /** Every photo of the sections of {@code sectionIds}, each with its tags loaded in the same query. */
+    @Query("select p from Photo p left join fetch p.tags where p.section.id in :sectionIds")
+    List<Photo> findWithTagsBySectionIdIn(@Param("sectionIds") Collection<Long> sectionIds);
+
+    /**
+     * Every photo of the testimonials of {@code testimonialIds}, in id order,
+     * each with its section loaded in the same query — which testimonial a
+     * photo belongs to costs no further statement.
+     */
+    @Query("select p from Photo p join fetch p.section s where s.testimonial.id in :testimonialIds order by p.id")
+    List<Photo> findWithSectionByTestimonialIdIn(@Param("testimonialIds") Collection<Long> testimonialIds);
 }

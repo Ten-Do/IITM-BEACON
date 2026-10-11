@@ -118,7 +118,7 @@ servers is a real, available option — not purely a solo/free-tier deployment f
 
 - Java (fixed language), Maven, Spring Boot (Spring Web, Spring Data JPA, Thymeleaf),
   MultipartFile for uploads.
-- H2 for dev/test, PostgreSQL for prod.
+- PostgreSQL in every environment (tests and local development through Testcontainers).
 - Must run containerized: Dockerfile + docker-compose (app + Postgres).
 
 ### Time

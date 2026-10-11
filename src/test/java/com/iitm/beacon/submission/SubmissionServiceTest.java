@@ -16,8 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Real-Spring-context tests for {@link SubmissionService}, following the
  * same conventions as {@code VisitorAuthControllerTest}: real repositories
- * against the H2 test DB, seeded reference data from Flyway (decision 11,
- * 13, 5, 1).
+ * against the PostgreSQL test DB, seeded reference data from Flyway (decision
+ * 11, 13, 5, 1).
  */
 @SpringBootTest
 @Transactional

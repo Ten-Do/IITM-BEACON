@@ -82,6 +82,23 @@ class GalleryServiceRevealContactTest {
     }
 
     @Test
+    void revealContact_publicEntries_comeInDisplayOrder_whateverOrderTheyWereStoredIn() {
+        Testimonial t = testimonial("reveal-order@example.com")
+                .status(TestimonialStatus.APPROVED)
+                .build();
+        t.getSections().add(generalSection(t));
+        t.getContactMethods().add(ContactMethod.builder().testimonial(t).contactType(whatsappType())
+                .value("+10000000000").isPublic(true).displayOrder(1).build());
+        t.getContactMethods().add(ContactMethod.builder().testimonial(t).contactType(emailType())
+                .value("first@example.com").isPublic(true).displayOrder(0).build());
+        Testimonial saved = testimonialRepository.saveAndFlush(t);
+
+        assertThat(galleryService.revealContact(saved.getId())).containsExactly(
+                new ContactMethodViewDto("email", "first@example.com"),
+                new ContactMethodViewDto("whatsapp", "+10000000000"));
+    }
+
+    @Test
     void revealContact_approvedWithPublicAndPrivateEntries_returnsOnlyPublicOnes() {
         Testimonial t = testimonial("reveal-happy@example.com")
                 .status(TestimonialStatus.APPROVED)

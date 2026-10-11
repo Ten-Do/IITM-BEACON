@@ -10,12 +10,16 @@ import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.config.PhotoStorageProperties;
 import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
+import com.iitm.beacon.domain.achievement.TestimonialAchievementRepository;
 import com.iitm.beacon.domain.contacttype.ContactTypeRepository;
 import com.iitm.beacon.domain.country.CountryRepository;
+import com.iitm.beacon.domain.testimonial.ContactMethodRepository;
+import com.iitm.beacon.domain.testimonial.PhotoRepository;
+import com.iitm.beacon.domain.testimonial.PhotoTagRepository;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
+import com.iitm.beacon.domain.testimonial.TestimonialSectionRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
-import com.iitm.beacon.domain.topic.TopicGroupRepository;
 import com.iitm.beacon.domain.topic.TopicRepository;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.ContactMethodInput;
 import com.iitm.beacon.submission.TestimonialSubmissionRequest.PhotoInput;
@@ -48,6 +52,21 @@ class SubmissionServiceCreateTest {
     private TestimonialRepository testimonialRepository;
 
     @Autowired
+    private TestimonialSectionRepository testimonialSectionRepository;
+
+    @Autowired
+    private PhotoRepository photoRepository;
+
+    @Autowired
+    private PhotoTagRepository photoTagRepository;
+
+    @Autowired
+    private ContactMethodRepository contactMethodRepository;
+
+    @Autowired
+    private TestimonialAchievementRepository testimonialAchievementRepository;
+
+    @Autowired
     private TopicRepository topicRepository;
 
     @Autowired
@@ -67,9 +86,6 @@ class SubmissionServiceCreateTest {
 
     @Autowired
     private Clock clock;
-
-    @Autowired
-    private TopicGroupRepository topicGroupRepository;
 
     @Autowired
     private Validator validator;
@@ -242,6 +258,11 @@ class SubmissionServiceCreateTest {
                         new PhotoFileDeleter(restrictiveProperties));
         SubmissionService restrictedService = new SubmissionService(
                 testimonialRepository,
+                testimonialSectionRepository,
+                photoRepository,
+                photoTagRepository,
+                contactMethodRepository,
+                testimonialAchievementRepository,
                 topicRepository,
                 achievementRepository,
                 contactTypeRepository,
@@ -250,7 +271,6 @@ class SubmissionServiceCreateTest {
                 restrictivePhotoStorage,
                 restrictiveProperties,
                 clock,
-                topicGroupRepository,
                 validator);
 
         MockMultipartFile fileA = new MockMultipartFile("a", "a.png", "image/png", realPngBytes());

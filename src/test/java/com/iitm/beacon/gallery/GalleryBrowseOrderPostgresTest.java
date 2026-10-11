@@ -31,7 +31,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * BL-036 on a real PostgreSQL 16, not H2's PostgreSQL mode: the gallery's
+ * BL-036 on a database of its own in the shared PostgreSQL 16: the gallery's
  * newest-approval-first order — {@code reviewedAt} descending, {@code id}
  * descending on a tie, never-reviewed last, built as a {@code CASE} in
  * {@code TestimonialSpecifications.newestApprovalFirst()} — runs there,

@@ -10,14 +10,20 @@ import com.iitm.beacon.config.PhotoUrlResolver;
 import com.iitm.beacon.domain.achievement.Achievement;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
 import com.iitm.beacon.domain.achievement.TestimonialAchievement;
+import com.iitm.beacon.domain.achievement.TestimonialAchievementRepository;
 import com.iitm.beacon.domain.contacttype.ContactType;
 import com.iitm.beacon.domain.contacttype.ContactTypeRepository;
 import com.iitm.beacon.domain.country.Country;
 import com.iitm.beacon.domain.country.CountryRepository;
 import com.iitm.beacon.domain.testimonial.ContactMethod;
+import com.iitm.beacon.domain.testimonial.ContactMethodRepository;
+import com.iitm.beacon.domain.testimonial.Photo;
+import com.iitm.beacon.domain.testimonial.PhotoRepository;
+import com.iitm.beacon.domain.testimonial.PhotoTagRepository;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
+import com.iitm.beacon.domain.testimonial.TestimonialSectionRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.domain.topic.Topic;
 import com.iitm.beacon.domain.topic.TopicRepository;
@@ -42,6 +48,21 @@ class ModerationServiceListPendingTest {
     private TestimonialRepository testimonialRepository;
 
     @Autowired
+    private TestimonialSectionRepository testimonialSectionRepository;
+
+    @Autowired
+    private PhotoRepository photoRepository;
+
+    @Autowired
+    private PhotoTagRepository photoTagRepository;
+
+    @Autowired
+    private ContactMethodRepository contactMethodRepository;
+
+    @Autowired
+    private TestimonialAchievementRepository testimonialAchievementRepository;
+
+    @Autowired
     private CountryRepository countryRepository;
 
     @Autowired
@@ -59,6 +80,11 @@ class ModerationServiceListPendingTest {
     void setUp() {
         moderationService = new ModerationService(
                 testimonialRepository,
+                testimonialSectionRepository,
+                photoRepository,
+                photoTagRepository,
+                contactMethodRepository,
+                testimonialAchievementRepository,
                 mock(NotificationMailer.class),
                 new PhotoUrlResolver(),
                 mock(PhotoFileDeleter.class),
@@ -201,6 +227,33 @@ class ModerationServiceListPendingTest {
                 .containsExactlyInAnyOrder(
                         org.assertj.core.groups.Tuple.tuple("whatsapp", "+1234567890", false),
                         org.assertj.core.groups.Tuple.tuple("telegram", "@davidj", true));
+    }
+
+    /** Display order, not the order the rows were stored in — an edit can reorder a section's photos. */
+    @Test
+    void listPending_showsEachSectionsPhotosAndTheContactMethodsInDisplayOrder() {
+        Testimonial testimonial = newTestimonial("photo-order@example.com", TestimonialStatus.PENDING, Instant.now());
+        addSection(testimonial, "general", "With photos.", false);
+        TestimonialSection section = testimonial.getSections().get(0);
+        for (int displayOrder : new int[] {2, 0, 1}) {
+            section.getPhotos().add(Photo.builder()
+                    .section(section)
+                    .filePath("order-" + displayOrder + ".webp")
+                    .displayOrder(displayOrder)
+                    .build());
+        }
+        testimonial.getContactMethods().add(ContactMethod.builder().testimonial(testimonial)
+                .contactType(contactType("telegram")).value("@second_one").displayOrder(1).build());
+        testimonial.getContactMethods().add(ContactMethod.builder().testimonial(testimonial)
+                .contactType(contactType("email")).value("first@example.com").displayOrder(0).build());
+        testimonialRepository.save(testimonial);
+
+        ModerationTestimonialDetailDto dto = moderationService.listPending(PageRequest.of(0, 20)).content().get(0);
+
+        assertThat(dto.sections().get(0).photos()).extracting(ModerationPhotoRefDto::url)
+                .containsExactly("/uploads/order-0.webp", "/uploads/order-1.webp", "/uploads/order-2.webp");
+        assertThat(dto.contactMethods()).extracting(ModerationContactMethodViewDto::type)
+                .containsExactly("email", "telegram");
     }
 
     @Test

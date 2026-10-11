@@ -9,6 +9,7 @@ import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
 import com.iitm.beacon.domain.achievement.TestimonialAchievementRepository;
 import com.iitm.beacon.domain.country.CountryRepository;
+import com.iitm.beacon.domain.testimonial.PhotoRepository;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSectionRepository;
@@ -69,6 +70,9 @@ class CatalogAdminServiceRependTest {
     private TestimonialRepository testimonialRepository;
 
     @Autowired
+    private PhotoRepository photoRepository;
+
+    @Autowired
     private CountryRepository countryRepository;
 
     @Autowired
@@ -86,6 +90,7 @@ class CatalogAdminServiceRependTest {
                 testimonialRepository,
                 testimonialSectionRepository,
                 testimonialAchievementRepository,
+                photoRepository,
                 mock(PhotoFileDeleter.class));
         fixtures = new CatalogFixtures(
                 topicGroupRepository, topicRepository, achievementRepository, testimonialRepository,

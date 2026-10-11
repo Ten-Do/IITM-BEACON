@@ -77,11 +77,6 @@
     </dependency>
 
     <dependency>
-      <groupId>com.h2database</groupId>
-      <artifactId>h2</artifactId>
-      <scope>runtime</scope>
-    </dependency>
-    <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
       <scope>runtime</scope>
@@ -205,14 +200,22 @@
       <version>${archunit.version}</version>
       <scope>test</scope>
     </dependency>
-    <!-- A real PostgreSQL (postgres:16-alpine, the image docker-compose.yml
-         runs) for the tests that must not rely on H2's PostgreSQL mode, e.g.
-         the Flyway migration-parity test. Versions come from Spring Boot's
-         testcontainers-bom. Part of the normal `mvn test` run, so that run
-         needs a reachable Docker daemon (see testsupport.PostgresContainerSupport). -->
+    <!-- PostgreSQL 16 (postgres:16-alpine, the image docker-compose.yml runs)
+         in Testcontainers is the only database outside production: every
+         test context runs on one container shared per JVM
+         (testsupport.SharedTestDatabase, testsupport.PostgresContainerSupport),
+         and so do `make e2e` and the dev run (TestBeaconApplication, via
+         spring-boot-testcontainers' @ServiceConnection). Versions come from
+         Spring Boot's dependency management. `mvn test` therefore needs a
+         reachable Docker daemon. -->
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-testcontainers</artifactId>
       <scope>test</scope>
     </dependency>
     <!-- Browser end-to-end tests (src/test/java/com/iitm/beacon/e2e),

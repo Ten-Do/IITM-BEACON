@@ -48,6 +48,12 @@ import org.springframework.web.bind.annotation.SessionAttribute;
  * the email page, whether the rejected request was the first one or a
  * "Resend code": an earlier code may already be on its way and still valid.
  *
+ * <p>The code page's "Resend code" waits out the per-email request limit in
+ * the browser ({@code resendWaitSeconds}, decision 36) wherever the page is
+ * rendered: when it is opened, when a rate-limited request renders it (the
+ * limit has just been met) and when a wrong code does — each time the whole
+ * wait, so the countdown starts over.
+ *
  * <p>A successful {@link #verify} returns the admin to the moderation page
  * they were sent to the login from (an expired session), if any, via
  * {@link PostLoginRedirect}; otherwise to the moderation queue.
@@ -122,6 +128,7 @@ public class AdminAuthViewController {
             return REDIRECT_TO_LOGIN_EMAIL;
         }
         model.addAttribute("email", email);
+        model.addAttribute("resendWaitSeconds", otpService.resendWaitSeconds());
         return LOGIN_CODE_VIEW;
     }
 
@@ -139,6 +146,7 @@ public class AdminAuthViewController {
         if (result instanceof OtpVerifyResult.Rejected) {
             model.addAttribute("email", email);
             model.addAttribute("error", WRONG_CODE_MESSAGE);
+            model.addAttribute("resendWaitSeconds", otpService.resendWaitSeconds());
             return LOGIN_CODE_VIEW;
         }
         var verified = (OtpVerifyResult.Verified) result;
@@ -156,6 +164,7 @@ public class AdminAuthViewController {
         } catch (TooManyRequestsException ex) {
             model.addAttribute("email", email);
             model.addAttribute("error", TOO_MANY_REQUESTS_MESSAGE);
+            model.addAttribute("resendWaitSeconds", otpService.resendWaitSeconds());
             return LOGIN_CODE_VIEW;
         }
         return REDIRECT_TO_LOGIN_CODE;

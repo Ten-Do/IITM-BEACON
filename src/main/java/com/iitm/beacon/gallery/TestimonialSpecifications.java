@@ -94,8 +94,8 @@ final class TestimonialSpecifications {
      * Free-text match (decision 8) over the answer text of visible sections
      * — the topic is active and either standalone or in an active group
      * (decision 28) — and the submitter's first/last name (decision 10).
-     * Uses {@code cb.lower(...)} + {@code cb.like(...)} rather than a
-     * dialect-specific {@code ilike}, for H2/Postgres portability.
+     * Uses {@code cb.lower(...)} + {@code cb.like(...)}, plain JPA criteria,
+     * rather than PostgreSQL's dialect-specific {@code ilike}.
      */
     static Specification<Testimonial> matchesQuery(String q) {
         if (q == null || q.isBlank()) {

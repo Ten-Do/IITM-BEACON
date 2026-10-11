@@ -58,6 +58,30 @@ class SubmissionServiceLoadMineTest {
         assertThat(view.dataProcessingConsent()).isTrue();
     }
 
+    /** The form's order, whatever order the sections were submitted (and stored) in. */
+    @Test
+    void loadMine_sectionsComeInDisplayOrder() {
+        TestimonialSubmissionRequest request = new TestimonialSubmissionRequest(
+                "David",
+                "Jones",
+                "GE26Z001",
+                2024,
+                "IN",
+                8,
+                List.of(new SectionInput("general", "Last in display order.", List.of()),
+                        new SectionInput("academics_workload", "Group 1, its 7th topic.", List.of()),
+                        new SectionInput("academics_teaching", "Group 1, its 1st topic.", List.of())),
+                List.of(),
+                List.of(),
+                true);
+        submissionService.create("mine-order@example.com", request, Map.of());
+
+        TestimonialSubmissionView view = submissionService.loadMine("mine-order@example.com");
+
+        assertThat(view.sections()).extracting(TestimonialSubmissionView.SectionView::topicSlug)
+                .containsExactly("academics_teaching", "academics_workload", "general");
+    }
+
     @Test
     void loadMine_emailIsNormalizedForLookup() {
         submissionService.create("case-sensitive@example.com", requestWithOneSection(), Map.of());

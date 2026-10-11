@@ -66,13 +66,13 @@ unlikely; Info = worth knowing.
 | SR-15 | CSS/JS served `no-store`, re-downloaded on every page | Low (performance) | Fixed in M7 (versioned, long-cached) |
 | SR-16 | Search `q` doesn't escape the LIKE wildcards `%`/`_` (no injection; wrong matches) | Low | `BACKLOG.md` (BL-040) |
 | SR-17 | `PhotoFileDeleter` doesn't check that a stored path stays inside the uploads root | Low | `BACKLOG.md` (BL-041) |
-| SR-18 | `/h2-console/**` is permitted and framing allowed in every profile, though the console exists only in dev | Info | `BACKLOG.md` (BL-042) |
+| SR-18 | `/h2-console/**` is permitted and framing allowed in every profile, though the console exists only in dev | Info | Fixed after M7: H2 and its console removed (decision 35); `X-Frame-Options: SAMEORIGIN` stays site-wide, matching `frame-ancestors 'self'` (decision 34) |
 | SR-19 | `SecureRandom.getInstanceStrong()` is created per encryption (may block, slower) | Info | `BACKLOG.md` (BL-043) |
 | SR-20 | Sessions have a 24 h idle timeout but no absolute lifetime | Info | `BACKLOG.md` (BL-044) |
 | SR-21 | A DEBUG log line of the JSON parser's message can echo a submitted value | Info | `BACKLOG.md` (BL-045) |
 | SR-22 | The rate-limit buckets expire after a hard-coded 10 minutes and the visitor OTP store caps at 50 000 entries — floods can evict state (fails closed) | Low | `BACKLOG.md` (BL-046) |
 | SR-23 | No cap on the number of contact methods per submission | Low | `BACKLOG.md` (BL-047) |
-| SR-24 | The prod jar contains `application-dev.yml` (dev default key) and the H2 driver | Info | `BACKLOG.md` (BL-048) |
+| SR-24 | The prod jar contains `application-dev.yml` (dev default key) and the H2 driver | Info | H2 driver removed (decision 35); `application-dev.yml`: `BACKLOG.md` (BL-048) |
 | SR-25 | Residual of SR-04: an anonymous multipart POST to the three submission endpoints without a header token is still parsed by the CSRF check (closing it changes decisions 23/32) | Low | `BACKLOG.md` (BL-055) |
 | SR-26 | Public JSON endpoints (OTP request/verify) accept bodies of any size | Low | `BACKLOG.md` (BL-056) |
 | SR-27 | Responses rejected by Spring Security's firewall carry no security headers | Low | `BACKLOG.md` (BL-057) |

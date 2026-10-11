@@ -5,7 +5,7 @@ Web gallery: prospective IITM exchange students browse alumni testimonials/photo
 ## Tech stack
 
 - Java + Maven, Spring Boot (Spring Web, Spring Data JPA, Thymeleaf), MultipartFile for uploads
-- H2 for dev/test, PostgreSQL for prod
+- PostgreSQL 16 everywhere — prod via docker-compose; tests, the dev profile and e2e via Testcontainers (no H2)
 - Must run containerized: Dockerfile for the app + docker-compose for app+Postgres locally
 
 ## Actors
@@ -75,5 +75,5 @@ Full permission/workflow detail: `docs/scope.md` (actors, constraints) and `docs
 - Constructor injection only — no field `@Autowired`.
 - Logging via SLF4J, never `System.out.println`.
 - Config through `application.yml`/properties + profiles (dev/prod). No hardcoded secrets or credentials — secrets come from environment variables.
-- Once past H2 prototyping, manage schema changes with migrations (Flyway/Liquibase); don't rely on `ddl-auto=update` in production.
+- Manage schema changes with migrations (Flyway/Liquibase); don't rely on `ddl-auto=update` in production.
 - Prefer `Optional<T>` over returning `null` from service/repository methods.

@@ -84,6 +84,13 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
  * expired session), the code step goes back to the email step. Opening the
  * email step forgets it, and so does a successful login.
  *
+ * <p>The code page's "Resend code" waits out the per-email request limit in
+ * the browser ({@code resendWaitSeconds}, decision 36), both when the page
+ * is opened and when a wrong code re-renders it — the whole wait each time,
+ * so the countdown starts over. A request that gets
+ * past it anyway still meets the limit on the server, answered like any
+ * other rate-limited request (decision 17).
+ *
  * <p>A successful {@link #verifyOtp} returns the visitor to the form or
  * confirmation page they were sent to the login from (an expired session),
  * if any, via {@link PostLoginRedirect}; otherwise to the form. A form POST
@@ -199,6 +206,7 @@ public class SubmissionViewController {
             return REDIRECT_TO_LOGIN_EMAIL;
         }
         model.addAttribute("email", email);
+        model.addAttribute("resendWaitSeconds", visitorOtpService.resendWaitSeconds());
         return LOGIN_CODE_VIEW;
     }
 
@@ -216,6 +224,7 @@ public class SubmissionViewController {
         if (result instanceof VisitorOtpVerifyResult.Rejected) {
             model.addAttribute("email", email);
             model.addAttribute("error", WRONG_CODE_MESSAGE);
+            model.addAttribute("resendWaitSeconds", visitorOtpService.resendWaitSeconds());
             return LOGIN_CODE_VIEW;
         }
         var verified = (VisitorOtpVerifyResult.Verified) result;

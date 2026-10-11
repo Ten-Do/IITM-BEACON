@@ -2,12 +2,13 @@ package com.iitm.beacon.domain.testimonial;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.iitm.beacon.testsupport.PostgresContainerSupport;
+import com.iitm.beacon.testsupport.PostgresContainerSupport.Database;
 import java.sql.Connection;
-import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.Test;
@@ -15,38 +16,38 @@ import org.junit.jupiter.api.Test;
 /**
  * V18 ({@code photo.thumbnail_path}, {@code width}, {@code height}) against a
  * database that already holds photos stored before the WebP pipeline. Runs
- * Flyway directly on a private in-memory H2 database (PostgreSQL mode, like
- * every other test), so the shared test database is never migrated twice.
+ * Flyway directly on a fresh, empty PostgreSQL database of its own per test
+ * ({@link PostgresContainerSupport#freshDatabase()}), so the shared test
+ * database is never migrated twice.
  */
 class PhotoThumbnailAndSizeMigrationTest {
 
-    private static String freshDatabaseUrl() {
-        return "jdbc:h2:mem:v18-" + UUID.randomUUID() + ";MODE=PostgreSQL;NON_KEYWORDS=VALUE;DB_CLOSE_DELAY=-1";
-    }
-
-    private static Flyway flywayUpTo(String url, String version) {
+    private static Flyway flywayUpTo(Database database, String version) {
         return Flyway.configure()
-                .dataSource(url, "sa", "")
+                .dataSource(database.url(), database.username(), database.password())
                 .locations("classpath:db/migration")
                 .target(MigrationVersion.fromVersion(version))
                 .load();
     }
 
     private static String isNullable(Connection connection, String column) throws SQLException {
-        try (Statement statement = connection.createStatement();
-                ResultSet rs = statement.executeQuery("SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS"
-                        + " WHERE LOWER(TABLE_NAME) = 'photo' AND LOWER(COLUMN_NAME) = '" + column + "'")) {
-            assertThat(rs.next()).as("column photo." + column + " exists").isTrue();
-            return rs.getString(1);
+        try (PreparedStatement statement = connection.prepareStatement("SELECT is_nullable"
+                + " FROM information_schema.columns"
+                + " WHERE table_schema = 'public' AND table_name = 'photo' AND column_name = ?")) {
+            statement.setString(1, column);
+            try (ResultSet rs = statement.executeQuery()) {
+                assertThat(rs.next()).as("column photo." + column + " exists").isTrue();
+                return rs.getString(1);
+            }
         }
     }
 
     @Test
     void v18_addsNullableThumbnailPathWidthAndHeight() throws Exception {
-        String url = freshDatabaseUrl();
-        flywayUpTo(url, "18").migrate();
+        Database database = PostgresContainerSupport.freshDatabase();
+        flywayUpTo(database, "18").migrate();
 
-        try (Connection connection = DriverManager.getConnection(url, "sa", "")) {
+        try (Connection connection = database.connect()) {
             assertThat(isNullable(connection, "thumbnail_path")).isEqualTo("YES");
             assertThat(isNullable(connection, "width")).isEqualTo("YES");
             assertThat(isNullable(connection, "height")).isEqualTo("YES");
@@ -55,9 +56,9 @@ class PhotoThumbnailAndSizeMigrationTest {
 
     @Test
     void v18_existingPhotoRowsKeepTheirFile_andGetNoThumbnailOrSize() throws Exception {
-        String url = freshDatabaseUrl();
-        flywayUpTo(url, "17").migrate();
-        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+        Database database = PostgresContainerSupport.freshDatabase();
+        flywayUpTo(database, "17").migrate();
+        try (Connection connection = database.connect();
                 Statement statement = connection.createStatement()) {
             statement.executeUpdate("INSERT INTO testimonial (first_name, last_name, roll_number, admission_year,"
                     + " email, email_lookup_hash, country_code, recommendation_score, data_processing_consent,"
@@ -69,9 +70,9 @@ class PhotoThumbnailAndSizeMigrationTest {
                     + " SELECT id, 'legacy.jpeg', 0 FROM testimonial_section");
         }
 
-        flywayUpTo(url, "18").migrate();
+        flywayUpTo(database, "18").migrate();
 
-        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+        try (Connection connection = database.connect();
                 Statement statement = connection.createStatement();
                 ResultSet rs = statement.executeQuery("SELECT file_path, thumbnail_path, width, height FROM photo")) {
             assertThat(rs.next()).isTrue();
@@ -84,10 +85,10 @@ class PhotoThumbnailAndSizeMigrationTest {
 
     @Test
     void v18_acceptsARowWithThumbnailAndSize() throws Exception {
-        String url = freshDatabaseUrl();
-        flywayUpTo(url, "18").migrate();
+        Database database = PostgresContainerSupport.freshDatabase();
+        flywayUpTo(database, "18").migrate();
 
-        try (Connection connection = DriverManager.getConnection(url, "sa", "");
+        try (Connection connection = database.connect();
                 Statement statement = connection.createStatement()) {
             statement.executeUpdate("INSERT INTO testimonial (first_name, last_name, roll_number, admission_year,"
                     + " email, email_lookup_hash, country_code, recommendation_score, data_processing_consent,"

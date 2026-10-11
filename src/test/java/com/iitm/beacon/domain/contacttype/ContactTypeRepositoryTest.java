@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.iitm.beacon.domain.AbstractRepositoryTest;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -117,5 +118,41 @@ class ContactTypeRepositoryTest extends AbstractRepositoryTest {
                         .displayOrder(6)
                         .build()))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+    // -- findBySlugIn: every contact type a submission names, in one query --
+
+    private ContactType contactType(String slug, boolean active) {
+        return contactTypeRepository.saveAndFlush(ContactType.builder()
+                .slug(slug)
+                .name("Fixture " + slug)
+                .label("fixture")
+                .displayOrder(9)
+                .active(active)
+                .build());
+    }
+
+    @Test
+    void findBySlugIn_findsExactSlugsOnly_inactiveOnesIncluded() {
+        ContactType active = contactType("fixture_in_active", true);
+        ContactType inactive = contactType("fixture_in_inactive", false);
+
+        List<ContactType> found = contactTypeRepository.findBySlugIn(
+                List.of(active.getSlug(), inactive.getSlug(), "FIXTURE_IN_ACTIVE", "fixture_in_unknown"));
+
+        assertThat(found).extracting(ContactType::getSlug)
+                .containsExactlyInAnyOrder(active.getSlug(), inactive.getSlug());
+    }
+
+    @Test
+    void findBySlugIn_sameSlugTwice_findsItOnce() {
+        ContactType active = contactType("fixture_in_twice", true);
+
+        assertThat(contactTypeRepository.findBySlugIn(List.of(active.getSlug(), active.getSlug())))
+                .extracting(ContactType::getId).containsExactly(active.getId());
+    }
+
+    @Test
+    void findBySlugIn_noSlugs_findsNothing() {
+        assertThat(contactTypeRepository.findBySlugIn(List.of())).isEmpty();
     }
 }

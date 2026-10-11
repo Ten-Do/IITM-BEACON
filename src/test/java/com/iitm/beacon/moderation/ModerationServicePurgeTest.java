@@ -13,12 +13,16 @@ import ch.qos.logback.core.read.ListAppender;
 import com.iitm.beacon.config.NotificationMailer;
 import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.config.PhotoUrlResolver;
+import com.iitm.beacon.domain.achievement.TestimonialAchievementRepository;
 import com.iitm.beacon.domain.country.CountryRepository;
+import com.iitm.beacon.domain.testimonial.ContactMethodRepository;
 import com.iitm.beacon.domain.testimonial.Photo;
 import com.iitm.beacon.domain.testimonial.PhotoRepository;
+import com.iitm.beacon.domain.testimonial.PhotoTagRepository;
 import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSection;
+import com.iitm.beacon.domain.testimonial.TestimonialSectionRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialStatus;
 import com.iitm.beacon.domain.topic.TopicRepository;
 import com.iitm.beacon.testsupport.TestPhotoStorage;
@@ -72,6 +76,18 @@ class ModerationServicePurgeTest {
     private TestimonialRepository testimonialRepository;
 
     @Autowired
+    private TestimonialSectionRepository testimonialSectionRepository;
+
+    @Autowired
+    private PhotoTagRepository photoTagRepository;
+
+    @Autowired
+    private ContactMethodRepository contactMethodRepository;
+
+    @Autowired
+    private TestimonialAchievementRepository testimonialAchievementRepository;
+
+    @Autowired
     private PhotoRepository photoRepository;
 
     @Autowired
@@ -110,6 +126,11 @@ class ModerationServicePurgeTest {
     private ModerationService service(TestimonialRepository repository) {
         return new ModerationService(
                 repository,
+                testimonialSectionRepository,
+                photoRepository,
+                photoTagRepository,
+                contactMethodRepository,
+                testimonialAchievementRepository,
                 mock(NotificationMailer.class),
                 new PhotoUrlResolver(),
                 new PhotoFileDeleter(TestPhotoStorage.properties(uploadsRoot)),
@@ -359,11 +380,11 @@ class ModerationServicePurgeTest {
         TestimonialRepository resubmitsWhileFound =
                 mock(TestimonialRepository.class, AdditionalAnswers.delegatesTo(testimonialRepository));
         doAnswer(invocation -> {
-            List<Testimonial> found = testimonialRepository.findByStatusAndRejectedAtBeforeOrderByIdAsc(
+            List<Long> found = testimonialRepository.findIdsByStatusAndRejectedAtBefore(
                     invocation.getArgument(0), invocation.getArgument(1));
             visitorResubmitsConcurrently(resubmitted.getId());
             return found;
-        }).when(resubmitsWhileFound).findByStatusAndRejectedAtBeforeOrderByIdAsc(any(), any());
+        }).when(resubmitsWhileFound).findIdsByStatusAndRejectedAtBefore(any(), any());
 
         RejectionPurgeResult result =
                 tx.execute(status -> service(resubmitsWhileFound).purgeExpiredRejections());

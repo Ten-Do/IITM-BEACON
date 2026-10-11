@@ -1,0 +1,4 @@
+# Every Spring test context runs on the shared PostgreSQL test database
+# (see testsupport.SharedTestDatabase for why a ContextCustomizerFactory).
+org.springframework.test.context.ContextCustomizerFactory=\
+  com.iitm.beacon.testsupport.SharedTestDatabase

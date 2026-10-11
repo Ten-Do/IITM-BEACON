@@ -333,7 +333,8 @@ while here.
   the page they were on. A form submitted after the session expired is not saved: after the
   login they land on the form again, and what they had typed is lost. The code can't be emailed
   (mail server failure) → the visitor sees exactly the same code screen as on success and can
-  press "Resend code" later. The code screen opened without a pending email (a fresh browser, an
+  press "Resend code" later. "Resend code" becomes available only after a countdown, once the
+  per-email request limit allows another code (decision 36). The code screen opened without a pending email (a fresh browser, an
   expired session) → back to the email step. Between the two steps the email is kept in the
   session, never in the page address; the last email requested in a browser wins.
 - **Postconditions:** visitor becomes an Authenticated Visitor for the session; no testimonial
@@ -431,7 +432,8 @@ while here.
 - **Preconditions:** a live, unexpired OTP exists from UC-ADMIN-OTP-REQUEST.
 - **Main flow:** Admin submits the OTP code on the code-entry screen (a single code field; the
   email is carried over from the previous step in the session, never in the page address, and
-  the screen offers "resend code" and "use a different email") → system checks it against the in-memory value → match and not expired →
+  the screen offers "resend code" — after a countdown, once the per-email request limit allows
+  another code (decision 36) — and "use a different email") → system checks it against the in-memory value → match and not expired →
   authenticated session created → admin lands on the pending queue (UC-VIEW-PENDING-QUEUE).
 - **Alternate flows:** Wrong code → attempt counter decrements, 401 returned; counter reaches
   the configured max → OTP invalidated outright, admin must restart from UC-ADMIN-OTP-REQUEST.

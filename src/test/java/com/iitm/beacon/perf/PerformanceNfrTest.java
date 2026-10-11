@@ -22,6 +22,8 @@ import com.iitm.beacon.perf.PerfDataPlan.PlannedSection;
 import com.iitm.beacon.perf.PerfDataPlan.PlannedTestimonial;
 import com.iitm.beacon.testsupport.Csrf;
 import com.iitm.beacon.testsupport.PostgresContainerSupport;
+import com.iitm.beacon.testsupport.SqlStatementCounter;
+import com.iitm.beacon.testsupport.SqlStatementCounter.Statements;
 import com.zaxxer.hikari.HikariDataSource;
 import jakarta.persistence.EntityManagerFactory;
 import java.io.IOException;
@@ -47,8 +49,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.sql.DataSource;
-import org.hibernate.SessionFactory;
-import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -135,6 +135,10 @@ class PerformanceNfrTest {
     @DynamicPropertySource
     static void postgres(DynamicPropertyRegistry registry) {
         PostgresContainerSupport.registerDataSource(registry, DATABASE);
+        // Measured with production's pool (HikariCP's defaults, which
+        // application.yml keeps), not the test suite's smaller one.
+        registry.add("spring.datasource.hikari.maximum-pool-size", () -> "10");
+        registry.add("spring.datasource.hikari.minimum-idle", () -> "10");
     }
 
     @LocalServerPort
@@ -448,27 +452,19 @@ class PerformanceNfrTest {
     }
 
     /**
-     * One more request with Hibernate statistics switched on for just its
-     * duration: the SQL statements it prepared. Only this one request runs
-     * meanwhile, so the global counters are its own.
+     * One more request, counted by {@link SqlStatementCounter}: the SQL
+     * statements it prepared. Only this one request runs meanwhile, so the
+     * session factory's statistics are its own.
      */
     private Long sqlStatements(HttpClient client, CookieJar jar, PerfScenario scenario) throws Exception {
-        Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
-        statistics.clear();
-        statistics.setStatisticsEnabled(true);
-        try {
+        Statements statements = new SqlStatementCounter(entityManagerFactory).count(() -> {
             HttpResponse<byte[]> response = send(client, jar, get(scenario.path(), jar));
             assertThat(response.statusCode()).isEqualTo(200);
-            log.info("PERF SQL {}: {} statements, {} entity loads, {} entity fetches, {} collection fetches,"
-                            + " {} queries",
-                    scenario.name(), statistics.getPrepareStatementCount(), statistics.getEntityLoadCount(),
-                    statistics.getEntityFetchCount(), statistics.getCollectionFetchCount(),
-                    statistics.getQueryExecutionCount());
-            return statistics.getPrepareStatementCount();
-        } finally {
-            statistics.setStatisticsEnabled(false);
-            statistics.clear();
-        }
+        });
+        log.info("PERF SQL {}: {} statements, {} entity loads, {} entity fetches, {} collection fetches, {} queries",
+                scenario.name(), statements.prepared(), statements.entityLoads(), statements.entityFetches(),
+                statements.collectionFetches(), statements.queries());
+        return statements.prepared();
     }
 
     /** {@code totalElements} of a JSON page answer; {@code null} for a page or any other answer. */

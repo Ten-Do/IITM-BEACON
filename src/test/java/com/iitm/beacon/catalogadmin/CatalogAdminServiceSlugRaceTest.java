@@ -13,6 +13,7 @@ import com.iitm.beacon.config.PhotoFileDeleter;
 import com.iitm.beacon.domain.achievement.Achievement;
 import com.iitm.beacon.domain.achievement.AchievementRepository;
 import com.iitm.beacon.domain.achievement.TestimonialAchievementRepository;
+import com.iitm.beacon.domain.testimonial.PhotoRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import com.iitm.beacon.domain.testimonial.TestimonialSectionRepository;
 import com.iitm.beacon.domain.topic.Topic;
@@ -48,6 +49,7 @@ class CatalogAdminServiceSlugRaceTest {
                 mock(TestimonialRepository.class),
                 mock(TestimonialSectionRepository.class),
                 mock(TestimonialAchievementRepository.class),
+                mock(PhotoRepository.class),
                 mock(PhotoFileDeleter.class));
         DataIntegrityViolationException uniqueViolation =
                 new DataIntegrityViolationException("could not execute statement; constraint [uk_topic_slug]");
