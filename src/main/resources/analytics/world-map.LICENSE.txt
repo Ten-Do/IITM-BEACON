@@ -25,3 +25,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Modifications: the RU and UA paths differ from jsvectormap's. The Autonomous
+Republic of Crimea, Sevastopol and the Donetsk, Luhansk, Zaporizhzhia and
+Kherson oblasts were moved from the UA outline into the RU outline, along their
+full admin-1 boundaries from Natural Earth 1:10m Cultural Vectors, Admin 1 -
+States, Provinces, version 5.1.1 (public domain, https://www.naturalearthdata.com),
+projected with the jsvectormap world map's own projection (Miller, central
+meridian 11.5, scaled by the map's inset bbox). The new border is drawn as the
+same narrow gap the map leaves between all neighbouring countries; the gap
+along the former Ukraine-Russia border of the moved territories was closed.
+All other regions are unchanged.

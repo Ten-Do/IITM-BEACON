@@ -26,6 +26,7 @@ import com.iitm.beacon.domain.testimonial.Testimonial;
 import com.iitm.beacon.domain.testimonial.TestimonialRepository;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -120,6 +121,20 @@ class VisitorAuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.mode").value("CREATE"))
                 .andExpect(jsonPath("$.testimonialId").doesNotExist());
+    }
+
+    /** Six characters either way, so a lowercase code passes the length rule and then matches. */
+    @Test
+    void verifyWithTheCodeInLowercase_returns200() throws Exception {
+        String email = "lowercase-code@example.com";
+        String code = requestAndCaptureCode(email);
+
+        mockMvc.perform(post("/api/submissions/otp/verify").with(csrfHeader())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new OtpVerifyRequest(email, code.toLowerCase(Locale.ROOT)))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode").value("CREATE"));
     }
 
     @Test

@@ -1,7 +1,71 @@
-/* IITM Beacon — loaded only without JavaScript, from a <noscript> on the
-   pages that use Alpine.js (submission/form.html): nothing stays hidden
-   behind x-cloak, which beacon.css hides until Alpine starts. A file of its
-   own because the Content-Security-Policy blocks inline styles. */
+/* IITM Beacon — loaded only without JavaScript: linked from a <noscript> in
+   every page's head (templates/layout/shell.html), after beacon.css, so its
+   rules win over beacon.css's at the same specificity. It shows what the
+   page's scripts would otherwise reveal. A file of its own because the
+   Content-Security-Policy blocks inline styles. */
+
+/* Alpine.js (submission/form.html): nothing stays hidden behind x-cloak,
+   which beacon.css hides until Alpine starts. */
 [x-cloak] {
   display: block !important;
+}
+
+/* "Show more" disclosures (analytics/dashboard.html): collapsible.js would
+   open them. Without it every hidden row is shown, and the buttons, which
+   would open nothing, are hidden. */
+.collapsible {
+  grid-template-rows: 1fr;
+  visibility: visible;
+}
+
+[data-collapsible-toggle] {
+  display: none;
+}
+
+/* Phones: nav-toggle.js would open the header's nav from the burger, which
+   beacon.css shows while hiding the nav (decision 26). Without the script the
+   burger is hidden and the nav stays in the header's flow, its links wrapping
+   onto a second row — the phone block of beacon.css, undone for the nav. */
+@media (max-width: 720px) {
+  .nav-toggle {
+    display: none;
+  }
+
+  .header-nav {
+    position: static;
+    flex-basis: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 var(--space-5);
+    padding: 0;
+    background: none;
+    border-bottom: none;
+    box-shadow: none;
+    visibility: visible;
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+
+  .header-nav a,
+  .header-nav-button {
+    min-height: 44px;
+    padding: 0;
+    border-left: none;
+    font-size: 14px;
+  }
+
+  .header-nav-button {
+    width: auto;
+  }
+
+  .header-nav a.active {
+    background: none;
+  }
+
+  .header-nav a:focus-visible,
+  .header-nav-button:focus-visible {
+    outline-offset: 2px;
+  }
 }

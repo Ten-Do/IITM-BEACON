@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.iitm.beacon.config.OtpMailer;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -76,6 +77,18 @@ class AdminAuthControllerTest {
                         .content(objectMapper.writeValueAsString(new OtpVerifyRequest(ADMIN_EMAIL, code))))
                 .andExpect(status().isOk())
                 .andExpect(content().string(emptyOrNullString()));
+    }
+
+    /** Six characters either way, so a lowercase code passes the length rule and then matches. */
+    @Test
+    void verifyWithTheCodeInLowercase_returns200() throws Exception {
+        String code = requestAndCaptureCode();
+
+        mockMvc.perform(post("/api/admin/auth/otp/verify").with(csrfHeader())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new OtpVerifyRequest(ADMIN_EMAIL, code.toLowerCase(Locale.ROOT)))))
+                .andExpect(status().isOk());
     }
 
     @Test

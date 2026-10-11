@@ -2,6 +2,14 @@
 
 ## TODO
 
+- **BL-063**: `static/js/form-submit.js` locks a form for the rest of the page's life once it is
+  submitted (its button stays busy, a second submit is ignored), on the assumption that every
+  submit leaves the page. If it doesn't — the visitor presses the browser's Stop button, the
+  request fails at the network level, or a future endpoint answers 204 or with a download — the
+  form stays locked until a reload. Decide how to release it (e.g. a timeout, or unlocking on
+  `pagehide`/`visibilitychange`) and cover it in an e2e test. Found while adding submit-button
+  states.
+
 - **BL-062**: A method a public page doesn't take — `POST`/`PUT`/`PATCH`/`DELETE` on `/`,
   `/gallery`, `/gallery/{id}`, `GET`/`PUT` on `/gallery/{id}/contact`, `OPTIONS` anywhere —
   answers the HTML 404 page (M7, decision 33), because `SecurityConfig`'s method-specific matchers
@@ -230,10 +238,12 @@
   upload, so this is mostly about formats (see BL-031), `max-pixels`, and browsers without JS.
   Found while building the WebP photo pipeline.
 
-- **BL-024**: A second POST of the OTP code form after a successful one — a double-clicked
-  "Verify", or the browser's Back button then resubmitting — re-renders the code page with "That
+- **BL-024**: A second POST of the OTP code form after a successful one — the browser's Back
+  button, then submitting the code page again — re-renders the code page with "That
   code is wrong or has expired", because the first POST already consumed the code, even though the
-  session is now logged in (and the saved page to return to was consumed too). In
+  session is now logged in (and the saved page to return to was consumed too). (A double-clicked
+  "Verify" no longer sends a second POST: `static/js/form-submit.js` ignores a second submit of a
+  form already being sent — only without JavaScript can it still happen.) In
   `AdminAuthViewController.verify` and `SubmissionViewController.verifyOtp`, a request whose
   session already holds the matching role should skip the OTP check and redirect like a
   successful login. Found while adding the return to the requested page after login.

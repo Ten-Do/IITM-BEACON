@@ -133,7 +133,8 @@ com.iitm.beacon
 ├── domain/
 │   ├── testimonial/   Testimonial, TestimonialSection, Photo, PhotoTag, ContactMethod
 │   │                  entities, TestimonialStatus enum, their repositories.
-│   ├── country/       Country entity (ISO 3166-1 alpha-2 key), CountryRepository.
+│   ├── country/       Country entity (ISO 3166-1 alpha-2 key; OTHER_CODE "ZZ" and the
+│   │                  shared DISPLAY_ORDER, decision 1), CountryRepository.
 │   ├── topic/         TopicGroup, Topic entities (Topic optionally FK'd to a TopicGroup —
 │   │                  decision 11), their repositories.
 │   ├── contacttype/   ContactType entity (seed-only reference data, decision 5),
@@ -300,10 +301,16 @@ erDiagram
 ### Country
 | column | type | notes |
 |---|---|---|
-| code | PK, varchar(2) | ISO 3166-1 alpha-2, e.g. `IN`, `US` |
+| code | PK, varchar(2) | ISO 3166-1 alpha-2, e.g. `IN`, `US`; or `ZZ` for "Other" |
 | name | varchar, not null | canonical English short name |
 
-Seeded once, in full, via migration (decision 1) — not grown from submissions.
+Seeded once, in full, via migration (decision 1) — not grown from submissions. One row is not a
+country: `ZZ` "Other" (V19; `ZZ` is user-assigned in ISO 3166), for a submitter whose country
+isn't listed. `Country.OTHER_CODE` names it, and `Country.DISPLAY_ORDER` — "Other" first, then
+by name — orders both country lists a visitor picks from: the submission form's select
+(`SubmissionService.listAllCountries`) and the gallery filter
+(`GalleryService.listCountriesWithApproved`, which re-sorts the repository's by-name list). The
+dashboard counts "Other" like any country but leaves it out of "Countries represented" (§18).
 
 ### TopicGroup
 | column | type | notes |
@@ -447,7 +454,12 @@ Behavior is specified as UC-ADMIN-OTP-REQUEST/UC-ADMIN-OTP-VERIFY in `use-cases.
 request/response shapes are in `api-spec.yaml`. `OtpService` holds
 `{ code, expiresAt, attemptsRemaining }` for the single admin email in
 memory — no DB table. TTL and max attempts are `@ConfigurationProperties`, backed by env vars.
-No concurrent-session cap. An app restart drops any in-flight OTP request; the admin simply
+A typed code is compared after stripping the whitespace around it and uppercasing it: codes are
+uppercase-only (`common.otp.OtpCodeGenerator`), so a code typed in lowercase or pasted with
+spaces is the right code, not a wrong guess that uses up an attempt; `VisitorOtpService` (§6)
+compares the same way. The code field on both login pages also asks phones to capitalise it
+(`autocapitalize="characters"`) and to leave it uncorrected (`autocorrect="off"`,
+`spellcheck="false"`). No concurrent-session cap. An app restart drops any in-flight OTP request; the admin simply
 requests a new one. After a successful verify on the login page, the admin lands on the
 moderation page they were sent to the login from (an expired session), otherwise on
 `/moderation/queue` (decision 23, §6). The login page keeps the typed email in the session
@@ -896,8 +908,15 @@ Content-Security-Policy allows none (score colours are `score-N` classes in `bea
 no-JavaScript styles are `noscript.css`), guarded by `config.ContentSecurityPolicyTemplatesTest`;
 every `<form method="post">` uses `th:action` so it carries the CSRF field (decision 32). Shared
 chrome is factored into `templates/layout/` fragments:
-- `shell.html` — `head(title)` for the `<head>`: viewport meta, stylesheet, and
-  `static/js/nav-toggle.js` (deferred) on every page;
+- `shell.html` — `head(title)` for the `<head>`, on every page: viewport meta, stylesheet,
+  `static/js/nav-toggle.js` and `static/js/form-submit.js` (both deferred), and a `<noscript>`
+  link to `static/css/noscript.css` after the stylesheet (the no-JavaScript overrides, below).
+  `form-submit.js` is one bubble-phase `submit` listener on the document: unless a form's own
+  script took the submit over (`defaultPrevented`, as `contact-reveal.js` does), it marks the
+  submitting button `aria-busy`/`aria-disabled` (not `disabled`, which would drop the focus and
+  the button's name/value; `beacon.css` shows a spinner and no hover or press effect) and
+  prevents a second submit of a form already being sent; a page restored from the back/forward
+  cache is reset;
 - `header-visitor.html` and `header-admin.html` — each a `header(activePage)` fragment for the
   two nav-bar variants; both put their nav (`#visitor-nav`, `#admin-nav`) behind the burger
   button below. The visitor nav starts with "Homepage" (`/`, decision 30), and its "IITM
@@ -905,8 +924,10 @@ chrome is factored into `templates/layout/` fragments:
   it; the two admin login pages use their own inline header and never do;
 - `nav-toggle.html :: toggle(navId)` — the reusable burger button (decision 26), driven by
   `static/js/nav-toggle.js` through `data-nav-toggle`/`aria-controls`/`aria-expanded`; to reuse
-  it, give a nav an id and put the fragment right before it. Without JavaScript the button stays
-  hidden and the nav stays visible;
+  it, give a nav an id and put the fragment right before it. On phones `beacon.css` shows the
+  button and hides the nav (a dropdown panel, `visibility: hidden`) from the first paint; the
+  script only opens and closes it (`nav-menu--open`, a short fade-and-slide transition). Without
+  JavaScript `noscript.css` keeps the button hidden and the nav visible;
 - `session-check.html :: script(pingUrl)` — the session check (decision 23,
   `static/js/session-check.js`) for a page that needs a login. **Rule:** every login-protected
   visitor page must include it itself, with
@@ -948,8 +969,10 @@ that need it. Templates use the long attribute forms
 (`x-bind:`/`x-on:`) rather than the `:`/`@` shorthands, and pass server-side values in through
 `th:attr`/`th:data-*`; a component bigger than a few attributes is registered with
 `Alpine.data(...)` in a page-specific script (`static/js/submission-form.js` for the submission
-form), loaded with `defer` before Alpine itself. `[x-cloak]` is hidden in `beacon.css`, and a
-page that relies on it adds a `<noscript>` override so it degrades to showing everything.
+form), loaded with `defer` before Alpine itself. `[x-cloak]` is hidden in `beacon.css`; the
+shared head's `<noscript>` stylesheet, `noscript.css`, shows it again without JavaScript — as it
+keeps the phone header's nav visible and its burger hidden, and shows the dashboard's hidden rows
+without their "show more" buttons — so every page degrades to showing everything.
 The fullscreen photo viewer (decision 24) is PhotoSwipe 5 from the `org.webjars.npm:photoswipe`
 WebJar, driven by the ES module `static/js/photo-viewer.js` (loaded with `type="module"`;
 PhotoSwipe's core is imported only on first open). It reads the already server-rendered
@@ -1001,7 +1024,9 @@ active contact type, labelled with `ContactType.name`, using `ContactType.label`
 input placeholder and `ContactType.valuePattern` as its HTML `pattern` (an unused row is simply
 dropped by the adapter; its "public" checkbox stays disabled until the row has a value). The
 country select starts on an empty "Select your country" placeholder and is `required`; the
-server reports a blank country once, as "Please select your country.".
+server reports a blank country once, as "Please select your country.". "Other" (`ZZ`, decision
+1) is the first option after the placeholder — never preselected on a new testimonial — and the
+countries follow by name.
 
 Photos: each topic block has one `<input type="file" multiple name="sections[i].photos">`, which
 stays disabled until the block's textarea has text, and an Alpine `photoPicker` around it. The
@@ -1059,9 +1084,20 @@ achievement display order) and turns the "6 or more" count into a whole percent.
 The page (`templates/analytics/dashboard.html`, `AnalyticsViewController` on `GET /`) adds only
 presentation on top, in the package-private `DashboardView`: each map region's shade
 (`ceil(5 · count / max)`, CSS classes `map-shade-1`…`5`), its gallery link and `<title>`, the
-average rounded to one decimal and to a `--score-N` colour, and the top-N splits (6 country
-chips, 5 rows per list; the rest behind `<details>`). The map is inline SVG drawn from
+average rounded to one decimal and to a `--score-N` colour, the "Countries represented" figure
+(the per-country entries minus "Other", `ZZ` — decision 1; "Other" still gets a chip, but has no
+map region), and the top-N splits (6 country chips, 5 rows per list). The rest of a split is a
+disclosure: its rows in a `.collapsible` container (`#countries-rest`, `#topics-rest`,
+`#achievements-rest`), then the button that opens it (`data-collapsible-toggle`,
+`aria-controls`, `aria-expanded`; "+ N more countries" or "Show all (N more)", then "Show
+less"), placed under the rows so it glides down as they open. `static/js/collapsible.js` toggles
+the container's `collapsible--open` class; `beacon.css` animates its grid row from `0fr` to
+`1fr`, and the container keeps no spacing of its own, so collapsed it takes no room. The map is
+inline SVG drawn from
 `src/main/resources/analytics/world-map.json` — the country outlines (ISO 3166-1 alpha-2 code →
-SVG path, `viewBox` 900 × 440.71) converted once from jsvectormap 1.7.0, with its MIT license in
-`world-map.LICENSE.txt` — which the `WorldMap` component reads once at startup. The page loads
-no script beyond the shared `nav-toggle.js`: links and tooltips are plain SVG `<a>`/`<title>`.
+SVG path, `viewBox` 900 × 440.71) converted once from jsvectormap 1.7.0, with the RU/UA outlines
+redrawn from Natural Earth admin-1 boundaries (decision 30) and the MIT license and that change
+recorded in `world-map.LICENSE.txt` — which the `WorldMap` component reads once at startup. The map needs
+no script: links and tooltips are plain SVG `<a>`/`<title>`, and a hovered or focused country
+darkens its own shade in CSS. Beyond the shared head's scripts the page loads only
+`collapsible.js`, and not on the empty state, which has nothing to open.

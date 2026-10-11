@@ -22,6 +22,8 @@ import com.iitm.beacon.testsupport.LoginCodeSteps;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
@@ -259,6 +261,21 @@ class AdminAuthViewControllerTest {
         assertThat(html).doesNotContain("type=\"email\"");
     }
 
+    /** Codes are uppercase-only: phones capitalise what is typed, and nothing autocorrects or spell-checks it. */
+    @Test
+    void loginCodeForm_get_codeInputIsCapitalisedAndNotCorrected() throws Exception {
+        String html = html(get(CODE_PAGE).session(askedForACode(ADMIN_EMAIL)));
+
+        String input = tags(html, "input").stream()
+                .filter(tag -> attribute(tag, "id").equals(Optional.of("code")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(attribute(input, "name")).contains("code");
+        assertThat(attribute(input, "autocapitalize")).contains("characters");
+        assertThat(attribute(input, "autocorrect")).contains("off");
+        assertThat(attribute(input, "spellcheck")).contains("false");
+    }
+
     @Test
     void loginCodeForm_get_offersAResendFormWithoutTheEmail_andAUseADifferentEmailLink() throws Exception {
         String html = html(get(CODE_PAGE).session(askedForACode(ADMIN_EMAIL)));
@@ -444,6 +461,18 @@ class AdminAuthViewControllerTest {
         mockMvc.perform(get(CODE_PAGE).session(session))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/admin/login"));
+    }
+
+    /** The code is case-insensitive and may come with whitespace around it, e.g. pasted from the email. */
+    @Test
+    void verify_post_codeInLowercaseWithSurroundingWhitespace_logsIn() throws Exception {
+        MockHttpSession session = askedForACode(ADMIN_EMAIL);
+
+        mockMvc.perform(post("/admin/login/verify").with(csrfField())
+                        .param("code", " " + lastCode().toLowerCase(Locale.ROOT) + " ")
+                        .session(session))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/moderation/queue"));
     }
 
     @Test

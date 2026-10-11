@@ -7,10 +7,11 @@
  * data-nav-toggle is a button that opens and closes the element whose id is
  * in its aria-controls, keeping its aria-expanded in step.
  *
- * Progressive enhancement: this script marks the button ready and the menu
- * collapsible; beacon.css only shows the button, and only hides a closed
- * menu, on narrow screens and once those classes are set. Without it the
- * button stays hidden and the nav stays visible.
+ * On narrow screens beacon.css shows the button and hides the menu on its
+ * own, from the first paint (so nothing flashes before this deferred script
+ * runs); this script only opens and closes it, with the nav-menu--open
+ * class. Without JavaScript, css/noscript.css (linked from every page's
+ * head) hides the button and keeps the nav visible.
  *
  * An open menu closes on Escape (focus goes back to its button), on a click
  * or tap anywhere outside it and its button, and when one of its links is
@@ -19,8 +20,6 @@
 (function () {
     'use strict';
 
-    var TOGGLE_READY = 'nav-toggle--ready';
-    var MENU_COLLAPSIBLE = 'nav-menu--collapsible';
     var MENU_OPEN = 'nav-menu--open';
 
     var toggles = [];
@@ -42,13 +41,11 @@
     function wire(button) {
         var menu = menuOf(button);
         if (!menu || toggles.indexOf(button) >= 0) {
-            // Nothing to open: leave the button hidden and the nav as it is.
+            // Nothing to open, or already wired.
             return;
         }
         toggles.push(button);
         setOpen(button, false);
-        menu.classList.add(MENU_COLLAPSIBLE);
-        button.classList.add(TOGGLE_READY);
 
         button.addEventListener('click', function () {
             setOpen(button, !isOpen(button));

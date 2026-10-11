@@ -19,6 +19,7 @@ import com.iitm.beacon.config.OtpMailer;
 import com.iitm.beacon.testsupport.MutableClock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -214,6 +215,94 @@ class OtpServiceTest {
 
         OtpVerifyResult result = otpService.verify(ADMIN_EMAIL, null);
         assertThat(result).isEqualTo(new OtpVerifyResult.Rejected(RejectionReason.WRONG_CODE));
+    }
+
+    @Test
+    void verifyWithWhitespaceOnlyCode_neverMatches_rejectedAsWrongCode() {
+        otpService.requestOtp(ADMIN_EMAIL, IP);
+
+        OtpVerifyResult result = otpService.verify(ADMIN_EMAIL, " \t ");
+        assertThat(result).isEqualTo(new OtpVerifyResult.Rejected(RejectionReason.WRONG_CODE));
+    }
+
+    // -- the code is typed case-insensitively, surrounding whitespace ignored --
+
+    private String requestAndCaptureCode() {
+        org.mockito.ArgumentCaptor<String> codeCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        otpService.requestOtp(ADMIN_EMAIL, IP);
+        verify(otpMailer).sendOtp(org.mockito.ArgumentMatchers.eq(ADMIN_EMAIL), codeCaptor.capture());
+        return codeCaptor.getValue();
+    }
+
+    @Test
+    void verifyWithTheCodeInLowercase_succeeds() {
+        String code = requestAndCaptureCode();
+
+        assertThat(otpService.verify(ADMIN_EMAIL, code.toLowerCase(Locale.ROOT)))
+                .isEqualTo(new OtpVerifyResult.Verified(ADMIN_EMAIL));
+    }
+
+    @Test
+    void verifyWithTheCodeSurroundedByWhitespace_succeeds() {
+        String code = requestAndCaptureCode();
+
+        assertThat(otpService.verify(ADMIN_EMAIL, " \t" + code + "\n "))
+                .isEqualTo(new OtpVerifyResult.Verified(ADMIN_EMAIL));
+    }
+
+    @Test
+    void verifyWithTheCodeInLowercaseSurroundedByUnicodeWhitespace_succeeds() {
+        String code = requestAndCaptureCode();
+
+        assertThat(otpService.verify(ADMIN_EMAIL, " " + code.toLowerCase(Locale.ROOT) + " "))
+                .isEqualTo(new OtpVerifyResult.Verified(ADMIN_EMAIL));
+    }
+
+    /** A lowercase code is the right code: it is not a wrong guess first, even on the very last attempt. */
+    @Test
+    void verifyWithTheCodeInLowercase_onTheLastAttempt_succeedsInsteadOfExhausting() {
+        String code = requestAndCaptureCode(); // maxAttempts = 5
+        String wrongCode = wrongCodeFor(code);
+        for (int i = 0; i < 4; i++) {
+            otpService.verify(ADMIN_EMAIL, wrongCode);
+        }
+
+        assertThat(otpService.verify(ADMIN_EMAIL, code.toLowerCase(Locale.ROOT)))
+                .isEqualTo(new OtpVerifyResult.Verified(ADMIN_EMAIL));
+    }
+
+    @Test
+    void verifyWithAWrongCodeInLowercase_isStillAWrongGuess_thatUsesUpAnAttempt() {
+        String code = requestAndCaptureCode(); // maxAttempts = 5
+        String wrongLowercase = wrongCodeFor(code).toLowerCase(Locale.ROOT);
+
+        for (int i = 0; i < 4; i++) {
+            assertThat(otpService.verify(ADMIN_EMAIL, " " + wrongLowercase + " "))
+                    .isEqualTo(new OtpVerifyResult.Rejected(RejectionReason.WRONG_CODE));
+        }
+        assertThat(otpService.verify(ADMIN_EMAIL, wrongLowercase))
+                .isEqualTo(new OtpVerifyResult.Rejected(RejectionReason.ATTEMPTS_EXHAUSTED));
+    }
+
+    /** Only the ends are stripped: whitespace inside the code makes it a different, wrong code. */
+    @Test
+    void verifyWithWhitespaceInsideTheCode_isRejectedAsWrongCode() {
+        String code = requestAndCaptureCode();
+        String split = code.substring(0, 3) + " " + code.substring(3);
+
+        assertThat(otpService.verify(ADMIN_EMAIL, split))
+                .isEqualTo(new OtpVerifyResult.Rejected(RejectionReason.WRONG_CODE));
+        assertThat(otpService.verify(ADMIN_EMAIL, code)).isEqualTo(new OtpVerifyResult.Verified(ADMIN_EMAIL));
+    }
+
+    @Test
+    void verifyWithTheCodePlusAnExtraCharacter_orMissingItsLast_isRejectedAsWrongCode() {
+        String code = requestAndCaptureCode();
+
+        assertThat(otpService.verify(ADMIN_EMAIL, code + "A"))
+                .isEqualTo(new OtpVerifyResult.Rejected(RejectionReason.WRONG_CODE));
+        assertThat(otpService.verify(ADMIN_EMAIL, code.substring(0, code.length() - 1)))
+                .isEqualTo(new OtpVerifyResult.Rejected(RejectionReason.WRONG_CODE));
     }
 
     @Test

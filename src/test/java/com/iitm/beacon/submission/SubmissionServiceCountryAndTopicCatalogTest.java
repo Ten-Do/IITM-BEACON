@@ -2,6 +2,7 @@ package com.iitm.beacon.submission;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.iitm.beacon.domain.country.Country;
 import com.iitm.beacon.domain.country.CountryRepository;
 import com.iitm.beacon.domain.topic.Topic;
 import com.iitm.beacon.domain.topic.TopicGroup;
@@ -45,12 +46,25 @@ class SubmissionServiceCountryAndTopicCatalogTest {
         assertThat(result).extracting(CountryDto::code).contains("IN", "US", "AD");
     }
 
+    /** "Other" leads the list (decision 1) — exactly once — and the countries follow by name. */
     @Test
-    void listAllCountries_sortedByName() {
+    void listAllCountries_otherFirst_thenTheCountriesByName() {
         List<CountryDto> result = submissionService.listAllCountries();
 
-        List<String> names = result.stream().map(CountryDto::name).toList();
-        assertThat(names).isSorted();
+        assertThat(result.get(0)).isEqualTo(new CountryDto("ZZ", "Other"));
+        List<CountryDto> countries = result.subList(1, result.size());
+        assertThat(countries).extracting(CountryDto::code).doesNotContain("ZZ");
+        assertThat(countries).extracting(CountryDto::name).isSorted().doesNotContain("Other");
+    }
+
+    /** A country added by hand whose name sorts before "Other" alphabetically still comes after it. */
+    @Test
+    void listAllCountries_aNameSortingBeforeOther_stillFollowsOther() {
+        countryRepository.saveAndFlush(Country.builder().code("XQ").name("Aaa Testland").build());
+
+        List<CountryDto> result = submissionService.listAllCountries();
+
+        assertThat(result).extracting(CountryDto::code).startsWith("ZZ", "XQ");
     }
 
     @Test

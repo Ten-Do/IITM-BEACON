@@ -1,6 +1,7 @@
 package com.iitm.beacon.analytics;
 
 import com.iitm.beacon.analytics.TopicCountDto.Kind;
+import com.iitm.beacon.domain.country.Country;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.HashMap;
@@ -20,7 +21,8 @@ import java.util.function.Function;
  * @param averageScoreColour the shown average ({@code averageScore}) rounded half up to a whole score,
  *     0–10, for {@code var(--score-N)} — so 7.46, shown as "7.5", takes score 8's colour; null when empty
  * @param recommendingPercent the share scoring 6 or more, as a whole percent; null when empty
- * @param countriesRepresented how many countries the approved testimonials come from
+ * @param countriesRepresented how many countries the approved testimonials come from; the "Other"
+ *     entry ({@code Country.OTHER_CODE}, decision 1) is not a country, so it has a chip but isn't counted
  * @param mapRegions every region of the {@link WorldMap}, in its order
  */
 record DashboardView(
@@ -63,12 +65,18 @@ record DashboardView(
                 average == null ? null : average.toPlainString(),
                 average == null ? null : average.setScale(0, RoundingMode.HALF_UP).intValueExact(),
                 summary.recommendingPercent(),
-                countries.size(),
+                countriesRepresented(countries),
                 worldMap.viewBox(),
                 mapRegions(countries, worldMap),
                 Split.of(countries, COUNTRY_CHIPS_SHOWN, DashboardView::countryChip),
                 Split.of(summary.testimonialCountsByTopic(), LIST_ROWS_SHOWN, DashboardView::topicRow),
                 Split.of(summary.achievementCounts(), LIST_ROWS_SHOWN, DashboardView::achievementRow));
+    }
+
+    private static int countriesRepresented(List<CountryCountDto> countries) {
+        return (int) countries.stream()
+                .filter(entry -> !Country.OTHER_CODE.equals(entry.country().code()))
+                .count();
     }
 
     private static List<MapRegion> mapRegions(List<CountryCountDto> countries, WorldMap worldMap) {
@@ -135,7 +143,7 @@ record DashboardView(
     record AchievementRow(String label, long count) {
     }
 
-    /** The {@code first} entries shown up front, the {@code rest} behind a {@code <details>}. */
+    /** The {@code first} entries shown up front, the {@code rest} behind a "show more" button. */
     record Split<T>(List<T> first, List<T> rest) {
 
         Split {

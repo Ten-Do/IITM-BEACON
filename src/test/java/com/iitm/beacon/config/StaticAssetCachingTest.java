@@ -60,7 +60,8 @@ class StaticAssetCachingTest {
     @ParameterizedTest
     @ValueSource(strings = {
         "/css/beacon.css", "/css/noscript.css", "/js/nav-toggle.js", "/js/photo-viewer.js", "/js/session-check.js",
-        "/js/contact-reveal.js", "/js/submission-form.js"
+        "/js/contact-reveal.js", "/js/submission-form.js", "/js/collapsible.js",
+        "/js/form-submit.js"
     })
     void ownFile_isVersionedByTheMd5OfItsContent(String path) throws Exception {
         byte[] content = perform(get(path)).getContentAsByteArray();
@@ -82,8 +83,11 @@ class StaticAssetCachingTest {
 
         assertThat(html)
                 .contains("href=\"" + versioned("/css/beacon.css") + "\"")
+                .contains("href=\"" + versioned("/css/noscript.css") + "\"")
                 .contains("src=\"" + versioned("/js/nav-toggle.js") + "\"")
-                .doesNotContain("\"/css/beacon.css\"", "\"/js/nav-toggle.js\"");
+                .contains("src=\"" + versioned("/js/form-submit.js") + "\"")
+                .doesNotContain("\"/css/beacon.css\"", "\"/css/noscript.css\"", "\"/js/nav-toggle.js\"",
+                        "\"/js/form-submit.js\"");
     }
 
     @Test

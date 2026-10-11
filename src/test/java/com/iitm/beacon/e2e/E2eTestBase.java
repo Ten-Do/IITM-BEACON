@@ -8,14 +8,23 @@ import com.iitm.beacon.config.OtpMailer;
 import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.BrowserType;
+import com.microsoft.playwright.CDPSession;
 import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.options.AriaRole;
+import com.microsoft.playwright.options.BoundingBox;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -191,6 +200,41 @@ public abstract class E2eTestBase {
         screenshots.assertMatches(getClass(), name, ScreenshotAssert.capture(element));
     }
 
+    /**
+     * {@code element} while a navigation is still on its way — a form submit
+     * whose request {@code page.route} holds: Playwright's own screenshots
+     * and evaluations wait for a pending navigation to finish. So the page
+     * is stabilised and the element's box measured first, then {@code
+     * startNavigation} runs (it must return with the navigation started and
+     * still pending), and the viewport is taken straight through the Chrome
+     * DevTools Protocol and cut to that box. The DevTools session is left to
+     * close with the browser context: detaching it would wait for the page,
+     * which DevTools holds back until the navigation is over.
+     */
+    protected void assertScreenshotWhileNavigating(Locator element, String name, Runnable startNavigation) {
+        stabilize(currentPage);
+        BoundingBox box = element.boundingBox();
+        startNavigation.run();
+        CDPSession devTools = currentPage.context().newCDPSession(currentPage);
+        String viewport = devTools.send("Page.captureScreenshot").get("data").getAsString();
+        screenshots.assertMatches(getClass(), name, crop(Base64.getDecoder().decode(viewport), box));
+    }
+
+    private static byte[] crop(byte[] png, BoundingBox box) {
+        try {
+            BufferedImage image = ImageIO.read(new ByteArrayInputStream(png));
+            int left = (int) Math.floor(box.x);
+            int top = (int) Math.floor(box.y);
+            int right = (int) Math.ceil(box.x + box.width);
+            int bottom = (int) Math.ceil(box.y + box.height);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ImageIO.write(image.getSubimage(left, top, right - left, bottom - top), "png", out);
+            return out.toByteArray();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     private static void stabilize(Page page) {
         page.evaluate(ADOPT_STYLESHEET_JS, STABILIZING_CSS);
         page.evaluate("() => document.fonts.ready.then(() => true)");
@@ -221,7 +265,20 @@ public abstract class E2eTestBase {
         requestLoginCode("/admin/login", "#admin-email", adminEmail);
     }
 
+    /**
+     * The login code mailed to {@code email} by the last {@link
+     * #requestVisitorLoginCode} / {@link #requestAdminLoginCode}, waiting
+     * until it has been sent.
+     */
+    protected String mailedLoginCode(String email) {
+        String key = EmailNormalizer.normalize(email);
+        currentPage.waitForCondition(() -> lastOtpCodeByEmail.containsKey(key));
+        return lastOtpCodeByEmail.get(key);
+    }
+
+    /** Forgets the code last mailed to {@code email}, so {@link #mailedLoginCode} waits for the new one. */
     private void requestLoginCode(String loginPath, String emailField, String email) {
+        lastOtpCodeByEmail.remove(EmailNormalizer.normalize(email));
         navigate(loginPath);
         currentPage.locator(emailField).fill(email);
         currentPage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Send code")).click();
@@ -229,11 +286,8 @@ public abstract class E2eTestBase {
     }
 
     private void loginThroughUi(String loginPath, String emailField, String email) {
-        String key = EmailNormalizer.normalize(email);
-        lastOtpCodeByEmail.remove(key);
         requestLoginCode(loginPath, emailField, email);
-        currentPage.waitForCondition(() -> lastOtpCodeByEmail.containsKey(key));
-        currentPage.locator("#code").fill(lastOtpCodeByEmail.get(key));
+        currentPage.locator("#code").fill(mailedLoginCode(email));
         currentPage.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Verify")).click();
         currentPage.waitForURL(url -> !url.contains(loginPath));
     }

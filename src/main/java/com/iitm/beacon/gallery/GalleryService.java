@@ -310,9 +310,14 @@ public class GalleryService {
         return publicContacts;
     }
 
-    /** Countries usable in the gallery's filter dropdown — already sorted by name by the repository query. */
+    /**
+     * Countries usable in the gallery's filter dropdown, in {@link
+     * Country#DISPLAY_ORDER}: "Other" first if it has an approved
+     * testimonial, then the countries by name.
+     */
     public List<CountryDto> listCountriesWithApproved() {
         return testimonialRepository.findDistinctCountriesByStatus(TestimonialStatus.APPROVED).stream()
+                .sorted(Country.DISPLAY_ORDER)
                 .map(this::toCountryDto)
                 .toList();
     }

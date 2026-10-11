@@ -10,8 +10,9 @@
       <nav id="my-nav" class="header-nav">…</nav>
 
   The script finds every [data-nav-toggle] and opens/closes the element its
-  aria-controls names. Without JavaScript the button stays hidden and the nav
-  stays visible (beacon.css only collapses a nav the script has marked).
+  aria-controls names. On phones beacon.css shows the button and hides the nav
+  from the first paint; without JavaScript css/noscript.css (linked from the
+  shell's head) hides the button and keeps the nav visible.
 -->
 <button th:fragment="toggle(navId)" type="button" class="nav-toggle" data-nav-toggle
         th:attr="aria-controls=${navId}" aria-expanded="false" aria-label="Menu">

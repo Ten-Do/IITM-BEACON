@@ -39,7 +39,9 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
@@ -259,6 +261,36 @@ class SubmissionViewControllerTest {
                 .toList();
         assertThat(actions).contains("/submissions/login/code", "/submissions/login/resend");
         assertThat(html).contains("Resend code");
+    }
+
+    /** Codes are uppercase-only: phones capitalise what is typed, and nothing autocorrects or spell-checks it. */
+    @Test
+    void loginCodeForm_get_codeInputIsCapitalisedAndNotCorrected() throws Exception {
+        String html = okHtml(get(CODE_PAGE)
+                .session(LoginCodeSteps.visitorAskedForACode(mockMvc, "code-input@example.com")));
+
+        String input = HtmlSnippets.openingTags(html, "input").stream()
+                .filter(tag -> HtmlSnippets.attribute(tag, "id").equals(Optional.of("code")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(HtmlSnippets.attribute(input, "name")).contains("code");
+        assertThat(HtmlSnippets.attribute(input, "autocapitalize")).contains("characters");
+        assertThat(HtmlSnippets.attribute(input, "autocorrect")).contains("off");
+        assertThat(HtmlSnippets.attribute(input, "spellcheck")).contains("false");
+        assertThat(HtmlSnippets.attribute(input, "autocomplete")).contains("one-time-code");
+    }
+
+    /** The code is case-insensitive and may come with whitespace around it, e.g. pasted from the email. */
+    @Test
+    void loginCodeForm_post_codeInLowercaseWithSurroundingWhitespace_logsIn() throws Exception {
+        String email = "view-login-lowercase@example.com";
+        MockHttpSession session = LoginCodeSteps.visitorAskedForACode(mockMvc, email);
+
+        mockMvc.perform(post(CODE_PAGE).with(csrfField())
+                        .param("code", " " + codeMailedTo(email).toLowerCase(Locale.ROOT) + " ")
+                        .session(session))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/submissions/form"));
     }
 
     /** A fresh browser — no session at all, e.g. a bookmarked or shared code-page URL — starts at the email step. */

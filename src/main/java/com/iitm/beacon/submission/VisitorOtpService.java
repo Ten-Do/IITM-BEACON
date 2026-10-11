@@ -14,6 +14,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -121,7 +122,7 @@ public class VisitorOtpService {
             boolean matches = rawCode != null
                     && MessageDigest.isEqual(
                             existing.codeHash().getBytes(StandardCharsets.UTF_8),
-                            sha256Hex(rawCode).getBytes(StandardCharsets.UTF_8));
+                            sha256Hex(normalizeCode(rawCode)).getBytes(StandardCharsets.UTF_8));
             if (!matches) {
                 int remaining = existing.attemptsRemaining() - 1;
                 if (remaining <= 0) {
@@ -135,6 +136,16 @@ public class VisitorOtpService {
             return null;
         });
         return outcome.get();
+    }
+
+    /**
+     * The code as typed, made comparable to the issued one: codes are drawn
+     * from an uppercase-only alphabet ({@link OtpCodeGenerator}), so case is
+     * ignored, and so is whitespace around it (a pasted code often carries
+     * some). Whitespace inside the code is kept: that is a different code.
+     */
+    private static String normalizeCode(String rawCode) {
+        return rawCode.strip().toUpperCase(Locale.ROOT);
     }
 
     /**

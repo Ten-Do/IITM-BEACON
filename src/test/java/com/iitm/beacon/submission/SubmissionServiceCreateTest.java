@@ -145,7 +145,7 @@ class SubmissionServiceCreateTest {
     @Test
     void create_unknownCountryCode_throwsSubmissionValidationException() {
         TestimonialSubmissionRequest request =
-                validRequest("ZZ", List.of(section("general", "Text.")));
+                validRequest("XQ", List.of(section("general", "Text.")));
 
         assertThatThrownBy(() -> submissionService.create("bad-country@example.com", request, Map.of()))
                 .isInstanceOf(SubmissionValidationException.class);
@@ -265,6 +265,22 @@ class SubmissionServiceCreateTest {
                         "too-many-photos@example.com", request, Map.<String, MultipartFile>of("a", fileA, "b", fileB)))
                 .isInstanceOf(SubmissionValidationException.class);
         assertThat(uploadsRoot.toFile().listFiles()).isNullOrEmpty();
+    }
+
+    /** "Other" (decision 1) is a valid choice like any country — in any case, like any country code. */
+    @Test
+    void create_otherAsTheCountry_isAccepted() {
+        SubmissionResultResponse upper = submissionService.create(
+                "country-other@example.com", validRequest("ZZ", List.of(section("general", "Text."))), Map.of());
+        SubmissionResultResponse lower = submissionService.create(
+                "country-other-lower@example.com", validRequest("zz", List.of(section("general", "Text."))), Map.of());
+
+        for (SubmissionResultResponse response : List.of(upper, lower)) {
+            Testimonial saved = testimonialRepository.findById(response.id()).orElseThrow();
+            assertThat(saved.getCountry().getCode()).isEqualTo("ZZ");
+            assertThat(saved.getCountry().getName()).isEqualTo("Other");
+            assertThat(saved.getStatus()).isEqualTo(TestimonialStatus.PENDING);
+        }
     }
 
     @Test

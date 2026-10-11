@@ -299,6 +299,42 @@ class GalleryControllerTest {
                 .andExpect(jsonPath("$[?(@.code == 'IN')]").exists());
     }
 
+    private void approvedFrom(String countryCode, String email) {
+        Testimonial t = Testimonial.builder()
+                .firstName("David")
+                .lastName("Jones")
+                .rollNumber("GE26Z000")
+                .admissionYear(2024)
+                .email(email)
+                .emailLookupHash(emailLookupHashService.hash(email))
+                .country(countryRepository.findById(countryCode).orElseThrow())
+                .recommendationScore(8)
+                .dataProcessingConsent(true)
+                .status(TestimonialStatus.APPROVED)
+                .createdAt(Instant.parse("2026-01-01T00:00:00Z"))
+                .build();
+        t.getSections().add(TestimonialSection.builder()
+                .testimonial(t)
+                .topic(topicRepository.findBySlug("general").orElseThrow())
+                .answerText("Text.")
+                .modified(false)
+                .build());
+        testimonialRepository.saveAndFlush(t);
+    }
+
+    /** "Other" comes first (decision 1), then the countries by name. */
+    @Test
+    void countries_otherFirst_thenTheCountriesByName() throws Exception {
+        approvedFrom("IN", "controller-countries-in@example.com");
+        approvedFrom("ZZ", "controller-countries-other@example.com");
+        approvedFrom("DE", "controller-countries-de@example.com");
+
+        mockMvc.perform(get("/api/gallery/countries"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].code", contains("ZZ", "DE", "IN")))
+                .andExpect(jsonPath("$[0].name").value("Other"));
+    }
+
     @Test
     void countries_noApprovedTestimonials_returnsEmptyArray() throws Exception {
         mockMvc.perform(get("/api/gallery/countries"))

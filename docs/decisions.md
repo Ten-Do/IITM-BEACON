@@ -16,7 +16,12 @@ decision — it is not kept as history.
 
 **Decision:** `Country` is a reference table keyed by its ISO 3166-1 alpha-2 code (e.g. `IN`,
 `US`, `DE`), with a `name` column holding the canonical English short name. The table is
-seeded once, in full, via a migration — it is not grown dynamically from submissions.
+seeded once, in full, via a migration — it is not grown dynamically from submissions. It also
+holds one entry that is not a country: `ZZ` "Other", for a submitter whose country isn't listed
+(`ZZ` is a user-assigned ISO 3166 code, so it never collides with a real country). "Other" is
+listed first, right after the placeholder, in the submission form's country select and in the
+gallery's country filter, with the countries after it by name; on the dashboard it is a chip like
+any country, but it has no map region and is not counted as a country in "Countries represented".
 
 **Rationale:** ISO 3166-1 is the standard, unambiguous way to store a country reference list —
 avoids free-text typos/casing drift, and the alpha-2 code is directly usable by common map
@@ -813,8 +818,12 @@ get finger-sized tap targets, and long user-typed text wraps instead of widening
 header nav collapses behind a burger button: `layout/nav-toggle.html :: toggle(navId)` plus
 `static/js/nav-toggle.js`, a vanilla script driven only by markup (`data-nav-toggle`,
 `aria-controls`, `aria-expanded`) that closes the menu on Escape, on a click outside it, or when
-one of its links is followed. Both header fragments use it. It is progressive enhancement:
-without JavaScript the button stays hidden and the nav stays visible, wrapping onto a new line.
+one of its links is followed. Both header fragments use it. On phones `beacon.css` itself shows
+the button and hides the nav from the first paint, so nothing flashes before the deferred script
+runs; the script only opens and closes the menu, a dropdown panel that fades and slides in and out
+with a short transition (none for visitors who ask for reduced motion). It is progressive
+enhancement: without JavaScript `static/css/noscript.css`, linked from a `<noscript>` in the
+shared head, keeps the button hidden and the nav visible, wrapping onto a new line.
 
 **Rationale:** Students will mostly write their testimonials, and read others', on phones. A
 markup-driven script rather than per-header Alpine state lets any future header reuse the menu
@@ -952,22 +961,31 @@ order, and by the achievement's display order.
 
 The page follows `ui-design/Main.dc.html`: a hero linking to the gallery; a world map with the
 countries' chips under it; four stat cards; and two lists, testimonials by topic and the most
-common achievements, each showing its top 5 rows with the rest behind a "Show all" `<details>`.
-The country chips show the top 6, the rest behind "+ N more countries". A country (map region or
-chip) links to `/gallery?country=XX`, a topic row to `/gallery?groupIds=N` or `?topicIds=N`
-(decision 29); achievements have no gallery filter and stay plain text. With no approved
-testimonial the page shows the hero and an empty state inviting the visitor to write one.
+common achievements, each showing its top 5 rows with the rest behind a "Show all (N more)"
+button under the list. The country chips show the top 6, the rest behind a chip-styled "+ N more
+countries" button under them. These are disclosure buttons (`static/js/collapsible.js`, driven by
+`data-collapsible-toggle`, `aria-controls` and `aria-expanded`; "Show less" once open): the hidden
+rows open and close with a short CSS grid-rows transition and the button glides down under them;
+without JavaScript `noscript.css` shows every row and hides the buttons. Beyond the shared
+header and form scripts, `collapsible.js` is the only script the page loads. A country (map
+region or chip) links to `/gallery?country=XX`, a topic row to `/gallery?groupIds=N` or
+`?topicIds=N` (decision 29); achievements have no gallery filter and stay plain text. With no
+approved testimonial the page shows the hero and an empty state inviting the visitor to write one.
 
 The map is a choropleth rendered entirely on the server as inline SVG: no map library, no
 script. The country outlines are the 173 region paths of jsvectormap 1.7.0's
 `dist/maps/world.js` (MIT, derived from Natural Earth), converted once to
 `src/main/resources/analytics/world-map.json` (ISO 3166-1 alpha-2 code → SVG path; source file
 sha256 `de3c2c21cf63bdd95a4cfc477a566a4b189579daeb26157e8ecb101000224edd`), with the license in
-`world-map.LICENSE.txt` beside it. A represented country's path is wrapped in an SVG link to its
+`world-map.LICENSE.txt` beside it. The RU and UA outlines were then redrawn once: Crimea,
+Sevastopol and the Donetsk, Luhansk, Zaporizhzhia and Kherson oblasts belong to the RU outline,
+along their full Natural Earth 1:10m admin-1 boundaries (v5.1.1, public domain) projected with
+the map's own Miller projection; the license file records the change. A represented country's path is wrapped in an SVG link to its
 gallery filter and carries a `<title>` ("Germany — 12 testimonials") for the tooltip; its shade
 is one of five steps, `ceil(5 · count / max)`, from `--map-shade-1` (light gold) to
 `--map-shade-5` (maroon), explained by a "Fewer … More" scale. Countries too small for the map
-(e.g. Singapore, Malta, Hong Kong, Bahrain) appear only in the chips.
+(e.g. Singapore, Malta, Hong Kong, Bahrain) appear only in the chips. Hovering or
+keyboard-focusing a represented country darkens its fill.
 
 **Rationale:** The dashboard is the visitor's first page, so it belongs at `/`; the gallery stays
 one click away. Counting the way the gallery shows things — approved only, hidden topics and

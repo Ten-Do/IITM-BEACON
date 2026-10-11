@@ -446,9 +446,52 @@ class SubmissionViewControllerFieldErrorsTest {
         assertThat(placeholder.hasAttribute("disabled")).isFalse();
         assertThat(shownCountryOption(html)).isEqualTo(placeholder);
         assertThat(options.subList(1, options.size()))
-                .as("real countries only after the placeholder")
+                .as("real entries only after the placeholder")
                 .allSatisfy(o -> assertThat(o.value()).isNotEmpty())
                 .noneMatch(o -> o.hasAttribute("selected"));
+    }
+
+    /** "Other" is offered first, right under the placeholder (decision 1) — but never preselected. */
+    @Test
+    void get_createMode_otherIsTheFirstChoiceAfterThePlaceholder_thenTheCountriesByName() throws Exception {
+        String html = formHtml("view-country-other-first@example.com");
+
+        List<Option> options = countryOptions(html);
+        Option other = options.get(1);
+        assertThat(other.value()).isEqualTo("ZZ");
+        assertThat(other.text()).isEqualTo("Other");
+        assertThat(other.hasAttribute("selected")).isFalse();
+        assertThat(shownCountryOption(html).value()).as("still starts on the placeholder").isEmpty();
+        List<Option> countries = options.subList(2, options.size());
+        assertThat(countries).extracting(Option::value).doesNotContain("ZZ", "");
+        assertThat(countries).extracting(Option::text).isSorted();
+    }
+
+    @Test
+    void get_editMode_savedOther_selectsOther() throws Exception {
+        String email = "view-country-edit-other@example.com";
+        submissionService.create(email, new TestimonialSubmissionRequest("David", "Jones", "CS21B001", 2024, "ZZ", 8,
+                List.of(new TestimonialSubmissionRequest.SectionInput("general", "Text.", List.of())),
+                List.of(), List.of(), true), Map.of());
+
+        String html = formHtml(email);
+
+        assertThat(shownCountryOption(html).value()).isEqualTo("ZZ");
+        assertThat(shownCountryOption(html).text()).isEqualTo("Other");
+        assertThat(countryOptions(html).stream().filter(o -> o.hasAttribute("selected")))
+                .as("exactly one option marked selected")
+                .hasSize(1);
+    }
+
+    @Test
+    void post_otherChosen_anotherFieldRejected_keepsOtherSelectedAndValid() throws Exception {
+        String html = html(rerendered(formPost("view-country-other-kept@example.com", Map.of(
+                "countryCode", "ZZ",
+                "rollNumber", "X"))));
+
+        assertThat(shownCountryOption(html).value()).isEqualTo("ZZ");
+        assertThat(openingTag(html, "id=\"countryCode\"")).doesNotContain("--invalid");
+        assertThat(countryField(html)).doesNotContain("submission-field-error");
     }
 
     @Test
@@ -504,12 +547,12 @@ class SubmissionViewControllerFieldErrorsTest {
 
     @Test
     void post_unknownCountryCode_isStillReportedByNameNextToTheSelect() throws Exception {
-        MvcResult result = rerendered(formPost("view-country-unknown@example.com", Map.of("countryCode", "ZZ")));
+        MvcResult result = rerendered(formPost("view-country-unknown@example.com", Map.of("countryCode", "XQ")));
         String html = html(result);
 
         assertThat(fieldErrorFields(result)).containsExactly("countryCode");
         assertThat(countryField(html))
-                .containsPattern(errorSpan("Unknown country code: ZZ"))
+                .containsPattern(errorSpan("Unknown country code: XQ"))
                 .containsOnlyOnce("submission-field-error");
     }
 

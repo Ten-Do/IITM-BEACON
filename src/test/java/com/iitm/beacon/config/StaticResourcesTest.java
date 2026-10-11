@@ -7,12 +7,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -394,17 +400,10 @@ class StaticResourcesTest {
                 .andExpect(content().string(containsString(".submission-field-input--invalid")));
     }
 
-    /** Linked from a {@code <noscript>} on the submission form: without JS, nothing stays cloaked. */
+    /** Linked from a {@code <noscript>} in every page's head: without JS, nothing stays cloaked. */
     @Test
     void noscriptCss_showsWhatAlpineWouldHaveUncloaked() throws Exception {
-        String css = mockMvc.perform(get("/css/noscript.css"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith("text/css"))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-
-        assertThat(topLevelRule(css, "[x-cloak]")).contains("display: block !important;");
+        assertThat(topLevelRule(noscriptCss(), "[x-cloak]")).contains("display: block !important;");
     }
 
     /** One class per score, 0 to 10, in that score's colour: the pages' score badges use them (no inline style). */
@@ -509,38 +508,104 @@ class StaticResourcesTest {
     }
 
     /**
-     * Every class the script puts on a toggle or its menu is styled — the
-     * stylesheet can't hide the menu (or show the button) on a class the
-     * script never sets, nor the other way round.
+     * The script's one class, the open menu's, is the one the stylesheet
+     * shows the menu by; the classes it used to set before the stylesheet
+     * hid the menu on its own (until it ran, a phone showed the whole nav for a moment)
+     * are gone from both.
      */
-    @ParameterizedTest
-    @ValueSource(strings = {"nav-toggle--ready", "nav-menu--collapsible", "nav-menu--open"})
-    void navToggleJs_classesItSets_areTheOnesTheStylesheetUses(String className) throws Exception {
-        assertThat(navToggleJs()).contains("'" + className + "'");
-        assertThat(withoutComments(beaconCss())).contains("." + className);
+    @Test
+    void navToggleJs_setsOnlyTheOpenClass_whichTheStylesheetShowsTheMenuBy() throws Exception {
+        String js = withoutComments(navToggleJs());
+        String css = withoutComments(beaconCss());
+
+        assertThat(js).contains("'nav-menu--open'");
+        assertThat(css).contains(".nav-menu--open");
+        assertThat(js + css).doesNotContain("nav-toggle--ready", "nav-menu--collapsible");
     }
 
     /**
-     * Without JavaScript nothing is collapsed: the button is hidden
-     * everywhere by default and shown on phones only once the script has
-     * marked it ready; the menu is hidden only through the class the script
-     * adds, never through the header's own nav class, so on a phone without
-     * JS the header just wraps its links onto a second row.
+     * On phones the burger shows and the nav is hidden by the stylesheet
+     * alone, from the first paint — no class from the script needed, so
+     * nothing flashes while the deferred script loads. Hidden, not removed:
+     * {@code visibility: hidden} keeps its links out of the tab order and
+     * lets it fade; {@code display: none} could not be transitioned. On a
+     * desktop the burger stays hidden and the nav is never hidden.
      */
     @Test
-    void beaconCss_collapsesTheHeaderNavOnPhonesOnlyOnceTheScriptIsReady() throws Exception {
+    void beaconCss_onPhones_showsTheBurgerAndHidesTheNav_fromTheFirstPaint() throws Exception {
         String css = beaconCss();
         String narrow = mediaBlock(css, "(max-width: 720px)");
 
         assertThat(declarationsFor(topLevelRules(css), ".nav-toggle")).contains("display: none;");
-        assertThat(declarationsFor(narrow, ".nav-toggle--ready")).contains("display: inline-flex;");
-        assertThat(declarationsFor(narrow, ".nav-menu--collapsible:not(.nav-menu--open)"))
-                .contains("display: none;");
+        assertThat(declarationsFor(narrow, ".nav-toggle")).contains("display: inline-flex;");
 
-        assertThat(declarationsFor(narrow, ".header-bar")).contains("flex-wrap: wrap;");
-        assertThat(declarationsFor(narrow, ".header-nav")).contains("flex-wrap: wrap;").doesNotContain("display: none");
+        assertThat(declarationsFor(narrow, ".header-nav"))
+                .contains(
+                        "position: absolute;",
+                        "visibility: hidden;",
+                        "opacity: 0;",
+                        "transform: translateY(-8px);",
+                        "pointer-events: none;")
+                .doesNotContain("display: none");
         assertThat(ruleBodiesFor(topLevelRules(css), ".header-nav"))
-                .allSatisfy(body -> assertThat(body).doesNotContain("display: none"));
+                .allSatisfy(body -> assertThat(body).doesNotContain("display: none", "visibility", "opacity"));
+        // Kept for the no-JavaScript look (noscript.css puts the nav back in the header's flow).
+        assertThat(declarationsFor(narrow, ".header-bar")).contains("position: relative;", "flex-wrap: wrap;");
+    }
+
+    /** Opened by the script, the panel slides and fades in — and out again when closed. */
+    @Test
+    void beaconCss_onPhones_theOpenMenuShows_slidingAndFading() throws Exception {
+        String narrow = mediaBlock(beaconCss(), "(max-width: 720px)");
+
+        assertThat(declarationsFor(narrow, ".header-nav.nav-menu--open"))
+                .contains("visibility: visible;", "opacity: 1;", "transform: none;", "pointer-events: auto;");
+        assertThat(declarationsFor(narrow, ".header-nav"))
+                .contains(
+                        "opacity var(--motion-medium) var(--ease-standard)",
+                        "transform var(--motion-medium) var(--ease-standard)",
+                        "visibility var(--motion-medium)");
+    }
+
+    private String noscriptCss() throws Exception {
+        return mockMvc.perform(get("/css/noscript.css"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/css"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+    }
+
+    /**
+     * Decision 26: without JavaScript nothing is collapsed. On phones the
+     * no-JS stylesheet (linked from every page's head) hides the burger —
+     * nothing would open the menu — and puts the nav back in the header's
+     * flow, wrapping onto a second row, visible and reachable.
+     */
+    @Test
+    void noscriptCss_onPhones_hidesTheBurger_andShowsTheNavInTheHeader() throws Exception {
+        String narrow = mediaBlock(noscriptCss(), "(max-width: 720px)");
+
+        assertThat(declarationsFor(narrow, ".nav-toggle")).contains("display: none;");
+        assertThat(declarationsFor(narrow, ".header-nav"))
+                .contains(
+                        "position: static;",
+                        "flex-basis: 100%;",
+                        "flex-direction: row;",
+                        "flex-wrap: wrap;",
+                        "visibility: visible;",
+                        "opacity: 1;",
+                        "transform: none;",
+                        "pointer-events: auto;");
+    }
+
+    /** On a desktop the header needs nothing from it: the nav is never hidden there. */
+    @Test
+    void noscriptCss_leavesTheDesktopHeaderAlone() throws Exception {
+        String flat = topLevelRules(noscriptCss());
+
+        assertThat(ruleBodiesFor(flat, ".header-nav")).isEmpty();
+        assertThat(ruleBodiesFor(flat, ".nav-toggle")).isEmpty();
     }
 
     /** Explicit decision: 4 columns at 1200px and up, 3 from 900px, 2 from 560px, 1 below. */
@@ -556,6 +621,192 @@ class StaticResourcesTest {
                 .contains("grid-template-columns: repeat(2, minmax(0, 1fr));");
         assertThat(declarationsFor(mediaBlock(css, "(max-width: 559px)"), ".gallery-grid"))
                 .contains("grid-template-columns: minmax(0, 1fr);");
+    }
+
+    // -- submit buttons: busy while their form is being sent (static/js/form-submit.js), hover and press --
+
+    private String formSubmitJs() throws Exception {
+        return mockMvc.perform(get("/js/form-submit.js"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/javascript"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+    }
+
+    /**
+     * Its behaviour runs in a browser (e2e); this pins the contract: one
+     * submit listener, on the document and in the bubble phase (no capture
+     * argument) — so a form's own listener runs first, and a submit it has
+     * taken over ({@code defaultPrevented}) is left alone; a second submit
+     * of a form being sent is prevented; the submitter is marked busy with
+     * ARIA attributes, never the {@code disabled} attribute (which would drop
+     * the keyboard focus and leave its name and value out of the
+     * submission); a page restored from the back/forward cache is reset.
+     */
+    @Test
+    void formSubmitJs_marksTheSubmitterBusy_blocksASecondSubmit_andResetsARestoredPage() throws Exception {
+        String js = withoutComments(formSubmitJs());
+
+        assertThat(js).containsOnlyOnce("addEventListener('submit'");
+        assertThat(js).containsPattern("document\\.addEventListener\\('submit', \\w+\\);");
+        assertThat(js).contains("event.defaultPrevented", "event.preventDefault()", "event.submitter");
+        assertThat(js).contains("'aria-busy'", "'aria-disabled'");
+        assertThat(js).doesNotContain("'disabled'").doesNotContainPattern("\\.disabled\\s*=");
+        assertThat(js).contains("'pageshow'", ".persisted");
+        assertThat(js).doesNotContain("Alpine", "import ", "export ", "fetch(", "window.location");
+    }
+
+    /**
+     * Each family of buttons that submit a form (with the links styled like
+     * them), as {@code base selector, selector of the element it styles}:
+     * the pill is also a plain locked {@code <span>}, which gets no feedback.
+     */
+    private static final String[] SUBMIT_BUTTON_FAMILIES = {
+        ".auth-btn-primary, .auth-btn-primary",
+        ".auth-btn-ghost, .auth-btn-ghost",
+        ".submission-btn-primary, .submission-btn-primary",
+        ".submission-btn-ghost, .submission-btn-ghost",
+        ".moderation-btn-approve, .moderation-btn-approve",
+        ".moderation-btn-reject, .moderation-btn-reject",
+        ".catalog-btn-primary, .catalog-btn-primary",
+        ".catalog-btn-ghost, .catalog-btn-ghost",
+        ".catalog-btn-danger, .catalog-btn-danger",
+        ".catalog-pill, button.catalog-pill",
+        ".gallery-filter-submit, .gallery-filter-submit",
+        ".header-nav-button, .header-nav-button",
+        ".confirmation-btn, .confirmation-btn",
+        ".gallery-reveal-btn, .gallery-reveal-btn",
+    };
+
+    private static final String NOT_BUSY = ":not([aria-busy=\"true\"])";
+
+    /** {@code property → value} of the declarations in {@code body}, a later one winning. */
+    private static Map<String, String> declarationMap(String body) {
+        Map<String, String> map = new LinkedHashMap<>();
+        for (String declaration : body.split(";")) {
+            int colon = declaration.indexOf(':');
+            if (colon > 0) {
+                map.put(declaration.substring(0, colon).strip(), declaration.substring(colon + 1).strip());
+            }
+        }
+        return map;
+    }
+
+    /**
+     * Under a real pointer (a touch screen's {@code :hover} sticks after a
+     * tap) every family's hover visibly changes its background, border or
+     * text colour from the resting look — the catalog's used to repeat it —
+     * but not while the button is busy.
+     */
+    @ParameterizedTest
+    @MethodSource("submitButtonFamilies")
+    void beaconCss_submitButtons_changeColourOnHover_unlessBusy(String base, String element) throws Exception {
+        String css = withoutComments(beaconCss());
+
+        String hover = declarationsFor(mediaBlocks(css, "(hover: hover)"), element + NOT_BUSY + ":hover");
+        Map<String, String> hovered = declarationMap(hover);
+        Map<String, String> resting = declarationMap(declarationsFor(topLevelRules(css), base));
+
+        List<String> colours = List.of("background", "background-color", "border-color", "color");
+        assertThat(hovered.keySet()).as(element + ":hover").containsAnyElementsOf(colours);
+        assertThat(colours.stream().filter(hovered::containsKey))
+                .as(element + ":hover changes something from " + resting)
+                .anySatisfy(property -> assertThat(resting.get(property)).isNotEqualTo(hovered.get(property)));
+    }
+
+    static Stream<Arguments> submitButtonFamilies() {
+        return Arrays.stream(SUBMIT_BUTTON_FAMILIES)
+                .map(pair -> pair.split(", "))
+                .map(pair -> Arguments.of(pair[0], pair[1]));
+    }
+
+    /**
+     * Pressed, it sinks a pixel; its colours ease in and out with the motion
+     * tokens (switched off for reduced motion — see the transitions test).
+     * Pressing must win over hovering: same specificity, so the {@code
+     * :active} rules come after the hover ones.
+     */
+    @ParameterizedTest
+    @MethodSource("submitButtonFamilies")
+    void beaconCss_submitButtons_sinkWhenPressed_unlessBusy_andEaseTheirColours(String base, String element)
+            throws Exception {
+        String css = withoutComments(beaconCss());
+        String flat = topLevelRules(css);
+
+        assertThat(declarationsFor(flat, element + NOT_BUSY + ":active")).contains("transform: translateY(1px);");
+        assertThat(declarationsFor(flat, base))
+                .contains(
+                        "background-color var(--motion-fast) var(--ease-standard)",
+                        "border-color var(--motion-fast) var(--ease-standard)",
+                        "color var(--motion-fast) var(--ease-standard)",
+                        "transform var(--motion-fast) var(--ease-standard)");
+        int lastHover = css.lastIndexOf(element + NOT_BUSY + ":hover");
+        assertThat(css.indexOf(element + NOT_BUSY + ":active")).isGreaterThan(lastHover);
+    }
+
+    /**
+     * Busy (form-submit.js), a submit button shows a progress cursor and a
+     * spinner after its label, turning like the reveal button's — which
+     * keeps its own spinner, so it gets no second one. Reduced motion slows
+     * it (see the animations test).
+     */
+    @Test
+    void beaconCss_aBusySubmitButton_showsAProgressCursorAndASpinner() throws Exception {
+        String flat = topLevelRules(beaconCss());
+
+        assertThat(declarationsFor(flat, "button[aria-busy=\"true\"]")).contains("cursor: progress;");
+        assertThat(declarationsFor(flat, "button[aria-busy=\"true\"]:not(.gallery-reveal-btn)::after"))
+                .contains(
+                        "content: \"\";",
+                        "border: 2px solid currentcolor;",
+                        "border-radius: var(--radius-full);",
+                        "animation: gallery-reveal-spin 0.7s linear infinite;");
+    }
+
+    // -- gallery cards (gallery/list.html): the whole card is the link to its article --
+
+    /**
+     * A link that still reads like a card: its text keeps its own colours
+     * and gets no underline — not even from the global {@code a:hover},
+     * which would underline every line of it and, on a touch screen, sticks
+     * after a tap; hence outside any hover-only query.
+     */
+    @Test
+    void beaconCss_galleryCard_isALinkThatReadsLikeACard() throws Exception {
+        String flat = topLevelRules(beaconCss());
+
+        assertThat(declarationsFor(flat, ".gallery-card")).contains("color: inherit;", "text-decoration: none;");
+        assertThat(declarationsFor(flat, ".gallery-card:hover")).contains("color: inherit;", "text-decoration: none;");
+    }
+
+    /**
+     * Feedback for the whole card: under a pointer it lifts with a stronger
+     * shadow (smoothly), pressed it sinks, and keyboard focus rings it.
+     * Pressing must win over hovering: same specificity, so the {@code
+     * :active} rule comes after the hover one.
+     */
+    @Test
+    void beaconCss_galleryCard_liftsOnHover_sinksWhenPressed_andShowsAFocusRing() throws Exception {
+        String css = withoutComments(beaconCss());
+        String flat = topLevelRules(css);
+
+        assertThat(declarationsFor(mediaBlocks(css, "(hover: hover)"), ".gallery-card:hover"))
+                .contains("transform: translateY(-2px);", "box-shadow: var(--shadow-card-hover);");
+        assertThat(topLevelRule(css, ":root")).contains("--shadow-card-hover:");
+        assertThat(declarationsFor(flat, ".gallery-card:active")).contains("transform: translateY(1px);");
+        assertThat(declarationsFor(flat, ".gallery-card:focus-visible")).contains("outline: 2px solid var(--maroon);");
+        assertThat(declarationsFor(flat, ".gallery-card"))
+                .contains(
+                        "transform var(--motion-fast) var(--ease-standard)",
+                        "box-shadow var(--motion-fast) var(--ease-standard)");
+        assertThat(css.indexOf("\n.gallery-card:active {")).isGreaterThan(css.indexOf("  .gallery-card:hover {"));
+    }
+
+    /** The whole card is the link: the "Read more" link and its rules (the phone tap target too) are gone. */
+    @Test
+    void beaconCss_dropsTheReadMoreLink() throws Exception {
+        assertThat(withoutComments(beaconCss())).doesNotContain("gallery-read-more");
     }
 
     /**
@@ -609,9 +860,14 @@ class StaticResourcesTest {
         }
     }
 
-    /** The choropleth's five steps, light gold to maroon (decision 30). */
+    /**
+     * The choropleth's five steps, light gold to maroon (decision 30). A
+     * shade names the region's fill colour ({@code --region-fill}) rather
+     * than setting {@code fill} itself, so the hover rule can darken
+     * whichever shade the region has.
+     */
     @Test
-    void beaconCss_declaresTheFiveMapShadeTokens_andFillsEachShadeWithIt() throws Exception {
+    void beaconCss_declaresTheFiveMapShadeTokens_andMakesEachShadeTheRegionsFill() throws Exception {
         String css = beaconCss();
         String flat = topLevelRules(css);
 
@@ -623,21 +879,268 @@ class StaticResourcesTest {
                         "--map-shade-4: #c2603a;",
                         "--map-shade-5: #ae152d;");
         for (int shade = 1; shade <= 5; shade++) {
-            assertThat(declarationsFor(flat, ".map-shade-" + shade)).contains("fill: var(--map-shade-" + shade + ");");
+            assertThat(declarationsFor(flat, ".map-shade-" + shade))
+                    .contains("--region-fill: var(--map-shade-" + shade + ");")
+                    .doesNotContainPattern("(?m)^\\s*fill:");
             assertThat(declarationsFor(flat, ".dashboard-map-swatch--" + shade))
                     .contains("background: var(--map-shade-" + shade + ");");
         }
     }
 
-    /** Land is paper with the line colour for borders, on the sand-coloured sea of the mockup. */
+    /**
+     * Land is paper with the line colour for borders, on the sand-coloured
+     * sea of the mockup: a region without a shade falls back to paper.
+     */
     @Test
-    void beaconCss_mapLandIsPaperOnSand_andALinkedCountryShowsHoverAndKeyboardFocus() throws Exception {
+    void beaconCss_mapLandIsPaperOnSand_unlessAShadeSetsTheRegionFill() throws Exception {
         String flat = topLevelRules(beaconCss());
 
         assertThat(declarationsFor(flat, ".dashboard-map")).contains("background: var(--sand);");
-        assertThat(declarationsFor(flat, ".map-region")).contains("fill: var(--paper);", "stroke: var(--line);");
-        assertThat(declarationsFor(flat, ".dashboard-map a:hover .map-region")).contains("stroke: var(--ink);");
-        assertThat(declarationsFor(flat, ".dashboard-map a:focus-visible .map-region")).contains("stroke: var(--ink);");
+        assertThat(declarationsFor(flat, ".map-region"))
+                .contains("fill: var(--region-fill, var(--paper));", "stroke: var(--line);", "stroke-width: 0.5;");
+    }
+
+    /**
+     * Hovering or keyboard-focusing a linked country darkens its own shade
+     * (a quarter ink mixed in), fading in quickly; its outline stays as it
+     * is — the old thick ink outline is gone.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {".dashboard-map a:hover .map-region", ".dashboard-map a:focus-visible .map-region"})
+    void beaconCss_aLinkedCountryDarkensOnHoverAndKeyboardFocus_withoutAnOutline(String selector) throws Exception {
+        String flat = topLevelRules(beaconCss());
+
+        assertThat(declarationsFor(flat, selector))
+                .contains("fill: color-mix(in srgb, var(--region-fill) 75%, var(--ink));")
+                .doesNotContain("stroke");
+        assertThat(declarationsFor(flat, ".map-region"))
+                .contains("transition: fill var(--motion-fast) var(--ease-standard);");
+    }
+
+    // -- motion --
+
+    /** The durations and the easing every transition uses. */
+    @Test
+    void beaconCss_declaresTheMotionTokens() throws Exception {
+        assertThat(topLevelRule(beaconCss(), ":root"))
+                .contains(
+                        "--motion-fast: 150ms;",
+                        "--motion-medium: 250ms;",
+                        "--ease-standard: cubic-bezier(0.2, 0, 0, 1);");
+    }
+
+    private static final Pattern CSS_RULE = Pattern.compile("([^{}]+)\\{([^{}]*)}");
+
+    /** {@code [start, end)} of the content of every {@code @media <query> { … }} block, nested ones included. */
+    private static List<int[]> mediaBlockRanges(String css, String query) {
+        List<int[]> ranges = new ArrayList<>();
+        String opening = "@media " + query + " {";
+        for (int at = css.indexOf(opening); at >= 0; at = css.indexOf(opening, at + 1)) {
+            int open = css.indexOf('{', at);
+            int depth = 0;
+            for (int i = open; i < css.length(); i++) {
+                if (css.charAt(i) == '{') {
+                    depth++;
+                } else if (css.charAt(i) == '}' && --depth == 0) {
+                    ranges.add(new int[] {open + 1, i});
+                    break;
+                }
+            }
+        }
+        return ranges;
+    }
+
+    /** Everything inside every {@code @media <query> { … }} block, joined; fails if there is none. */
+    private static String mediaBlocks(String css, String query) {
+        List<int[]> ranges = mediaBlockRanges(css, query);
+        assertThat(ranges).as("@media " + query).isNotEmpty();
+        StringBuilder out = new StringBuilder();
+        for (int[] range : ranges) {
+            out.append(css, range[0], range[1]).append('\n');
+        }
+        return out.toString();
+    }
+
+    /** One selector of a rule that declares a property: where the rule ends, and its body. */
+    private record Declared(String selector, int end, String body) {
+    }
+
+    /**
+     * Every selector of every rule in {@code css} that declares {@code
+     * property} (other than {@code property: none}) outside a reduced-motion
+     * block.
+     */
+    private static List<Declared> selectorsDeclaring(String css, String property) {
+        List<int[]> reduced = mediaBlockRanges(css, "(prefers-reduced-motion: reduce)");
+        List<Declared> found = new ArrayList<>();
+        Matcher rule = CSS_RULE.matcher(css);
+        while (rule.find()) {
+            String body = rule.group(2);
+            int start = rule.start(2);
+            boolean declares = body.contains(property + ":") && !body.contains(property + ": none");
+            boolean inReduced = reduced.stream().anyMatch(r -> start >= r[0] && start < r[1]);
+            if (declares && !inReduced) {
+                for (String selector : rule.group(1).split(",")) {
+                    found.add(new Declared(selector.strip(), rule.end(), body));
+                }
+            }
+        }
+        return found;
+    }
+
+    /** Whether a reduced-motion block after {@code position} has a rule for {@code selector} declaring {@code text}. */
+    private static boolean reducedLater(String css, String selector, int position, String text) {
+        return mediaBlockRanges(css, "(prefers-reduced-motion: reduce)").stream()
+                .filter(r -> r[0] > position)
+                .anyMatch(r -> ruleBodiesFor(css.substring(r[0], r[1]), selector).stream()
+                        .anyMatch(body -> body.contains(text)));
+    }
+
+    /**
+     * Every transition takes its durations from the motion tokens (no raw
+     * seconds) and is switched off for visitors who ask for reduced motion —
+     * by a rule for the same selector that comes later in the file, since at
+     * the same specificity an earlier one would lose.
+     */
+    @Test
+    void beaconCss_everyTransitionUsesTheMotionTokens_andIsSwitchedOffForReducedMotion() throws Exception {
+        String css = withoutComments(beaconCss());
+        List<Declared> transitions = selectorsDeclaring(css, "transition");
+
+        assertThat(transitions).as("transitions").isNotEmpty();
+        assertThat(transitions).allSatisfy(each -> {
+            assertThat(reducedLater(css, each.selector(), each.end(), "transition: none;"))
+                    .as("transition of %s switched off under reduced motion, after it", each.selector())
+                    .isTrue();
+            Matcher value = Pattern.compile("transition:([^;]*);").matcher(each.body());
+            assertThat(value.find()).isTrue();
+            assertThat(value.group(1))
+                    .as("transition of %s", each.selector())
+                    .contains("var(--motion-")
+                    .doesNotContainPattern("\\b\\d*\\.?\\d+m?s\\b");
+        });
+    }
+
+    /** A spinner that doesn't turn no longer says "loading": under reduced motion it turns slower instead. */
+    @Test
+    void beaconCss_everyAnimationIsSlowedForReducedMotion() throws Exception {
+        String css = withoutComments(beaconCss());
+        List<Declared> animations = selectorsDeclaring(css, "animation");
+
+        assertThat(animations).as("animations").isNotEmpty();
+        assertThat(animations).allSatisfy(each ->
+                assertThat(reducedLater(css, each.selector(), each.end(), "animation-duration:"))
+                        .as("animation of %s slowed under reduced motion, after it", each.selector())
+                        .isTrue());
+    }
+
+    // -- the OTP code field --
+
+    /** A code is the same in either case (the server normalises it): the field shows it in capitals as it's typed. */
+    @Test
+    void beaconCss_showsTheOtpCodeInCapitals() throws Exception {
+        assertThat(declarationsFor(topLevelRules(beaconCss()), ".auth-code-input"))
+                .contains("text-transform: uppercase;");
+    }
+
+    // -- the dashboard's "show more" disclosures (static/js/collapsible.js) --
+
+    @Test
+    void collapsibleJs_isServedToAnonymousVisitorsWithJavascriptContentType() throws Exception {
+        mockMvc.perform(get("/js/collapsible.js"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/javascript"));
+    }
+
+    /**
+     * Its behaviour runs in a browser (e2e); this pins the contract with the
+     * markup of {@code analytics/dashboard.html}: driven by data/ARIA
+     * attributes only — a toggle opens the element its {@code
+     * aria-controls} names with the one class the stylesheet opens it by —
+     * on a click, as plain JS with no framework or module.
+     */
+    @Test
+    void collapsibleJs_isAPlainScriptDrivenByTheTogglesDataAndAriaAttributes() throws Exception {
+        String js = withoutComments(mockMvc.perform(get("/js/collapsible.js"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+
+        assertThat(js).contains("'[data-collapsible-toggle]'", "'aria-controls'", "'aria-expanded'", "'click'");
+        assertThat(js).contains("'collapsible--open'");
+        assertThat(withoutComments(beaconCss())).contains(".collapsible--open");
+        assertThat(js).doesNotContain("Alpine", "import ", "export ", "window.location", ".style");
+    }
+
+    /**
+     * Rows open and close by animating the grid row from 0fr to 1fr, which
+     * a browser can transition, unlike {@code height: auto}. Closed, the
+     * body is clipped to nothing and hidden ({@code visibility}, so its
+     * links leave the tab order once it has finished closing). The opening
+     * class comes after the base rule: same specificity, so order decides.
+     */
+    @Test
+    void beaconCss_collapsible_animatesItsGridRowFromZeroToOneFr() throws Exception {
+        String css = withoutComments(beaconCss());
+        String flat = topLevelRules(css);
+
+        assertThat(declarationsFor(flat, ".collapsible"))
+                .contains(
+                        "display: grid;",
+                        "grid-template-rows: 0fr;",
+                        "visibility: hidden;",
+                        "grid-template-rows var(--motion-medium) var(--ease-standard)",
+                        "visibility var(--motion-medium)");
+        assertThat(declarationsFor(flat, ".collapsible--open"))
+                .contains("grid-template-rows: 1fr;", "visibility: visible;");
+        assertThat(declarationsFor(flat, ".collapsible-body")).contains("min-height: 0;", "overflow: hidden;");
+        assertThat(css.indexOf("\n.collapsible--open {")).isGreaterThan(css.indexOf("\n.collapsible {"));
+    }
+
+    /**
+     * Collapsed, a disclosure must take no room at all: the container itself
+     * has no padding, margin, border or gap (any spacing lives inside its
+     * clipped body), and the elements that hold one lay their children out
+     * without a gap — a gap would still open around the empty container.
+     */
+    @Test
+    void beaconCss_aCollapsedDisclosureTakesNoRoom() throws Exception {
+        String flat = topLevelRules(beaconCss());
+
+        assertThat(declarationsFor(flat, ".collapsible"))
+                .doesNotContainPattern("(?m)^\\s*(padding|margin|border|gap|row-gap)\\b");
+        for (String parent : List.of(".dashboard-chips", ".dashboard-list-card")) {
+            assertThat(declarationsFor(flat, parent)).as(parent).doesNotContainPattern("(?m)^\\s*(gap|row-gap):");
+        }
+    }
+
+    /** One label per state, picked by the toggle's own aria-expanded (which the script keeps in step). */
+    @Test
+    void beaconCss_aDisclosureToggleShowsTheLabelOfItsState() throws Exception {
+        String flat = topLevelRules(beaconCss());
+
+        assertThat(declarationsFor(flat, "[data-collapsible-toggle][aria-expanded=\"true\"] .when-collapsed"))
+                .contains("display: none;");
+        assertThat(declarationsFor(flat, "[data-collapsible-toggle][aria-expanded=\"false\"] .when-expanded"))
+                .contains("display: none;");
+    }
+
+    /** The native {@code <details>} disclosures are gone, and so are their rules. */
+    @Test
+    void beaconCss_dropsTheOldDetailsDisclosureRules() throws Exception {
+        assertThat(withoutComments(beaconCss()))
+                .doesNotContain("details", "summary", ".dashboard-chip-more", ".dashboard-list-more",
+                        ".dashboard-chip--summary");
+    }
+
+    /** Without JavaScript nothing could open them: every hidden row is shown, and the buttons are not. */
+    @Test
+    void noscriptCss_showsEveryCollapsedRow_andHidesTheToggles() throws Exception {
+        String flat = topLevelRules(noscriptCss());
+
+        assertThat(declarationsFor(flat, ".collapsible")).contains("grid-template-rows: 1fr;", "visibility: visible;");
+        assertThat(declarationsFor(flat, "[data-collapsible-toggle]")).contains("display: none;");
     }
 
     /**
@@ -856,6 +1359,19 @@ class StaticResourcesTest {
         assertThat(js).contains("'[data-contact-card]'", "replaceWith(", "preventScroll: true");
         assertThat(js).doesNotContain(
                 "window.location", "location.href", "scrollTo", "scrollIntoView", "Alpine", "import ", "export ");
+    }
+
+    /**
+     * The reveal form's submit is taken over on the form itself, first thing:
+     * by the time the event bubbles up to the document, the shared busy
+     * script ({@code form-submit.js}) sees it prevented and leaves the
+     * button — which has its own busy state and spinner — alone.
+     */
+    @Test
+    void contactRevealJs_takesTheSubmitOverOnTheFormItself_beforeTheSharedBusyScriptSeesIt() throws Exception {
+        assertThat(contactRevealJs())
+                .containsPattern("form\\.addEventListener\\('submit', function \\(event\\) \\{"
+                        + "\\s*event\\.preventDefault\\(\\);");
     }
 
     /** While the request runs the button is busy and inert; a failure shows the error line and gives it back. */

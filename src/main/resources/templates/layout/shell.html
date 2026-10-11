@@ -12,8 +12,14 @@
          (common.error.ErrorPageRenderer), where only such a link works — it then keeps the
          plain URL. -->
     <link rel="stylesheet" th:href="@{~/css/beacon.css}" />
+    <!-- Only without JavaScript, and after beacon.css so it wins at the same specificity: on phones
+         the nav stays in the header (the burger would open nothing), and nothing stays hidden behind
+         x-cloak. A stylesheet, as the Content-Security-Policy blocks inline styles. -->
+    <noscript><link rel="stylesheet" th:href="@{~/css/noscript.css}"/></noscript>
     <!-- The header's burger menu on phones (layout/nav-toggle.html); inert on a page without one. -->
     <script defer th:src="@{~/js/nav-toggle.js}"></script>
+    <!-- Marks the button that submitted a form busy and stops a second submit (any page's forms). -->
+    <script defer th:src="@{~/js/form-submit.js}"></script>
 </head>
 <body>
 </body>

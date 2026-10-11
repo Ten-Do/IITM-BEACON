@@ -77,6 +77,6 @@ class SubmissionValidationExceptionTest {
 
     @Test
     void fieldViolation_withAField_isNotGlobal() {
-        assertThat(new FieldViolation("countryCode", "Unknown country code: ZZ").isGlobal()).isFalse();
+        assertThat(new FieldViolation("countryCode", "Unknown country code: XQ").isGlobal()).isFalse();
     }
 }

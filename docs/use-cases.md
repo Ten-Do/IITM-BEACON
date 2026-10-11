@@ -269,7 +269,7 @@ while here.
 ## UC-EXPAND-TESTIMONIAL: Expand a testimonial
 - **Actor:** Visitor
 - **Preconditions:** gallery is loaded with at least one testimonial.
-- **Main flow:** Visitor clicks "Read more" → the testimonial expands into its full article
+- **Main flow:** Visitor clicks the testimonial's card → the testimonial expands into its full article
   view, rendered as a nested list: a filled subtopic is shown under its group's heading (group
   heading, then the subtopic's own label, its answer text, and its photos as thumbnails, each
   with its custom tags underneath); a group heading appears only if at least one of its

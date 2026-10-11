@@ -5,6 +5,7 @@ import static com.iitm.beacon.testsupport.Csrf.csrfField;
 import static com.iitm.beacon.testsupport.HtmlSnippets.attribute;
 import static com.iitm.beacon.testsupport.HtmlSnippets.elements;
 import static com.iitm.beacon.testsupport.HtmlSnippets.openingTags;
+import static com.iitm.beacon.testsupport.HtmlSnippets.openingTagsWithAttribute;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -27,6 +28,7 @@ import com.iitm.beacon.domain.topic.TopicRepository;
 import com.iitm.beacon.testsupport.AssetUrls;
 import com.iitm.beacon.testsupport.CatalogVisibilityFixture;
 import com.iitm.beacon.testsupport.CatalogVisibilityFixture.IdClash;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -51,9 +53,10 @@ import org.springframework.transaction.annotation.Transactional;
  * at {@code /} (UC-VIEW-DASHBOARD, decision 30), with the real {@code
  * SecurityConfig} filters: public for GET and HEAD, refused otherwise; the
  * empty state until something is approved; the server-rendered SVG map, the
- * chips, stat cards and lists linking into the gallery's filters; and no
- * script beyond the shared burger script. The shading and split arithmetic
- * itself is {@code DashboardViewTest}'s job.
+ * chips, stat cards and lists linking into the gallery's filters; the
+ * "show more" disclosures under the chips and the lists; and no script
+ * beyond the shared head's and {@code collapsible.js}. The shading and split
+ * arithmetic itself is {@code DashboardViewTest}'s job.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -135,13 +138,57 @@ class AnalyticsViewControllerTest {
         return svgs.get(0);
     }
 
-    /** The {@code <details>} whose summary reads {@code summaryText}; fails unless there is exactly one. */
-    private static String details(String html, String summaryText) {
-        List<String> found = elements(html, "details").stream()
-                .filter(d -> d.contains(">" + summaryText + "</summary>"))
-                .toList();
-        assertThat(found).as("<details> with summary " + summaryText).hasSize(1);
-        return found.get(0);
+    /**
+     * A "show more" disclosure (decision 30): {@code rest}, the list of the
+     * hidden rows, and {@code button}, the {@code <button>} element that
+     * opens and closes them.
+     */
+    private record Disclosure(String rest, String button) {
+
+        /** The button's opening tag. */
+        String buttonTag() {
+            return openingTags(button, "button").get(0);
+        }
+
+        /** The button's label while the rows are hidden. */
+        String collapsedLabel() {
+            Matcher label = Pattern.compile("<span class=\"when-collapsed\">([^<]*)</span>").matcher(button);
+            assertThat(label.find()).as("collapsed label in " + button).isTrue();
+            return label.group(1);
+        }
+    }
+
+    /**
+     * The disclosure whose container has id {@code id}: the container holds
+     * just the list of the hidden rows, and the button comes right after it
+     * — under the rows, so it glides down as they open. The button is a
+     * plain button (never a submit) that controls the container, collapsed
+     * at first, with a label for each state. Fails unless the container and
+     * its id are on the page exactly once.
+     */
+    private static Disclosure disclosure(String html, String id) {
+        Matcher found = Pattern.compile(
+                        "<div class=\"collapsible\" id=\"" + Pattern.quote(id) + "\">\\s*"
+                                + "<div class=\"collapsible-body\">\\s*(<ul\\b[^>]*>.*?</ul>)\\s*</div>\\s*</div>\\s*"
+                                + "(<button\\b[^>]*>.*?</button>)",
+                        Pattern.DOTALL)
+                .matcher(html);
+        assertThat(found.find()).as("#" + id + " holding a list, then its button").isTrue();
+        Disclosure disclosure = new Disclosure(found.group(1), found.group(2));
+        assertThat(html.split("\\sid=\"" + Pattern.quote(id) + "\"", -1)).as("id " + id + " on the page").hasSize(2);
+
+        String tag = disclosure.buttonTag();
+        assertThat(attribute(tag, "type")).contains("button");
+        assertThat(attribute(tag, "data-collapsible-toggle")).isPresent();
+        assertThat(attribute(tag, "aria-controls")).contains(id);
+        assertThat(attribute(tag, "aria-expanded")).contains("false");
+        assertThat(disclosure.button()).contains("<span class=\"when-expanded\">Show less</span>");
+        return disclosure;
+    }
+
+    /** No disclosure on the page at all, nor the {@code <details>} that used to be one. */
+    private static void assertNoDisclosure(String html) {
+        assertThat(html).doesNotContain("data-collapsible-toggle", "class=\"collapsible\"", "<details", "<summary");
     }
 
     /** Opening {@code <a>} tags linking to exactly {@code href}. */
@@ -261,7 +308,8 @@ class AnalyticsViewControllerTest {
         assertThat(elements(html, "a")).anySatisfy(link ->
                 assertThat(link).contains("href=\"/submissions/login\"").contains(">Write your testimonial</a>"));
         assertThat(html).doesNotContain("<svg", "Where our alumni came from", "By the numbers",
-                "Testimonials by topic", "Most common achievements", "<details");
+                "Testimonials by topic", "Most common achievements");
+        assertNoDisclosure(html);
     }
 
     @Test
@@ -396,24 +444,30 @@ class AnalyticsViewControllerTest {
     }
 
     @Test
-    void sixCountries_allShowAsChips_withNoMoreCountriesDetails() throws Exception {
+    void sixCountries_allShowAsChips_withNoMoreCountriesButton() throws Exception {
         approvedFromEach("DE", "FR", "US", "BR", "JP", "PT");
 
         String html = home();
 
-        assertThat(html).doesNotContain("more countr", "<details");
+        assertThat(html).doesNotContain("more countr", "countries-rest");
+        assertNoDisclosure(html);
     }
 
     @Test
-    void sevenCountries_putTheSeventhBehindOneMoreCountry() throws Exception {
+    void sevenCountries_putTheSeventhBehindOneMoreCountry_aChipButtonUnderIt() throws Exception {
         data.approved().from("DE").save();
         approvedFromEach("DE", "FR", "US", "BR", "JP", "PT", "SE");
 
-        String more = details(home(), "+ 1 more country");
+        String html = home();
+        Disclosure more = disclosure(html, "countries-rest");
 
-        // Germany (2) first, then the six ties by name: the United States come last.
-        assertThat(more).contains("href=\"/gallery?country=US\"", ">United States of America</span>");
-        assertThat(openingTags(more, "a")).hasSize(1);
+        assertThat(more.collapsedLabel()).isEqualTo("+ 1 more country");
+        assertThat(attribute(more.buttonTag(), "class"))
+                .hasValueSatisfying(css -> assertThat(css).contains("dashboard-chip"));
+        // Germany (2) first, then the six ties by name: the United States come last — hidden, and only there.
+        assertThat(more.rest()).contains("href=\"/gallery?country=US\"", ">United States of America</span>");
+        assertThat(openingTags(more.rest(), "a")).hasSize(1);
+        assertThat(linksTo(html.replace(map(html), ""), "/gallery?country=US")).hasSize(1);
     }
 
     @Test
@@ -422,9 +476,10 @@ class AnalyticsViewControllerTest {
         data.approved().from("FR").save();
         approvedFromEach("DE", "FR", "US", "BR", "JP", "PT", "SE", "AU");
 
-        String more = details(home(), "+ 2 more countries");
+        Disclosure more = disclosure(home(), "countries-rest");
 
-        assertThat(openingTags(more, "a")).hasSize(2);
+        assertThat(more.collapsedLabel()).isEqualTo("+ 2 more countries");
+        assertThat(openingTags(more.rest(), "a")).hasSize(2);
     }
 
     // -- stat cards --
@@ -445,7 +500,38 @@ class AnalyticsViewControllerTest {
                         + "<span class=\"dashboard-stat-label\">Average recommendation score<");
         assertThat(html).containsPattern(">2</span>\\s*<span class=\"dashboard-stat-label\">Countries represented<");
         assertThat(html).containsPattern(
-                ">67%</span>\\s*<span class=\"dashboard-stat-label\">Recommend the exchange \\(score 6\\+\\)<");
+                ">67%</span>\\s*<span class=\"dashboard-stat-label\">Recommend the exchange<");
+    }
+
+    /** "Other" (decision 1) shows as a chip, off the map, but isn't counted as a country represented. */
+    @Test
+    void other_isAChipButNotOnTheMap_andNotACountryRepresented() throws Exception {
+        data.approved().from("ZZ").save();
+        data.approved().from("ZZ").save();
+        data.approved().from("DE").save();
+
+        String html = home();
+        String outsideTheMap = html.replace(map(html), "");
+
+        assertThat(map(html)).doesNotContain("country=ZZ", "Other");
+        List<String> chips = elements(outsideTheMap, "a").stream()
+                .filter(link -> link.contains("href=\"/gallery?country="))
+                .toList();
+        assertThat(chips).hasSize(2);
+        assertThat(chips.get(0)).contains("href=\"/gallery?country=ZZ\"", ">Other</span>", ">2</span>");
+        assertThat(chips.get(1)).contains("href=\"/gallery?country=DE\"", ">Germany</span>", ">1</span>");
+        assertThat(html).containsPattern(">1</span>\\s*<span class=\"dashboard-stat-label\">Countries represented<");
+    }
+
+    @Test
+    void onlyOther_showsItsChip_andZeroCountriesRepresented() throws Exception {
+        data.approved().from("ZZ").save();
+
+        String html = home();
+
+        assertThat(linksTo(html, "/gallery?country=ZZ")).hasSize(1);
+        assertThat(html).containsPattern(">1</span>\\s*<span class=\"dashboard-stat-label\">Approved testimonials<");
+        assertThat(html).containsPattern(">0</span>\\s*<span class=\"dashboard-stat-label\">Countries represented<");
     }
 
     @Test
@@ -492,11 +578,12 @@ class AnalyticsViewControllerTest {
 
         String html = home();
 
-        assertThat(html).doesNotContain("Show all", "<details");
+        assertThat(html).doesNotContain("Show all", "topics-rest");
+        assertNoDisclosure(html);
     }
 
     @Test
-    void sixTopicEntries_putTheSixthBehindShowAll() throws Exception {
+    void sixTopicEntries_putTheSixthBehindShowAll_aButtonUnderTheList() throws Exception {
         data.approved().from("DE")
                 .sections("academics_teaching", "housing_food", "travel_did", "campus_events", "oge_support")
                 .save();
@@ -505,9 +592,12 @@ class AnalyticsViewControllerTest {
                 .save();
         Long general = data.topic("general").getId();
 
-        String more = details(home(), "Show all (1 more)");
+        Disclosure more = disclosure(home(), "topics-rest");
 
-        assertThat(more).contains("href=\"/gallery?topicIds=" + general + "\"", ">General</span>");
+        assertThat(more.collapsedLabel()).isEqualTo("Show all (1 more)");
+        assertThat(openingTags(more.rest(), "a")).singleElement()
+                .satisfies(link -> assertThat(attribute(link, "href")).contains("/gallery?topicIds=" + general));
+        assertThat(more.rest()).contains(">General</span>");
     }
 
     // -- most common achievements --
@@ -523,17 +613,63 @@ class AnalyticsViewControllerTest {
     }
 
     @Test
-    void sixAchievements_putTheSixthBehindShowAll() throws Exception {
+    void fiveAchievements_allShow_withNoShowAll() throws Exception {
+        data.approved().from("DE")
+                .ticks("made_new_friends", "traveled_within_india", "enjoyed_spicy_indian_food",
+                        "keeping_in_touch", "missed_home")
+                .save();
+
+        String html = home();
+
+        assertThat(html).doesNotContain("Show all", "achievements-rest");
+        assertNoDisclosure(html);
+    }
+
+    @Test
+    void sixAchievements_putTheSixthBehindShowAll_aButtonUnderTheList() throws Exception {
         data.approved().from("DE")
                 .ticks("made_new_friends", "traveled_within_india", "enjoyed_spicy_indian_food",
                         "keeping_in_touch", "explored_the_city", "missed_home")
                 .save();
 
-        String more = details(home(), "Show all (1 more)");
+        Disclosure more = disclosure(home(), "achievements-rest");
 
+        assertThat(more.collapsedLabel()).isEqualTo("Show all (1 more)");
         // All tied at 1, so by display order: "Explored the city beyond campus" (22) comes last.
-        assertThat(more).contains(">Explored the city beyond campus</span>");
-        assertThat(openingTags(more, "a")).isEmpty();
+        assertThat(more.rest()).contains(">Explored the city beyond campus</span>");
+        assertThat(openingTags(more.rest(), "a")).isEmpty();
+    }
+
+    /**
+     * Chips and both lists overflowing at once: three disclosures, each
+     * button controlling its own rows — the two "Show all (1 more)" buttons
+     * included — and no id twice on the page.
+     */
+    @Test
+    void everythingOverflowing_hasThreeDisclosures_eachControllingItsOwnRows() throws Exception {
+        approvedFromEach("FR", "US", "BR", "JP", "PT", "SE");
+        data.approved().from("DE")
+                .sections("academics_teaching", "housing_food", "travel_did", "campus_events", "oge_support")
+                .ticks("made_new_friends", "traveled_within_india", "enjoyed_spicy_indian_food",
+                        "keeping_in_touch", "explored_the_city", "missed_home")
+                .save();
+        data.approved().from("DE").sections("academics_teaching", "housing_food", "travel_did", "campus_events",
+                        "oge_support", "general")
+                .ticks("made_new_friends", "traveled_within_india", "enjoyed_spicy_indian_food",
+                        "keeping_in_touch", "missed_home")
+                .save();
+
+        String html = home();
+
+        assertThat(disclosure(html, "countries-rest").collapsedLabel()).isEqualTo("+ 1 more country");
+        assertThat(disclosure(html, "topics-rest").rest()).contains(">General</span>")
+                .doesNotContain("Explored the city");
+        assertThat(disclosure(html, "achievements-rest").rest()).contains(">Explored the city beyond campus</span>")
+                .doesNotContain(">General</span>");
+        assertThat(openingTagsWithAttribute(html, "data-collapsible-toggle")).hasSize(3);
+        assertThat(openingTagsWithAttribute(html, "id").stream().map(tag -> attribute(tag, "id").orElseThrow()))
+                .doesNotHaveDuplicates();
+        assertThat(html).doesNotContain("<details", "<summary");
     }
 
     @Test
@@ -572,23 +708,43 @@ class AnalyticsViewControllerTest {
 
     // -- scripts and header --
 
-    /** The map is pure SVG: no Alpine, no PhotoSwipe, nothing but the shared burger script. */
-    @Test
-    void fullPage_loadsNoScriptButTheNavToggle() throws Exception {
-        approvedFromEach("DE", "FR", "US", "BR", "JP", "PT", "SE");
+    /** The shared head's scripts, on every page ({@code config.LayoutShellTest}). */
+    private static final List<String> SHARED_SCRIPTS = List.of("/js/nav-toggle.js", "/js/form-submit.js");
 
-        List<String> scripts = openingTags(home(), "script");
-
-        assertThat(scripts).singleElement().satisfies(tag ->
-                assertThat(attribute(tag, "src").map(AssetUrls::plain)).contains("/js/nav-toggle.js"));
+    private static List<String> scriptSources(String html) {
+        return openingTags(html, "script").stream()
+                .map(tag -> attribute(tag, "src").map(AssetUrls::plain).orElse("(inline)"))
+                .toList();
     }
 
+    /**
+     * The map is pure SVG: no Alpine, no PhotoSwipe. Beyond the shared
+     * head's scripts only the disclosures' script, once, deferred and a
+     * classic script.
+     */
     @Test
-    void emptyPage_loadsNoScriptButTheNavToggle() throws Exception {
-        List<String> scripts = openingTags(home(), "script");
+    void fullPage_loadsOnlyTheSharedScriptsAndTheDisclosureScript() throws Exception {
+        approvedFromEach("DE", "FR", "US", "BR", "JP", "PT", "SE");
 
-        assertThat(scripts).singleElement().satisfies(tag ->
-                assertThat(attribute(tag, "src").map(AssetUrls::plain)).contains("/js/nav-toggle.js"));
+        String html = home();
+
+        List<String> expected = new ArrayList<>(SHARED_SCRIPTS);
+        expected.add("/js/collapsible.js");
+        assertThat(scriptSources(html)).containsExactlyInAnyOrderElementsOf(expected);
+        assertThat(openingTags(html, "script"))
+                .filteredOn(tag -> attribute(tag, "src").map(AssetUrls::plain).orElse("").equals("/js/collapsible.js"))
+                .singleElement()
+                .satisfies(tag -> {
+                    assertThat(attribute(tag, "defer")).isPresent();
+                    assertThat(attribute(tag, "async")).isEmpty();
+                    assertThat(attribute(tag, "type")).isEmpty();
+                });
+    }
+
+    /** Nothing to open on the empty state: not even the disclosures' script. */
+    @Test
+    void emptyPage_loadsOnlyTheSharedScripts() throws Exception {
+        assertThat(scriptSources(home())).containsExactlyInAnyOrderElementsOf(SHARED_SCRIPTS);
     }
 
     @Test

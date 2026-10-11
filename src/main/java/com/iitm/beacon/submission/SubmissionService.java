@@ -153,12 +153,13 @@ public class SubmissionService {
      * <select>} — deliberately unfiltered by approved-testimonial existence,
      * unlike {@code gallery.GalleryService#listCountriesWithApproved}: a
      * visitor must be able to pick their own country even if nobody from it
-     * has an approved testimonial yet.
+     * has an approved testimonial yet. In {@link Country#DISPLAY_ORDER}:
+     * "Other" first, then the countries by name.
      */
     @Transactional(readOnly = true)
     public List<CountryDto> listAllCountries() {
         return countryRepository.findAll().stream()
-                .sorted(Comparator.comparing(Country::getName))
+                .sorted(Country.DISPLAY_ORDER)
                 .map(c -> new CountryDto(c.getCode(), c.getName()))
                 .toList();
     }

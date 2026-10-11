@@ -180,6 +180,48 @@ class AnalyticsServiceTotalsTest {
                 country("US", "United States of America", 1));
     }
 
+    /**
+     * "Other" (decision 1) is ranked like any country — by count, then by
+     * name — not pinned first as in the pickers: the summary just counts.
+     */
+    @Test
+    void countries_otherIsRankedByCountAndNameLikeAnyCountry() {
+        data.approved().from("ZZ").save();
+        data.approved().from("ZZ").save();
+        data.approved().from("US").save();
+        data.approved().from("IN").save();
+        data.approved().from("IN").save();
+        data.approved().from("IN").save();
+        data.approved().from("AT").save();
+
+        assertThat(analyticsService.summary().testimonialsByCountry()).containsExactly(
+                country("IN", "India", 3),
+                country("ZZ", "Other", 2),
+                country("AT", "Austria", 1),
+                country("US", "United States of America", 1));
+    }
+
+    @Test
+    void countries_otherOnATie_goesByItsName() {
+        data.approved().from("ZZ").save();
+        data.approved().from("US").save();
+        data.approved().from("AT").save();
+
+        assertThat(analyticsService.summary().testimonialsByCountry()).containsExactly(
+                country("AT", "Austria", 1),
+                country("ZZ", "Other", 1),
+                country("US", "United States of America", 1));
+    }
+
+    @Test
+    void countries_otherWithOnlyPendingAndRejected_isLeftOut() {
+        data.approved().from("IN").save();
+        data.pending().from("ZZ").save();
+        data.rejected().from("ZZ").save();
+
+        assertThat(analyticsService.summary().testimonialsByCountry()).containsExactly(country("IN", "India", 1));
+    }
+
     @Test
     void countries_sameCountAndSameName_goByCode() {
         countryRepository.saveAndFlush(Country.builder().code("XB").name("Testland").build());

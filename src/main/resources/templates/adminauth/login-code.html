@@ -29,7 +29,8 @@
                 <div class="auth-field">
                     <label class="auth-field-label" for="code">One-time code</label>
                     <input class="auth-field-input auth-code-input" id="code" name="code" type="text" maxlength="6"
-                           autocomplete="one-time-code" required="required"/>
+                           autocomplete="one-time-code" autocapitalize="characters" autocorrect="off"
+                           spellcheck="false" required="required"/>
                 </div>
                 <button type="submit" class="auth-btn auth-btn-primary">Verify</button>
             </form>

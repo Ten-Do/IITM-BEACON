@@ -295,10 +295,10 @@ class SubmissionControllerTest {
     @Test
     void createSubmission_unknownCountry_returns400NamingTheCode() throws Exception {
         mockMvc.perform(multipart("/api/submissions")
-                        .file(payloadWithCountryCode("ZZ")).with(csrfHeader())
+                        .file(payloadWithCountryCode("XQ")).with(csrfHeader())
                         .with(authentication(visitor("controller-unknown-country@example.com"))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("countryCode: Unknown country code: ZZ"));
+                .andExpect(jsonPath("$.message").value("countryCode: Unknown country code: XQ"));
     }
 
     @Test

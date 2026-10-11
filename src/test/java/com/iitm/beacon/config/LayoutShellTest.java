@@ -51,6 +51,12 @@ class LayoutShellTest {
 
     private static final String NAV_TOGGLE_SCRIPT = "/js/nav-toggle.js";
 
+    private static final String FORM_SUBMIT_SCRIPT = "/js/form-submit.js";
+
+    private static final String BEACON_CSS = "/css/beacon.css";
+
+    private static final String NOSCRIPT_CSS = "/css/noscript.css";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -133,7 +139,9 @@ class LayoutShellTest {
         mockMvc.perform(get("/favicon.ico").with(authentication(visitor))).andExpect(status().isNotFound());
     }
 
-    // -- the burger script (static/js/nav-toggle.js), loaded by the shell head on every page --
+    // -- what the shell head loads on every page: the burger script (static/js/nav-toggle.js),
+    // -- the submit buttons' busy state (static/js/form-submit.js) and, for browsers without
+    // -- JavaScript, static/css/noscript.css --
 
     private static Authentication admin() {
         return new UsernamePasswordAuthenticationToken(
@@ -180,27 +188,63 @@ class LayoutShellTest {
         return testimonialRepository.saveAndFlush(t);
     }
 
+    /** The page's one {@code <head>} element. */
+    private static String head(String html) {
+        List<String> heads = elements(html, "head");
+        assertThat(heads).as("<head> elements").hasSize(1);
+        return heads.get(0);
+    }
+
+    /** Opening {@code <tag>}s of {@code html} whose {@code attributeName}, unversioned, is {@code path}. */
+    private static List<String> tagsLinking(String html, String tag, String attributeName, String path) {
+        return openingTags(html, tag).stream()
+                .filter(each -> attribute(each, attributeName).map(AssetUrls::plain).filter(path::equals).isPresent())
+                .toList();
+    }
+
     /**
-     * Exactly one {@code <script>} for the burger script on the page, in its
-     * {@code <head>}, deferred (it needs the parsed header; the page must not
+     * Exactly one {@code <script>} for {@code path} on the page, in its
+     * {@code <head>}, deferred (it needs the parsed page; the page must not
      * wait for it) and a classic script, not a module.
      */
-    private static void assertLoadsTheNavToggleScriptOnceDeferredInTheHead(String html) {
-        List<String> scripts = openingTags(html, "script").stream()
-                .filter(tag -> attribute(tag, "src")
-                        .map(AssetUrls::plain)
-                        .filter(NAV_TOGGLE_SCRIPT::equals)
-                        .isPresent())
-                .toList();
-        assertThat(scripts).as("<script src=\"" + NAV_TOGGLE_SCRIPT + "\">").hasSize(1);
+    private static void assertLoadsOnceDeferredInTheHead(String html, String path) {
+        List<String> scripts = tagsLinking(html, "script", "src", path);
+        assertThat(scripts).as("<script src=\"" + path + "\">").hasSize(1);
         String script = scripts.get(0);
         assertThat(attribute(script, "defer")).as("defer").isPresent();
         assertThat(attribute(script, "async")).as("async").isEmpty();
         assertThat(attribute(script, "type")).as("type").isEmpty();
+        assertThat(head(html)).contains(script);
+    }
 
-        List<String> heads = elements(html, "head");
-        assertThat(heads).hasSize(1);
-        assertThat(heads.get(0)).contains(script);
+    /**
+     * Exactly one link to the no-JavaScript stylesheet on the page — inside
+     * the page's one {@code <noscript>}, in the {@code <head>}, so only a
+     * browser without JavaScript applies it — and after the {@code
+     * beacon.css} link, so its rules win over beacon.css's at the same
+     * specificity (on phones: the nav shown, the burger hidden).
+     */
+    private static void assertLinksTheNoscriptStylesheetOnceInTheHeadAfterBeaconCss(String html) {
+        String head = head(html);
+        List<String> noscripts = elements(html, "noscript");
+        assertThat(noscripts).as("<noscript> elements").hasSize(1);
+        String noscript = noscripts.get(0);
+        assertThat(head).contains(noscript);
+
+        assertThat(tagsLinking(html, "link", "href", NOSCRIPT_CSS)).as("links to " + NOSCRIPT_CSS).hasSize(1);
+        assertThat(tagsLinking(noscript, "link", "href", NOSCRIPT_CSS)).singleElement()
+                .satisfies(link -> assertThat(attribute(link, "rel")).contains("stylesheet"));
+
+        List<String> beaconCss = tagsLinking(head, "link", "href", BEACON_CSS);
+        assertThat(beaconCss).as("links to " + BEACON_CSS).hasSize(1);
+        assertThat(head.indexOf(noscript)).isGreaterThan(head.indexOf(beaconCss.get(0)));
+    }
+
+    /** What the shell's {@code head(title)} fragment puts on every page. */
+    private static void assertTheSharedHead(String html) {
+        assertLoadsOnceDeferredInTheHead(html, NAV_TOGGLE_SCRIPT);
+        assertLoadsOnceDeferredInTheHead(html, FORM_SUBMIT_SCRIPT);
+        assertLinksTheNoscriptStylesheetOnceInTheHeadAfterBeaconCss(html);
     }
 
     @ParameterizedTest
@@ -213,43 +257,72 @@ class LayoutShellTest {
                 "/admin/login",
                 "/admin/login/code"
             })
-    void anonymousPages_loadTheNavToggleScriptOnceDeferred(String path) throws Exception {
-        assertLoadsTheNavToggleScriptOnceDeferredInTheHead(html(LoginCodeSteps.page(mockMvc, path)));
+    void anonymousPages_haveTheSharedHead(String path) throws Exception {
+        assertTheSharedHead(html(LoginCodeSteps.page(mockMvc, path)));
     }
 
     @Test
-    void notFoundPage_loadsTheNavToggleScriptOnceDeferred() throws Exception {
-        assertLoadsTheNavToggleScriptOnceDeferredInTheHead(html(get("/gallery/999999"), 404));
+    void notFoundPage_hasTheSharedHead() throws Exception {
+        assertTheSharedHead(html(get("/gallery/999999"), 404));
     }
 
-    /** The dashboard with data (map, chips, lists): still only the shared burger script, once. */
+    /** The error page is rendered by the security filter chain, without a web request context: same head. */
     @Test
-    void dashboardWithData_loadsTheNavToggleScriptOnceDeferred() throws Exception {
+    void errorPageOfAnUnknownPath_hasTheSharedHead() throws Exception {
+        assertTheSharedHead(html(get("/no-such-page"), 404));
+    }
+
+    /** The dashboard with data (map, chips, lists): the shared head, once. */
+    @Test
+    void dashboardWithData_hasTheSharedHead() throws Exception {
         approvedTestimonial();
 
         String html = html(get("/"));
 
         assertThat(html).contains("<svg");
-        assertLoadsTheNavToggleScriptOnceDeferredInTheHead(html);
+        assertTheSharedHead(html);
     }
 
     @Test
-    void galleryDetailPage_loadsTheNavToggleScriptOnceDeferred() throws Exception {
+    void galleryDetailPage_hasTheSharedHead() throws Exception {
         Testimonial saved = approvedTestimonial();
 
-        assertLoadsTheNavToggleScriptOnceDeferredInTheHead(html(get("/gallery/{id}", saved.getId())));
+        assertTheSharedHead(html(get("/gallery/{id}", saved.getId())));
     }
 
+    /** The submission form used to link the no-JS stylesheet itself: now only the head does, once. */
     @ParameterizedTest
     @ValueSource(strings = {"/submissions/form", "/submissions/confirmation"})
-    void visitorPages_loadTheNavToggleScriptOnceDeferred(String path) throws Exception {
-        assertLoadsTheNavToggleScriptOnceDeferredInTheHead(html(get(path).with(authentication(visitor()))));
+    void visitorPages_haveTheSharedHead(String path) throws Exception {
+        assertTheSharedHead(html(get(path).with(authentication(visitor()))));
     }
 
     @Test
-    void moderationQueue_loadsTheNavToggleScriptOnceDeferred() throws Exception {
-        assertLoadsTheNavToggleScriptOnceDeferredInTheHead(
-                html(get("/moderation/queue").with(authentication(admin()))));
+    void moderationQueue_hasTheSharedHead() throws Exception {
+        assertTheSharedHead(html(get("/moderation/queue").with(authentication(admin()))));
+    }
+
+    /**
+     * The dashboard's disclosure script is the dashboard's own
+     * ({@code analytics.AnalyticsViewControllerTest}): no shared fragment
+     * brings it to any other page.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"/gallery", "/submissions/login", "/submissions/login/code", "/admin/login",
+        "/admin/login/code"})
+    void anonymousPagesOtherThanTheDashboard_doNotLoadTheDisclosureScript(String path) throws Exception {
+        assertThat(html(LoginCodeSteps.page(mockMvc, path))).doesNotContain("/js/collapsible");
+    }
+
+    @Test
+    void loggedInAndErrorPages_doNotLoadTheDisclosureScript() throws Exception {
+        Testimonial saved = approvedTestimonial();
+
+        assertThat(html(get("/gallery/{id}", saved.getId()))).doesNotContain("/js/collapsible");
+        assertThat(html(get("/gallery/999999"), 404)).doesNotContain("/js/collapsible");
+        assertThat(html(get("/no-such-page"), 404)).doesNotContain("/js/collapsible");
+        assertThat(html(get("/submissions/form").with(authentication(visitor())))).doesNotContain("/js/collapsible");
+        assertThat(html(get("/moderation/queue").with(authentication(admin())))).doesNotContain("/js/collapsible");
     }
 
     /**

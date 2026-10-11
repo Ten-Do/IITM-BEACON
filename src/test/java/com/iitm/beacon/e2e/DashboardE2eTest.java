@@ -1,12 +1,14 @@
 package com.iitm.beacon.e2e;
 
+import com.microsoft.playwright.Locator;
 import org.junit.jupiter.api.Test;
 
 /**
  * The homepage dashboard (decision 30): the map shaded by count, the stat
- * cards and the two lists, on a desktop and on a phone; the "more" lists
- * opened; a click on a country leading to the filtered gallery; and the
- * empty state before anything is approved.
+ * cards and the two lists, on a desktop and on a phone; every "show more"
+ * button clicked open, on both, and a list opened and closed again; a
+ * country darkening under the pointer and a click on it leading to the
+ * filtered gallery; and the empty state before anything is approved.
  */
 class DashboardE2eTest extends E2eTestBase {
 
@@ -62,6 +64,14 @@ class DashboardE2eTest extends E2eTestBase {
                 .approved();
     }
 
+    /** Clicks every "+ N more countries" / "Show all (N more)", last first. */
+    private void openEveryList() {
+        Locator toggles = page().locator("[data-collapsible-toggle]");
+        for (int i = toggles.count() - 1; i >= 0; i--) {
+            toggles.nth(i).click();
+        }
+    }
+
     @Test
     void dashboard_desktop() {
         seedDashboard();
@@ -75,10 +85,31 @@ class DashboardE2eTest extends E2eTestBase {
         seedDashboard();
         openPage(DevicePreset.DESKTOP);
         navigate("/");
-        for (int i = page().locator("details summary").count() - 1; i >= 0; i--) {
-            page().locator("details summary").nth(i).click();
-        }
+        openEveryList();
         assertFullPageScreenshot("dashboard-everything-open-desktop");
+    }
+
+    @Test
+    void dashboard_everyListOpened_mobile() {
+        seedDashboard();
+        openPage(DevicePreset.MOBILE);
+        navigate("/");
+        openEveryList();
+        assertFullPageScreenshot("dashboard-everything-open-mobile");
+    }
+
+    /** Back exactly as it first opened: the same baseline as {@link #dashboard_desktop()}. */
+    @Test
+    void showAll_thenShowLess_closesTheListAgain() {
+        seedDashboard();
+        openPage(DevicePreset.DESKTOP);
+        navigate("/");
+        Locator topicsToggle = page().locator("[aria-controls='topics-rest']");
+        topicsToggle.click();
+        topicsToggle.click();
+        // Off the toggle, which underlines under the pointer; the heading has no hover look.
+        page().locator(".dashboard-hero-title").hover();
+        assertFullPageScreenshot("dashboard-desktop");
     }
 
     @Test
@@ -87,6 +118,24 @@ class DashboardE2eTest extends E2eTestBase {
         openPage(DevicePreset.MOBILE);
         navigate("/");
         assertFullPageScreenshot("dashboard-mobile");
+    }
+
+    /**
+     * Germany before and under the pointer, its own box only: on a
+     * screenshot of the whole map its darker shade would be too few pixels
+     * to tell. A compact outline, so the centre of its box, where the
+     * pointer goes, is on the country.
+     */
+    @Test
+    void hoveringACountryOnTheMap_darkensIt() {
+        seedDashboard();
+        openPage(DevicePreset.DESKTOP);
+        navigate("/");
+        Locator germany = page().locator("svg a[href='/gallery?country=DE']");
+        assertScreenshot(germany, "map-germany");
+
+        germany.hover();
+        assertScreenshot(germany, "map-germany-hovered");
     }
 
     /** Germany: a compact outline, so the centre of its box, where the click lands, is on the country. */

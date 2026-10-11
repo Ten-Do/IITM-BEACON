@@ -377,12 +377,12 @@ class SubmissionServiceValidationTest {
     @Test
     void create_unknownCountry_isAnchoredAtCountryCode() {
         TestimonialSubmissionRequest req = new TestimonialSubmissionRequest("David", "Jones", "CS21B001", 2024,
-                "ZZ", 8, List.of(section("general", "Text.")), List.of(), List.of(), true);
+                "XQ", 8, List.of(section("general", "Text.")), List.of(), List.of(), true);
 
         List<FieldViolation> violations =
-                violationsOf(() -> submissionService.create("zz@example.com", req, Map.of()));
+                violationsOf(() -> submissionService.create("xq@example.com", req, Map.of()));
 
-        assertThat(violations).containsExactly(new FieldViolation("countryCode", "Unknown country code: ZZ"));
+        assertThat(violations).containsExactly(new FieldViolation("countryCode", "Unknown country code: XQ"));
     }
 
     @Test
@@ -425,12 +425,12 @@ class SubmissionServiceValidationTest {
     @Test
     void create_unknownLowercaseCountry_isReportedAsTyped() {
         TestimonialSubmissionRequest req = new TestimonialSubmissionRequest("David", "Jones", "CS21B001", 2024,
-                "zz", 8, List.of(section("general", "Text.")), List.of(), List.of(), true);
+                "xq", 8, List.of(section("general", "Text.")), List.of(), List.of(), true);
 
         List<FieldViolation> violations =
-                violationsOf(() -> submissionService.create("zz-lower@example.com", req, Map.of()));
+                violationsOf(() -> submissionService.create("xq-lower@example.com", req, Map.of()));
 
-        assertThat(violations).containsExactly(new FieldViolation("countryCode", "Unknown country code: zz"));
+        assertThat(violations).containsExactly(new FieldViolation("countryCode", "Unknown country code: xq"));
     }
 
     @Test
@@ -596,7 +596,7 @@ class SubmissionServiceValidationTest {
                 "Jones",
                 "cs21b0x1",
                 1958,
-                "ZZ",
+                "XQ",
                 11,
                 List.of(new SectionInput("general", " ", List.of(new PhotoInput("p", List.of())))),
                 List.of(),

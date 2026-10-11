@@ -9,6 +9,12 @@
   Every figure, shade, link and split comes ready from analytics.DashboardView:
   this template only iterates and branches. The map is plain inline SVG — its
   links and tooltips are SVG <a>/<title>, with no script at all.
+
+  What a split leaves out is a disclosure: the hidden rows in a .collapsible
+  container (closed: no room at all), then the button that opens and closes
+  it, under them so it glides down as they open — static/js/collapsible.js,
+  through data-collapsible-toggle / aria-controls / aria-expanded. Without
+  JavaScript css/noscript.css shows every row and hides the buttons.
 */-->
 <main class="dashboard-main" th:with="d=${dashboard}">
     <section class="dashboard-hero">
@@ -49,23 +55,27 @@
                         <span class="dashboard-map-swatch dashboard-map-swatch--5"></span>
                         <span>More</span>
                     </div>
-                    <ul class="dashboard-chip-list">
-                        <li th:each="chip : ${d.countryChips().first()}">
-                            <a class="dashboard-chip" th:href="@{${chip.href()}}"><span class="dashboard-chip-name" th:text="${chip.name()}">Germany</span><span class="dashboard-chip-count" th:text="${chip.count()}">12</span></a>
-                        </li>
-                        <li class="dashboard-chip-more" th:unless="${d.countryChips().rest().isEmpty()}">
-                            <details>
-                                <summary class="dashboard-chip dashboard-chip--summary"
-                                         th:with="n=${d.countryChips().rest().size()}"
-                                         th:text="|+ ${n} more ${n == 1 ? 'country' : 'countries'}|">+ 11 more countries</summary>
-                                <ul class="dashboard-chip-list">
-                                    <li th:each="chip : ${d.countryChips().rest()}">
-                                        <a class="dashboard-chip" th:href="@{${chip.href()}}"><span class="dashboard-chip-name" th:text="${chip.name()}">Spain</span><span class="dashboard-chip-count" th:text="${chip.count()}">1</span></a>
-                                    </li>
-                                </ul>
-                            </details>
-                        </li>
-                    </ul>
+                    <div class="dashboard-chips">
+                        <ul class="dashboard-chip-list">
+                            <li th:each="chip : ${d.countryChips().first()}">
+                                <a class="dashboard-chip" th:href="@{${chip.href()}}"><span class="dashboard-chip-name" th:text="${chip.name()}">Germany</span><span class="dashboard-chip-count" th:text="${chip.count()}">12</span></a>
+                            </li>
+                        </ul>
+                        <th:block th:unless="${d.countryChips().rest().isEmpty()}">
+                            <div class="collapsible" id="countries-rest">
+                                <div class="collapsible-body">
+                                    <ul class="dashboard-chip-list dashboard-chip-list--rest">
+                                        <li th:each="chip : ${d.countryChips().rest()}">
+                                            <a class="dashboard-chip" th:href="@{${chip.href()}}"><span class="dashboard-chip-name" th:text="${chip.name()}">Spain</span><span class="dashboard-chip-count" th:text="${chip.count()}">1</span></a>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <button type="button" class="dashboard-chip dashboard-chip--toggle" data-collapsible-toggle
+                                    aria-controls="countries-rest" aria-expanded="false"
+                                    th:with="n=${d.countryChips().rest().size()}"><span class="when-collapsed" th:text="|+ ${n} more ${n == 1 ? 'country' : 'countries'}|">+ 11 more countries</span><span class="when-expanded">Show less</span></button>
+                        </th:block>
+                    </div>
                 </div>
             </section>
 
@@ -87,7 +97,7 @@
                     </div>
                     <div class="dashboard-card dashboard-stat-card">
                         <span class="dashboard-stat-number" th:text="|${d.recommendingPercent()}%|">64%</span>
-                        <span class="dashboard-stat-label">Recommend the exchange (score 6+)</span>
+                        <span class="dashboard-stat-label">Recommend the exchange</span>
                     </div>
                 </div>
             </section>
@@ -101,14 +111,19 @@
                             <a class="dashboard-list-row" th:href="@{${row.href()}}"><span class="dashboard-list-label" th:text="${row.label()}">Academics</span><span class="dashboard-list-count" th:text="${row.count()}">96</span></a>
                         </li>
                     </ul>
-                    <details class="dashboard-list-more" th:unless="${d.topicRows().rest().isEmpty()}">
-                        <summary th:text="|Show all (${d.topicRows().rest().size()} more)|">Show all (3 more)</summary>
-                        <ul class="dashboard-list">
-                            <li th:each="row : ${d.topicRows().rest()}">
-                                <a class="dashboard-list-row" th:href="@{${row.href()}}"><span class="dashboard-list-label" th:text="${row.label()}">Romance</span><span class="dashboard-list-count" th:text="${row.count()}">3</span></a>
-                            </li>
-                        </ul>
-                    </details>
+                    <th:block th:unless="${d.topicRows().rest().isEmpty()}">
+                        <div class="collapsible" id="topics-rest">
+                            <div class="collapsible-body">
+                                <ul class="dashboard-list dashboard-list--rest">
+                                    <li th:each="row : ${d.topicRows().rest()}">
+                                        <a class="dashboard-list-row" th:href="@{${row.href()}}"><span class="dashboard-list-label" th:text="${row.label()}">Romance</span><span class="dashboard-list-count" th:text="${row.count()}">3</span></a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <button type="button" class="dashboard-list-toggle" data-collapsible-toggle
+                                aria-controls="topics-rest" aria-expanded="false"><span class="when-collapsed" th:text="|Show all (${d.topicRows().rest().size()} more)|">Show all (3 more)</span><span class="when-expanded">Show less</span></button>
+                    </th:block>
                 </section>
 
                 <section class="dashboard-card dashboard-list-card"
@@ -119,18 +134,25 @@
                             <div class="dashboard-list-row"><span class="dashboard-list-label" th:text="${row.label()}">Made new friends here</span><span class="dashboard-list-count" th:text="${row.count()}">102</span></div>
                         </li>
                     </ul>
-                    <details class="dashboard-list-more" th:unless="${d.achievementRows().rest().isEmpty()}">
-                        <summary th:text="|Show all (${d.achievementRows().rest().size()} more)|">Show all (3 more)</summary>
-                        <ul class="dashboard-list">
-                            <li th:each="row : ${d.achievementRows().rest()}">
-                                <div class="dashboard-list-row"><span class="dashboard-list-label" th:text="${row.label()}">Missed home a lot at some point</span><span class="dashboard-list-count" th:text="${row.count()}">3</span></div>
-                            </li>
-                        </ul>
-                    </details>
+                    <th:block th:unless="${d.achievementRows().rest().isEmpty()}">
+                        <div class="collapsible" id="achievements-rest">
+                            <div class="collapsible-body">
+                                <ul class="dashboard-list dashboard-list--rest">
+                                    <li th:each="row : ${d.achievementRows().rest()}">
+                                        <div class="dashboard-list-row"><span class="dashboard-list-label" th:text="${row.label()}">Missed home a lot at some point</span><span class="dashboard-list-count" th:text="${row.count()}">3</span></div>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <button type="button" class="dashboard-list-toggle" data-collapsible-toggle
+                                aria-controls="achievements-rest" aria-expanded="false"><span class="when-collapsed" th:text="|Show all (${d.achievementRows().rest().size()} more)|">Show all (3 more)</span><span class="when-expanded">Show less</span></button>
+                    </th:block>
                 </section>
             </div>
         </th:block>
     </div>
 </main>
+<!--/* Opens and closes the disclosures above; the empty state has none. */-->
+<script th:unless="${dashboard.empty()}" defer th:src="@{/js/collapsible.js}"></script>
 </body>
 </html>

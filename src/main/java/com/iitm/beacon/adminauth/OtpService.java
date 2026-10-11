@@ -10,6 +10,7 @@ import com.iitm.beacon.config.OtpMailer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
+import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.mail.MailException;
@@ -111,7 +112,8 @@ public class OtpService {
         }
         boolean matches = rawCode != null
                 && MessageDigest.isEqual(
-                        state.code().getBytes(StandardCharsets.UTF_8), rawCode.getBytes(StandardCharsets.UTF_8));
+                        state.code().getBytes(StandardCharsets.UTF_8),
+                        normalizeCode(rawCode).getBytes(StandardCharsets.UTF_8));
         if (!matches) {
             int remaining = state.attemptsRemaining() - 1;
             if (remaining <= 0) {
@@ -124,5 +126,15 @@ public class OtpService {
         String verifiedEmail = EmailNormalizer.normalize(adminProperties.email());
         state = null;
         return new OtpVerifyResult.Verified(verifiedEmail);
+    }
+
+    /**
+     * The code as typed, made comparable to the issued one: codes are drawn
+     * from an uppercase-only alphabet ({@link OtpCodeGenerator}), so case is
+     * ignored, and so is whitespace around it (a pasted code often carries
+     * some). Whitespace inside the code is kept: that is a different code.
+     */
+    private static String normalizeCode(String rawCode) {
+        return rawCode.strip().toUpperCase(Locale.ROOT);
     }
 }

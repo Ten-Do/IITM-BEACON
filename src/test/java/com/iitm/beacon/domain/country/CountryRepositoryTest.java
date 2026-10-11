@@ -11,9 +11,10 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 
 /**
  * Generic repository CRUD/constraint behavior, exercised with fixture codes
- * ("ZZ", "XX", "QQ") deliberately outside the real ISO 3166-1 list so these
- * tests are independent of the seeded reference data verified separately in
- * {@link CountrySeedDataTest}.
+ * ("XQ", "XX", "QQ") deliberately outside the real ISO 3166-1 list — and
+ * other than "ZZ", which is seeded as "Other" — so these tests are
+ * independent of the seeded reference data verified separately in {@link
+ * CountrySeedDataTest}.
  */
 class CountryRepositoryTest extends AbstractRepositoryTest {
 
@@ -25,10 +26,10 @@ class CountryRepositoryTest extends AbstractRepositoryTest {
 
     @Test
     void savedCountry_roundTripsByCode() {
-        Country fixture = Country.builder().code("ZZ").name("Testland").build();
+        Country fixture = Country.builder().code("XQ").name("Testland").build();
         countryRepository.saveAndFlush(fixture);
 
-        var found = countryRepository.findById("ZZ");
+        var found = countryRepository.findById("XQ");
 
         assertThat(found).isPresent();
         assertThat(found.get().getName()).isEqualTo("Testland");

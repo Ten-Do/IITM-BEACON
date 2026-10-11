@@ -11,11 +11,14 @@ import static com.iitm.beacon.e2e.E2eData.photo;
 
 import org.junit.jupiter.api.Test;
 
-/** The gallery list's card grid: 4 columns at 1280px, 3 at 1000px, 2 at 700px, 1 at 390px. */
+/**
+ * The gallery list's card grid: 4 columns at 1280px, 3 at 1000px, 2 at
+ * 700px, 1 at 390px; under a mouse pointer a card (a link as a whole) lifts
+ * with a stronger shadow.
+ */
 class GalleryGridE2eTest extends E2eTestBase {
 
-    @Test
-    void grid_fourThreeTwoOneColumns() {
+    private void seedFiveTestimonials() {
         data().testimonial("Ana", "Pereira").country("PT").score(9)
                 .section("academics_teaching", "The professors were approachable and expected a lot of independent"
                         + " reading, which took some getting used to.", photo(1600, 1000, NAVY, GOLD))
@@ -35,6 +38,11 @@ class GalleryGridE2eTest extends E2eTestBase {
                 .section("adapt_weather", "The heat in April was more than I could handle.",
                         photo(1200, 800, TEAL, GOLD))
                 .approved();
+    }
+
+    @Test
+    void grid_fourThreeTwoOneColumns() {
+        seedFiveTestimonials();
         openPage(DevicePreset.DESKTOP);
         navigate("/gallery");
 
@@ -42,5 +50,15 @@ class GalleryGridE2eTest extends E2eTestBase {
             page().setViewportSize(width, 800);
             assertScreenshot("gallery-grid-" + width + "px");
         }
+    }
+
+    @Test
+    void hoveredCard_lifts_desktop() {
+        seedFiveTestimonials();
+        openPage(DevicePreset.DESKTOP);
+        navigate("/gallery");
+
+        page().locator(".gallery-card").first().hover();
+        assertScreenshot("gallery-card-hovered-1280px");
     }
 }

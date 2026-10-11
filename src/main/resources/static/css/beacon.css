@@ -67,6 +67,13 @@
 
   /* Elevation */
   --shadow-card: 0 8px 24px rgba(148, 156, 168, 0.2);
+  --shadow-card-hover: 0 12px 32px rgba(148, 156, 168, 0.36); /* a card lifted under the pointer */
+
+  /* Motion: every transition takes its duration and easing from these (and
+     is switched off under prefers-reduced-motion) */
+  --motion-fast: 150ms; /* hover and press feedback */
+  --motion-medium: 250ms; /* panels and lists opening or closing */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* Base reset */
@@ -191,8 +198,7 @@ a.wordmark:hover {
 }
 
 .header-nav a:hover,
-.header-nav a.active,
-.header-nav-button:hover {
+.header-nav a.active {
   color: var(--maroon);
   text-decoration: none;
 }
@@ -225,9 +231,9 @@ a.wordmark:hover {
 }
 
 /* Burger button (layout/nav-toggle.html, driven by static/js/nav-toggle.js).
-   Hidden by default: the phone block at the end of this file shows it only
-   once the script has marked it .nav-toggle--ready, and hides only a nav the
-   script has marked .nav-menu--collapsible — so without JS the nav stays. */
+   Hidden on desktops; the phone block at the end of this file shows it and
+   turns the nav into its dropdown panel, hidden until the script opens it
+   (css/noscript.css undoes both for browsers without JavaScript). */
 .nav-toggle {
   display: none;
   flex-direction: column;
@@ -260,8 +266,8 @@ a.wordmark:hover {
   border-radius: var(--radius-xs);
   background: currentcolor;
   transition:
-    transform 0.15s ease,
-    opacity 0.15s ease;
+    transform var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
 }
 
 /* Open: the three bars turn into a cross (bars 2px + gaps 5px = 7px apart). */
@@ -708,10 +714,13 @@ a.wordmark:hover {
   background: var(--paper);
 }
 
+/* A code is the same in either case (the server normalises it): shown in
+   capitals as it's typed. */
 .auth-code-input {
   letter-spacing: 0.3em;
   text-align: center;
   font-weight: 700;
+  text-transform: uppercase;
 }
 
 .auth-field-help {
@@ -749,6 +758,7 @@ a.wordmark:hover {
   font-family: inherit;
   width: 100%;
   padding: var(--space-2) 0;
+  border-radius: var(--radius-sm); /* shapes the hover background */
 }
 
 /* Submission form (submission/form.html) — based on
@@ -1628,6 +1638,10 @@ input[type="checkbox"].submission-field-input--invalid {
   }
 }
 
+/* The whole card is the link to its article. Its text keeps its own colours
+   and no underline — the global a:hover would underline every line of it
+   (and on a touch screen it sticks after a tap, so this is outside the
+   hover-only query below). */
 .gallery-card {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
@@ -1636,6 +1650,42 @@ input[type="checkbox"].submission-field-input--invalid {
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-card);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.gallery-card:hover {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Under a real pointer only: lifted, with a stronger shadow. */
+@media (hover: hover) {
+  .gallery-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-card-hover);
+  }
+}
+
+/* After the hover rule: same specificity, so pressing wins. */
+.gallery-card:active {
+  transform: translateY(1px);
+  box-shadow: var(--shadow-card);
+}
+
+/* Clear of the card's border and rounded corners. */
+.gallery-card:focus-visible {
+  outline: 2px solid var(--maroon);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gallery-card {
+    transition: none;
+  }
 }
 
 .gallery-card-photo,
@@ -1691,13 +1741,6 @@ input[type="checkbox"].submission-field-input--invalid {
   color: var(--ink-soft);
   margin: 0;
   line-height: 1.5;
-}
-
-.gallery-read-more {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--maroon);
-  align-self: flex-start;
 }
 
 .gallery-pagination {
@@ -2122,6 +2165,10 @@ input[type="checkbox"].submission-field-input--invalid {
   text-decoration: none;
 }
 
+/* The ":hover" in these three only keeps a link-styled button's own colours
+   against the global a:hover (which, on a touch screen, sticks after a tap);
+   the hover look under a real pointer is with the other submit buttons',
+   near the end of this file. */
 .catalog-btn-primary,
 .catalog-btn-primary:hover {
   background: var(--maroon);
@@ -2663,37 +2710,46 @@ input[type="checkbox"].submission-field-input--invalid {
   max-height: 440px;
 }
 
+/* A shade only names the region's colour (--region-fill); a region without
+   one is paper. */
 .map-region {
-  fill: var(--paper);
+  fill: var(--region-fill, var(--paper));
   stroke: var(--line);
   stroke-width: 0.5;
+  transition: fill var(--motion-fast) var(--ease-standard);
 }
 
-/* After .map-region: same specificity, so the shade's fill wins. */
 .map-shade-1 {
-  fill: var(--map-shade-1);
+  --region-fill: var(--map-shade-1);
 }
 
 .map-shade-2 {
-  fill: var(--map-shade-2);
+  --region-fill: var(--map-shade-2);
 }
 
 .map-shade-3 {
-  fill: var(--map-shade-3);
+  --region-fill: var(--map-shade-3);
 }
 
 .map-shade-4 {
-  fill: var(--map-shade-4);
+  --region-fill: var(--map-shade-4);
 }
 
 .map-shade-5 {
-  fill: var(--map-shade-5);
+  --region-fill: var(--map-shade-5);
 }
 
+/* A linked country under the pointer or the keyboard focus: its own shade,
+   a quarter darker. */
 .dashboard-map a:hover .map-region,
 .dashboard-map a:focus-visible .map-region {
-  stroke: var(--ink);
-  stroke-width: 1.5;
+  fill: color-mix(in srgb, var(--region-fill) 75%, var(--ink));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-region {
+    transition: none;
+  }
 }
 
 /* "Fewer [five swatches] More" under the map. */
@@ -2731,7 +2787,13 @@ input[type="checkbox"].submission-field-input--invalid {
   background: var(--map-shade-5);
 }
 
-/* -- Country chips: the top six, then "+ N more countries" as a chip too. */
+/* -- Country chips: the top six, then the rest behind "+ N more countries",
+   a chip-styled button under them. One block, without a gap: a collapsed
+   disclosure must take no room (see .collapsible). */
+.dashboard-chips {
+  display: block;
+}
+
 .dashboard-chip-list {
   display: flex;
   flex-wrap: wrap;
@@ -2741,13 +2803,9 @@ input[type="checkbox"].submission-field-input--invalid {
   list-style: none;
 }
 
-/* Open, the "more" chip takes a row of its own, its countries wrapping under it. */
-.dashboard-chip-more:has(> details[open]) {
-  flex-basis: 100%;
-}
-
-.dashboard-chip-more .dashboard-chip-list {
-  margin-top: var(--space-2);
+/* Inside the clipped body, so it takes no room while collapsed. */
+.dashboard-chip-list--rest {
+  padding-top: var(--space-2);
 }
 
 /* min-height, not height: a long country name wraps onto a second line. */
@@ -2777,14 +2835,13 @@ a.dashboard-chip:hover .dashboard-chip-name {
   text-decoration: underline;
 }
 
-/* An inline-flex summary has no disclosure marker; Safari still needs this. */
-.dashboard-chip--summary {
+/* "+ N more countries" / "Show less": a button looking like the chips. */
+.dashboard-chip--toggle {
+  margin-top: var(--space-2);
+  vertical-align: top; /* no strut gap under it on its own line */
+  border: none;
+  font-family: inherit;
   cursor: pointer;
-  list-style: none;
-}
-
-.dashboard-chip--summary::-webkit-details-marker {
-  display: none;
 }
 
 /* -- Stat cards -- */
@@ -2876,21 +2933,215 @@ a.dashboard-list-row:hover .dashboard-list-label {
   color: var(--ink);
 }
 
-/* "Show all (N more)": its own line between the top rows and the rest. */
-.dashboard-list-more {
+/* The hidden rows: a line between them and the top rows, inside the
+   clipped body, so it takes no room while collapsed. */
+.dashboard-list--rest {
   border-top: 1px solid var(--line);
 }
 
-.dashboard-list-more > summary {
+/* "Show all (N more)" / "Show less": a full-width line under the rows. */
+.dashboard-list-toggle {
+  display: block;
+  width: 100%;
   padding: var(--space-2) 0;
-  cursor: pointer;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: none;
+  font-family: inherit;
   font-size: 13px;
   font-weight: 600;
+  text-align: left;
   color: var(--maroon);
+  cursor: pointer;
 }
 
-.dashboard-list-more > .dashboard-list {
-  border-top: 1px solid var(--line);
+@media (hover: hover) {
+  .dashboard-chip--toggle:hover,
+  .dashboard-list-toggle:hover {
+    text-decoration: underline;
+  }
+}
+
+/* -- "Show more" disclosures (static/js/collapsible.js): the hidden rows
+   open and close by animating the grid row from 0fr to 1fr — which a
+   browser can transition, unlike height: auto. The container has no
+   spacing of its own, so collapsed it takes no room at all; any spacing
+   lives inside the clipped body. Closed, visibility also takes its links
+   out of the tab order (once it has finished closing). -- */
+.collapsible {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--motion-medium) var(--ease-standard),
+    visibility var(--motion-medium);
+}
+
+/* After .collapsible: same specificity, so the open state wins. */
+.collapsible--open {
+  grid-template-rows: 1fr;
+  visibility: visible;
+}
+
+/* The padding gives a chip's or row's focus ring room inside the clip; the
+   negative margin takes that room back out of the layout. */
+.collapsible-body {
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--space-1);
+  margin: calc(-1 * var(--space-1));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collapsible {
+    transition: none;
+  }
+}
+
+/* The toggle's label for its state, by its own aria-expanded. */
+[data-collapsible-toggle][aria-expanded="true"] .when-collapsed,
+[data-collapsible-toggle][aria-expanded="false"] .when-expanded {
+  display: none;
+}
+
+/* -- Buttons that submit a form, and the links that look like them: they
+   ease their colours on hover, sink a pixel when pressed, and show a busy
+   state while their form is being sent (static/js/form-submit.js sets
+   aria-busy on the button that submitted it; contact-reveal.js on the
+   reveal button). No hover or press effect while busy. -- */
+.auth-btn-primary,
+.auth-btn-ghost,
+.submission-btn-primary,
+.submission-btn-ghost,
+.moderation-btn-approve,
+.moderation-btn-reject,
+.catalog-btn-primary,
+.catalog-btn-ghost,
+.catalog-btn-danger,
+.catalog-pill,
+.gallery-filter-submit,
+.header-nav-button,
+.confirmation-btn,
+.gallery-reveal-btn {
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+/* Under a real pointer only: on a touch screen :hover sticks after a tap.
+   The locked catalog pill is a <span>, not a button: no feedback. */
+@media (hover: hover) {
+  .auth-btn-primary:not([aria-busy="true"]):hover,
+  .submission-btn-primary:not([aria-busy="true"]):hover,
+  .catalog-btn-primary:not([aria-busy="true"]):hover,
+  .gallery-filter-submit:not([aria-busy="true"]):hover {
+    background: var(--maroon-dark);
+    color: var(--paper);
+  }
+
+  .auth-btn-ghost:not([aria-busy="true"]):hover {
+    background: var(--sand);
+    color: var(--ink);
+  }
+
+  .submission-btn-ghost:not([aria-busy="true"]):hover,
+  .catalog-btn-ghost:not([aria-busy="true"]):hover,
+  .confirmation-btn:not([aria-busy="true"]):hover,
+  button.catalog-pill:not([aria-busy="true"]):hover {
+    border-color: var(--ink-soft);
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .moderation-btn-approve:not([aria-busy="true"]):hover {
+    background: color-mix(in srgb, var(--olive) 80%, var(--ink));
+  }
+
+  .moderation-btn-reject:not([aria-busy="true"]):hover {
+    background: var(--red-soft);
+  }
+
+  .catalog-btn-danger:not([aria-busy="true"]):hover {
+    background: color-mix(in srgb, var(--red) 80%, var(--ink));
+    color: var(--paper);
+  }
+
+  .header-nav-button:not([aria-busy="true"]):hover {
+    color: var(--maroon);
+  }
+
+  .gallery-reveal-btn:not([aria-busy="true"]):hover {
+    background: var(--gold-soft);
+    border-color: var(--maroon-dark);
+    color: var(--maroon-dark);
+  }
+}
+
+/* After the hover rules: same specificity, so pressing wins. */
+.auth-btn-primary:not([aria-busy="true"]):active,
+.auth-btn-ghost:not([aria-busy="true"]):active,
+.submission-btn-primary:not([aria-busy="true"]):active,
+.submission-btn-ghost:not([aria-busy="true"]):active,
+.moderation-btn-approve:not([aria-busy="true"]):active,
+.moderation-btn-reject:not([aria-busy="true"]):active,
+.catalog-btn-primary:not([aria-busy="true"]):active,
+.catalog-btn-ghost:not([aria-busy="true"]):active,
+.catalog-btn-danger:not([aria-busy="true"]):active,
+button.catalog-pill:not([aria-busy="true"]):active,
+.gallery-filter-submit:not([aria-busy="true"]):active,
+.header-nav-button:not([aria-busy="true"]):active,
+.confirmation-btn:not([aria-busy="true"]):active,
+.gallery-reveal-btn:not([aria-busy="true"]):active {
+  transform: translateY(1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-btn-primary,
+  .auth-btn-ghost,
+  .submission-btn-primary,
+  .submission-btn-ghost,
+  .moderation-btn-approve,
+  .moderation-btn-reject,
+  .catalog-btn-primary,
+  .catalog-btn-ghost,
+  .catalog-btn-danger,
+  .catalog-pill,
+  .gallery-filter-submit,
+  .header-nav-button,
+  .confirmation-btn,
+  .gallery-reveal-btn {
+    transition: none;
+  }
+}
+
+/* Busy: a progress cursor, and a small spinner after the label, turning
+   like the reveal button's — which keeps its own, at its left edge. */
+button[aria-busy="true"] {
+  cursor: progress;
+}
+
+button[aria-busy="true"]:not(.gallery-reveal-btn)::after {
+  content: "";
+  display: inline-block;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 1em;
+  height: 1em;
+  margin-left: var(--space-2);
+  border: 2px solid currentcolor;
+  border-right-color: transparent;
+  border-radius: var(--radius-full);
+  vertical-align: middle;
+  animation: gallery-reveal-spin 0.7s linear infinite;
+}
+
+/* Slower, not still: a spinner that doesn't turn no longer says "loading". */
+@media (prefers-reduced-motion: reduce) {
+  button[aria-busy="true"]:not(.gallery-reveal-btn)::after {
+    animation-duration: 2s;
+  }
 }
 
 /* Phones and small tablets (720px and narrower). Everything here overrides
@@ -2912,8 +3163,12 @@ a.dashboard-list-row:hover .dashboard-list-label {
     font-size: 16px !important;
   }
 
-  /* -- Header: the nav collapses behind the burger once nav-toggle.js has
-     marked it; without JS its links wrap onto a second row instead. -- */
+  /* -- Header: the nav is a dropdown panel behind the burger, hidden here
+     from the first paint — not by the script, which would let it flash while
+     the deferred script loads. nav-toggle.js only opens and closes it
+     (.nav-menu--open). Without JS, css/noscript.css hides the burger and puts
+     the nav back in the header's flow, its links wrapping onto a second row
+     (hence the wrapping header bar). -- */
   .header-bar {
     position: relative;
     flex-wrap: wrap;
@@ -2932,29 +3187,14 @@ a.dashboard-list-row:hover .dashboard-list-label {
     min-height: 44px;
   }
 
+  .nav-toggle {
+    display: inline-flex;
+  }
+
+  /* The menu: a full-width panel right under the header bar, over the page.
+     Closed, it is invisible and takes no room; visibility (not display)
+     keeps its links out of the tab order and lets it fade and slide. */
   .header-nav {
-    flex-basis: 100%;
-    flex-wrap: wrap;
-    gap: 0 var(--space-5);
-  }
-
-  .header-nav a,
-  .header-nav-button {
-    display: inline-flex;
-    align-items: center;
-    min-height: 44px;
-  }
-
-  .nav-toggle--ready {
-    display: inline-flex;
-  }
-
-  .nav-menu--collapsible:not(.nav-menu--open) {
-    display: none;
-  }
-
-  /* The open menu: a full-width panel right under the header bar, over the page. */
-  .header-nav.nav-menu--collapsible {
     position: absolute;
     top: calc(100% + 1px);
     left: 0;
@@ -2967,30 +3207,53 @@ a.dashboard-list-row:hover .dashboard-list-label {
     background: var(--paper);
     border-bottom: 1px solid var(--line);
     box-shadow: var(--shadow-card);
+    visibility: hidden;
+    opacity: 0;
+    transform: translateY(-8px);
+    pointer-events: none;
+    transition:
+      opacity var(--motion-medium) var(--ease-standard),
+      transform var(--motion-medium) var(--ease-standard),
+      visibility var(--motion-medium);
   }
 
-  .header-nav.nav-menu--collapsible a,
-  .header-nav.nav-menu--collapsible .header-nav-button {
+  .header-nav.nav-menu--open {
+    visibility: visible;
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .header-nav {
+      transition: none;
+    }
+  }
+
+  .header-nav a,
+  .header-nav-button {
+    display: inline-flex;
+    align-items: center;
     min-height: 48px;
     padding: 0 var(--space-4) 0 calc(var(--space-4) - 3px);
     border-left: 3px solid transparent;
     font-size: 16px;
   }
 
-  /* In the open menu the button is a full-width row, like the links. */
-  .header-nav.nav-menu--collapsible .header-nav-button {
+  /* In the menu the button is a full-width row, like the links. */
+  .header-nav-button {
     width: 100%;
     text-align: left;
   }
 
-  .header-nav.nav-menu--collapsible a.active {
+  .header-nav a.active {
     border-left-color: var(--maroon);
     background: var(--gold-soft);
   }
 
   /* Inside the row: the rows touch the screen edges, which would clip it. */
-  .header-nav.nav-menu--collapsible a:focus-visible,
-  .header-nav.nav-menu--collapsible .header-nav-button:focus-visible {
+  .header-nav a:focus-visible,
+  .header-nav-button:focus-visible {
     outline-offset: -2px;
   }
 
@@ -3030,7 +3293,6 @@ a.dashboard-list-row:hover .dashboard-list-label {
     inset: -4px 0;
   }
 
-  .gallery-read-more,
   .gallery-pagination-link,
   .moderation-pagination-link {
     display: inline-flex;
@@ -3396,7 +3658,7 @@ a.dashboard-list-row:hover .dashboard-list-label {
     min-height: 44px;
   }
 
-  .dashboard-list-more > summary {
+  .dashboard-list-toggle {
     padding: var(--space-3) 0;
   }
 

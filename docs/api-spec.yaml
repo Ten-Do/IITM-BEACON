@@ -138,6 +138,9 @@ paths:
     get:
       tags: [gallery]
       summary: List countries with at least one approved testimonial
+      description: >
+        "Other" (`ZZ`, decision 1) comes first when it has an approved testimonial; the countries
+        follow by name.
       responses:
         "200":
           description: Countries usable in the filter dropdown.
@@ -237,7 +240,14 @@ paths:
               required: [email, code]
               properties:
                 email: { type: string, format: email }
-                code: { type: string, minLength: 6, maxLength: 6 }
+                code:
+                  type: string
+                  minLength: 6
+                  maxLength: 6
+                  description: >
+                    Case-insensitive: compared after uppercasing (codes are uppercase-only), and
+                    after stripping any whitespace around it, so a lowercase code is the right
+                    code, not a wrong attempt.
       responses:
         "200":
           description: >
@@ -442,7 +452,14 @@ paths:
               required: [email, code]
               properties:
                 email: { type: string, format: email }
-                code: { type: string, minLength: 6, maxLength: 6 }
+                code:
+                  type: string
+                  minLength: 6
+                  maxLength: 6
+                  description: >
+                    Case-insensitive: compared after uppercasing (codes are uppercase-only), and
+                    after stripping any whitespace around it, so a lowercase code is the right
+                    code, not a wrong attempt.
       responses:
         "200":
           description: OTP correct — session cookie set.
@@ -912,7 +929,13 @@ components:
     Country:
       type: object
       properties:
-        code: { type: string, minLength: 2, maxLength: 2, description: "ISO 3166-1 alpha-2" }
+        code:
+          type: string
+          minLength: 2
+          maxLength: 2
+          description: >
+            ISO 3166-1 alpha-2, or `ZZ` for the one entry that is not a country, "Other"
+            (decision 1; `ZZ` is a user-assigned ISO 3166 code).
         name: { type: string }
 
     ContactType:
@@ -1195,7 +1218,13 @@ components:
           type: integer
           minimum: 1959
           description: Between 1959 and the current year inclusive (decision 10).
-        countryCode: { type: string, minLength: 2, maxLength: 2 }
+        countryCode:
+          type: string
+          minLength: 2
+          maxLength: 2
+          description: >
+            A `Country.code`, case-insensitive: an ISO 3166-1 alpha-2 code, or `ZZ` for "Other"
+            (decision 1). An unknown code is rejected with 400.
         recommendationScore: { type: integer, minimum: 0, maximum: 10 }
         sections:
           type: array
@@ -1262,7 +1291,9 @@ components:
       properties:
         testimonialsByCountry:
           type: array
-          description: Countries with at least one approved testimonial, by count descending, then by name.
+          description: >
+            Countries with at least one approved testimonial, by count descending, then by name.
+            "Other" (`ZZ`, decision 1) is an entry like any country here, ranked the same way.
           items:
             type: object
             properties:

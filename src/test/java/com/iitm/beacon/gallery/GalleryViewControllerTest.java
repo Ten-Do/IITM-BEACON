@@ -36,6 +36,7 @@ import com.iitm.beacon.domain.topic.TopicRepository;
 import com.iitm.beacon.testsupport.AssetUrls;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -160,6 +161,50 @@ class GalleryViewControllerTest {
         org.assertj.core.api.Assertions.assertThat(
                         testimonialRepository.findById(india.getId()).orElseThrow().getCountry().getCode())
                 .isEqualTo("IN");
+    }
+
+    /** The country filter's options as {@code value=text}, a selected one marked with a trailing {@code *}. */
+    private static List<String> countryFilterOptions(String html) {
+        String select = elements(html, "select").stream()
+                .filter(s -> attribute(openingTag(s, "select"), "name").equals(Optional.of("country")))
+                .findFirst()
+                .orElseThrow();
+        return elements(select, "option").stream()
+                .map(option -> {
+                    String tag = openingTag(option, "option");
+                    String text = option.substring(tag.length(), option.length() - "</option>".length());
+                    return attribute(tag, "value").orElse("") + "=" + text
+                            + (attribute(tag, "selected").isPresent() ? "*" : "");
+                })
+                .toList();
+    }
+
+    /** "Other" comes right after "All countries" (decision 1), then the countries by name; nothing but "All" chosen. */
+    @Test
+    void list_countryFilter_allCountriesThenOtherThenTheCountriesByName() throws Exception {
+        approvedTestimonial("list-countries-in@example.com", "IN", "general", "Text.");
+        approvedTestimonial("list-countries-other@example.com", "ZZ", "general", "Text.");
+        approvedTestimonial("list-countries-de@example.com", "DE", "general", "Text.");
+
+        String html = mockMvc.perform(get("/gallery"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(countryFilterOptions(html))
+                .containsExactly("=All countries*", "ZZ=Other", "DE=Germany", "IN=India");
+    }
+
+    @Test
+    void list_filteredByOther_showsOnlyItsTestimonials_withOtherChosenInTheFilter() throws Exception {
+        approvedTestimonial("list-other-filter@example.com", "ZZ", "general", "okapi story");
+        approvedTestimonial("list-other-filter-in@example.com", "IN", "general", "tiger story");
+
+        String html = mockMvc.perform(get("/gallery").param("country", "ZZ"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(countryFilterOptions(html)).containsExactly("=All countries", "ZZ=Other*", "IN=India");
+        assertThat(html).contains("okapi story").doesNotContain("tiger story");
     }
 
     @Test
@@ -293,6 +338,101 @@ class GalleryViewControllerTest {
 
         assertThat(html).containsPattern(imgWithSrc("/uploads/" + id + "-thumb.webp"));
         assertThat(html).doesNotContain("/uploads/" + id + ".webp");
+    }
+
+    // -- GET /gallery: each card is one link to its article --
+
+    private String listHtml() throws Exception {
+        return mockMvc.perform(get("/gallery"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+    }
+
+    /** Every gallery card on the page: the whole {@code <a class="gallery-card">} element. */
+    private static List<String> cards(String html) {
+        return elements(html, "a").stream()
+                .filter(link -> attribute(openingTag(link, "a"), "class").filter("gallery-card"::equals).isPresent())
+                .toList();
+    }
+
+    /**
+     * The whole card is the link to its article — photo, country, score and
+     * excerpt — with nothing else clickable inside it (a link or button in a
+     * link is invalid HTML and an ambiguous tap target).
+     */
+    @Test
+    void list_eachCardIsOneLinkToItsArticle_withNothingClickableInside() throws Exception {
+        Testimonial withoutPhoto = approvedTestimonial("list-card-link@example.com", "IN", "general", "Card text.");
+        Testimonial withPhoto = approvedTestimonialWithPhoto("list-card-link-photo@example.com", "2026/01/card.png");
+
+        List<String> cards = cards(listHtml());
+
+        assertThat(cards).hasSize(2);
+        assertThat(cards).extracting(card -> attribute(openingTag(card, "a"), "href").orElseThrow())
+                .containsExactlyInAnyOrder("/gallery/" + withoutPhoto.getId(), "/gallery/" + withPhoto.getId());
+        assertThat(cards).allSatisfy(card -> {
+            String inside = card.substring(openingTag(card, "a").length());
+            assertThat(inside).doesNotContain("<a", "<button");
+            assertThat(inside).contains("gallery-card-excerpt", "gallery-score-badge", "gallery-card-country");
+        });
+        assertThat(cards).anySatisfy(card -> assertThat(card).contains("Card text.", "gallery-card-photo-placeholder"));
+        assertThat(cards).anySatisfy(card -> assertThat(card).containsPattern(imgWithSrc("/uploads/2026/01/card.png")));
+    }
+
+    /** The card replaces it: no "Read more" link is left on the page. */
+    @Test
+    void list_hasNoReadMoreLink() throws Exception {
+        approvedTestimonial("list-no-read-more@example.com", "IN", "general", "Some text.");
+
+        assertThat(listHtml()).doesNotContain("Read more", "gallery-read-more");
+    }
+
+    /** Markup in the excerpt stays text: it can't put a link inside the card's link. */
+    @Test
+    void list_cardWithMarkupInItsText_staysOneLink_theTextEscaped() throws Exception {
+        approvedTestimonial("list-card-markup@example.com", "IN", "general", "<a href=\"/evil\">click</a> <b>bold</b>");
+
+        String html = listHtml();
+
+        assertThat(cards(html)).singleElement().satisfies(card -> {
+            assertThat(card.substring(openingTag(card, "a").length())).doesNotContain("<a", "<b>");
+            assertThat(card).contains("&lt;a href=&quot;/evil&quot;&gt;click&lt;/a&gt;");
+        });
+    }
+
+    @Test
+    void list_noResults_hasNoCard() throws Exception {
+        approvedTestimonial("list-no-card@example.com", "IN", "general", "Some text.");
+
+        String html = mockMvc.perform(get("/gallery").param("q", "nothing-matches-this-at-all"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(cards(html)).isEmpty();
+        assertThat(html).contains("No testimonials matched").doesNotContain("class=\"gallery-card\"");
+    }
+
+    /** The second page's cards link to their own articles too. */
+    @Test
+    void list_secondPage_cardsLinkToTheirOwnArticles() throws Exception {
+        Instant start = Instant.parse("2026-03-01T00:00:00Z");
+        Testimonial oldest = approvedAt("list-card-page-oldest@example.com", start, "The oldest approval.");
+        for (int i = 1; i <= 20; i++) {
+            approvedAt("list-card-page-" + i + "@example.com", start.plusSeconds(i), "Approval number " + i + ".");
+        }
+
+        String html = mockMvc.perform(get("/gallery").param("page", "1"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(cards(html)).singleElement().satisfies(card ->
+                assertThat(attribute(openingTag(card, "a"), "href")).contains("/gallery/" + oldest.getId()));
     }
 
     // -- GET /gallery/{id} --

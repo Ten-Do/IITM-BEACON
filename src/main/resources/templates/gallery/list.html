@@ -38,7 +38,8 @@
     </div>
 
     <div class="gallery-grid" th:if="${!results.content().isEmpty()}">
-        <div class="gallery-card" th:each="card : ${results.content()}">
+        <!--/* The whole card is the link to its article: nothing else clickable inside it. */-->
+        <a class="gallery-card" th:each="card : ${results.content()}" th:href="@{/gallery/{id}(id=${card.id()})}">
             <img class="gallery-card-photo" th:if="${card.thumbnailUrl() != null}" th:src="${card.thumbnailUrl()}"
                  alt=""/>
             <div class="gallery-card-photo-placeholder" th:unless="${card.thumbnailUrl() != null}"></div>
@@ -50,9 +51,8 @@
                     </span>
                 </div>
                 <p class="gallery-card-excerpt" th:text="${card.previewText()}">Preview text.</p>
-                <a class="gallery-read-more" th:href="@{/gallery/{id}(id=${card.id()})}">Read more &rarr;</a>
             </div>
-        </div>
+        </a>
     </div>
 
     <nav class="gallery-pagination"

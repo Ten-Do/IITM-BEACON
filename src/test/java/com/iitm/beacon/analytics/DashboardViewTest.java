@@ -178,6 +178,51 @@ class DashboardViewTest {
         assertThat(view.countriesRepresented()).isEqualTo(2);
     }
 
+    /** "Other" (decision 1) is not a country, so it isn't counted as one represented. */
+    @Test
+    void countriesRepresented_leavesOutOther() {
+        DashboardView view = DashboardView.of(withCountries(List.of(
+                country("DE", "Germany", 3), country("ZZ", "Other", 2), country("FR", "France", 1))), MAP);
+
+        assertThat(view.countriesRepresented()).isEqualTo(2);
+    }
+
+    /** Testimonials only from "Other": something to show, but zero countries represented. */
+    @Test
+    void onlyOther_isNotEmpty_butRepresentsNoCountry_andIsStillAChip() {
+        DashboardView view = DashboardView.of(withCountries(List.of(country("ZZ", "Other", 4))), MAP);
+
+        assertThat(view.empty()).isFalse();
+        assertThat(view.totalApprovedTestimonials()).isEqualTo(4);
+        assertThat(view.countriesRepresented()).isZero();
+        assertThat(view.countryChips().first()).containsExactly(new CountryChip("Other", 4, "/gallery?country=ZZ"));
+    }
+
+    /** "Other" is a chip like any country, in the summary's order (by count), linking to the gallery filter. */
+    @Test
+    void otherChip_keepsTheSummarysOrder_likeAnyCountry() {
+        DashboardView view = DashboardView.of(withCountries(List.of(
+                country("DE", "Germany", 3), country("ZZ", "Other", 2), country("FR", "France", 1))), MAP);
+
+        assertThat(view.countryChips().first()).containsExactly(
+                new CountryChip("Germany", 3, "/gallery?country=DE"),
+                new CountryChip("Other", 2, "/gallery?country=ZZ"),
+                new CountryChip("France", 1, "/gallery?country=FR"));
+    }
+
+    /** Seventh by count, "Other" goes behind "+ N more" like any seventh entry. */
+    @Test
+    void otherAsTheSeventhEntry_isInTheRest() {
+        List<CountryCountDto> entries = new ArrayList<>(countries(6));
+        entries.add(country("ZZ", "Other", 1));
+
+        DashboardView view = DashboardView.of(withCountries(entries), MAP);
+
+        assertThat(view.countryChips().first()).hasSize(6).extracting(CountryChip::name).doesNotContain("Other");
+        assertThat(view.countryChips().rest()).extracting(CountryChip::name).containsExactly("Other");
+        assertThat(view.countriesRepresented()).isEqualTo(6);
+    }
+
     @ParameterizedTest
     @CsvSource({
         "8.1, 8.1",

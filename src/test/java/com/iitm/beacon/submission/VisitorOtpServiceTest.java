@@ -20,6 +20,7 @@ import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -187,6 +188,107 @@ class VisitorOtpServiceTest {
 
         assertThat(visitorOtpService.verify(EMAIL, ""))
                 .isEqualTo(new VisitorOtpVerifyResult.Rejected(RejectionReason.WRONG_CODE));
+    }
+
+    @Test
+    void verifyWithWhitespaceOnlyCode_neverMatches_rejectedAsWrongCode() {
+        requestAndCaptureCode(EMAIL);
+
+        assertThat(visitorOtpService.verify(EMAIL, " \t "))
+                .isEqualTo(new VisitorOtpVerifyResult.Rejected(RejectionReason.WRONG_CODE));
+    }
+
+    // -- the code is typed case-insensitively, surrounding whitespace ignored --
+
+    @Test
+    void verifyWithTheCodeInLowercase_succeeds() {
+        String code = requestAndCaptureCode(EMAIL);
+
+        assertThat(visitorOtpService.verify(EMAIL, code.toLowerCase(Locale.ROOT)))
+                .isEqualTo(new VisitorOtpVerifyResult.Verified(EMAIL));
+    }
+
+    @Test
+    void verifyWithTheCodeInMixedCase_succeeds() {
+        String code = requestAndCaptureCode(EMAIL);
+
+        assertThat(visitorOtpService.verify(EMAIL, alternateCase(code)))
+                .isEqualTo(new VisitorOtpVerifyResult.Verified(EMAIL));
+    }
+
+    @Test
+    void verifyWithTheCodeSurroundedByWhitespace_succeeds() {
+        String code = requestAndCaptureCode(EMAIL);
+
+        assertThat(visitorOtpService.verify(EMAIL, " \t" + code + "\n "))
+                .isEqualTo(new VisitorOtpVerifyResult.Verified(EMAIL));
+    }
+
+    /** {@code strip()}, not {@code trim()}: a pasted non-breaking-style Unicode space is whitespace too. */
+    @Test
+    void verifyWithTheCodeSurroundedByUnicodeWhitespace_succeeds() {
+        String code = requestAndCaptureCode(EMAIL);
+
+        assertThat(visitorOtpService.verify(EMAIL, " " + code.toLowerCase(Locale.ROOT) + " "))
+                .isEqualTo(new VisitorOtpVerifyResult.Verified(EMAIL));
+    }
+
+    /** A lowercase code is the right code: it is not a wrong guess first, even on the very last attempt. */
+    @Test
+    void verifyWithTheCodeInLowercase_onTheLastAttempt_succeedsInsteadOfExhausting() {
+        String code = requestAndCaptureCode(EMAIL); // maxAttempts = 5
+        String wrongCode = wrongCodeFor(code);
+        for (int i = 0; i < 4; i++) {
+            visitorOtpService.verify(EMAIL, wrongCode);
+        }
+
+        assertThat(visitorOtpService.verify(EMAIL, code.toLowerCase(Locale.ROOT)))
+                .isEqualTo(new VisitorOtpVerifyResult.Verified(EMAIL));
+    }
+
+    @Test
+    void verifyWithAWrongCodeInLowercase_isStillAWrongGuess_thatUsesUpAnAttempt() {
+        String code = requestAndCaptureCode(EMAIL); // maxAttempts = 5
+        String wrongLowercase = wrongCodeFor(code).toLowerCase(Locale.ROOT);
+
+        for (int i = 0; i < 4; i++) {
+            assertThat(visitorOtpService.verify(EMAIL, " " + wrongLowercase + " "))
+                    .isEqualTo(new VisitorOtpVerifyResult.Rejected(RejectionReason.WRONG_CODE));
+        }
+        assertThat(visitorOtpService.verify(EMAIL, wrongLowercase))
+                .isEqualTo(new VisitorOtpVerifyResult.Rejected(RejectionReason.ATTEMPTS_EXHAUSTED));
+    }
+
+    /** Only the ends are stripped: whitespace inside the code makes it a different, wrong code. */
+    @Test
+    void verifyWithWhitespaceInsideTheCode_isRejectedAsWrongCode() {
+        String code = requestAndCaptureCode(EMAIL);
+        String split = code.substring(0, 3) + " " + code.substring(3);
+
+        assertThat(visitorOtpService.verify(EMAIL, split))
+                .isEqualTo(new VisitorOtpVerifyResult.Rejected(RejectionReason.WRONG_CODE));
+        assertThat(visitorOtpService.verify(EMAIL, code))
+                .isEqualTo(new VisitorOtpVerifyResult.Verified(EMAIL));
+    }
+
+    @Test
+    void verifyWithTheCodePlusAnExtraCharacter_isRejectedAsWrongCode() {
+        String code = requestAndCaptureCode(EMAIL);
+
+        assertThat(visitorOtpService.verify(EMAIL, code + "A"))
+                .isEqualTo(new VisitorOtpVerifyResult.Rejected(RejectionReason.WRONG_CODE));
+        assertThat(visitorOtpService.verify(EMAIL, code.substring(0, code.length() - 1)))
+                .isEqualTo(new VisitorOtpVerifyResult.Rejected(RejectionReason.WRONG_CODE));
+    }
+
+    /** Characters alternate lower/upper case, so a code with letters is neither all-upper nor all-lower. */
+    private static String alternateCase(String code) {
+        StringBuilder mixed = new StringBuilder(code.length());
+        for (int i = 0; i < code.length(); i++) {
+            char c = code.charAt(i);
+            mixed.append(i % 2 == 0 ? Character.toLowerCase(c) : c);
+        }
+        return mixed.toString();
     }
 
     @Test

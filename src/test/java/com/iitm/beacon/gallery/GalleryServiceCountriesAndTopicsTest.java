@@ -100,6 +100,52 @@ class GalleryServiceCountriesAndTopicsTest {
         assertThat(countries).extracting(CountryDto::code).containsExactly("IN");
     }
 
+    private void saveApprovedFrom(String code, String email) {
+        Testimonial t = testimonial(email, countryRepository.findById(code).orElseThrow())
+                .status(TestimonialStatus.APPROVED)
+                .build();
+        t.getSections().add(section(t, topic("general"), "Text."));
+        testimonialRepository.saveAndFlush(t);
+    }
+
+    /** "Other" leads the filter (decision 1), however its name sorts; the countries follow by name. */
+    @Test
+    void listCountries_otherFirst_thenTheCountriesByName() {
+        saveApprovedFrom("US", "countries-order-us@example.com");
+        saveApprovedFrom("ZZ", "countries-order-other@example.com");
+        saveApprovedFrom("AF", "countries-order-af@example.com");
+        saveApprovedFrom("DE", "countries-order-de@example.com");
+
+        List<CountryDto> countries = galleryService.listCountriesWithApproved();
+
+        assertThat(countries).containsExactly(
+                new CountryDto("ZZ", "Other"),
+                new CountryDto("AF", "Afghanistan"),
+                new CountryDto("DE", "Germany"),
+                new CountryDto("US", "United States of America"));
+    }
+
+    @Test
+    void listCountries_onlyOtherHasApprovedTestimonials_isJustOther() {
+        saveApprovedFrom("ZZ", "countries-only-other@example.com");
+
+        assertThat(galleryService.listCountriesWithApproved()).containsExactly(new CountryDto("ZZ", "Other"));
+    }
+
+    /** "Other" is offered only like any country: when it has an approved testimonial. */
+    @Test
+    void listCountries_otherWithOnlyAPendingTestimonial_isNotListed() {
+        saveApprovedFrom("IN", "countries-other-pending-in@example.com");
+        Testimonial pendingOther = testimonial(
+                        "countries-other-pending@example.com", countryRepository.findById("ZZ").orElseThrow())
+                .status(TestimonialStatus.PENDING)
+                .build();
+        pendingOther.getSections().add(section(pendingOther, topic("general"), "Text."));
+        testimonialRepository.saveAndFlush(pendingOther);
+
+        assertThat(galleryService.listCountriesWithApproved()).extracting(CountryDto::code).containsExactly("IN");
+    }
+
     @Test
     void listCountries_noApprovedTestimonialsAtAll_returnsEmptyList() {
         Country india = countryRepository.findById("IN").orElseThrow();

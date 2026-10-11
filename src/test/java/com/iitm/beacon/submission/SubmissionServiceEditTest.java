@@ -219,6 +219,26 @@ class SubmissionServiceEditTest {
         assertThat(reloaded.getContactMethods()).hasSize(1);
     }
 
+    /** Switching to "Other" (decision 1) and back is an ordinary country change: accepted, and it stays approved. */
+    @Test
+    void edit_countryChangedToOtherAndBackOnApproved_isAcceptedAndStaysApproved() {
+        String email = "country-to-other@example.com";
+        Testimonial created = createAndLoad(email, baseRequest(List.of(section("general", "Text."))));
+        approve(created.getId());
+
+        for (String countryCode : List.of("ZZ", "DE")) {
+            TestimonialSubmissionRequest editRequest = new TestimonialSubmissionRequest(
+                    "David", "Jones", "GE26Z001", 2024, countryCode, 8,
+                    List.of(section("general", "Text.")), List.of(), List.of(), true);
+
+            SubmissionResultResponse result = submissionService.edit(email, editRequest, Map.of());
+
+            assertThat(result.status()).isEqualTo(TestimonialStatus.APPROVED);
+            assertThat(testimonialRepository.findById(created.getId()).orElseThrow().getCountry().getCode())
+                    .isEqualTo(countryCode);
+        }
+    }
+
     @Test
     void edit_identityFieldChangeOnApproved_resetsToPendingAndSetsIdentityModified() {
         String email = "identity-change@example.com";

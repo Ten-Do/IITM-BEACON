@@ -7,8 +7,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
- * Verifies the V12 Flyway seed migration (decision 1) — the full ISO 3166-1
- * alpha-2 country list.
+ * Verifies the country seed migrations (decision 1) — V12's full ISO 3166-1
+ * alpha-2 country list, plus V19's one non-country entry, {@code ZZ}
+ * "Other".
  */
 class CountrySeedDataTest extends AbstractRepositoryTest {
 
@@ -31,7 +32,25 @@ class CountrySeedDataTest extends AbstractRepositoryTest {
     }
 
     @Test
-    void seededRowCount_matchesTheFullIso3166AlphaTwoList() {
-        assertThat(countryRepository.count()).isEqualTo(249);
+    void seededRowCount_isTheFullIso3166AlphaTwoListPlusOther() {
+        assertThat(countryRepository.count()).isEqualTo(249 + 1);
+    }
+
+    @Test
+    void otherIsSeeded_underTheUserAssignedCodeZz() {
+        assertThat(countryRepository.findById("ZZ"))
+                .isPresent()
+                .get()
+                .extracting(Country::getName)
+                .isEqualTo("Other");
+        assertThat(Country.OTHER_CODE).isEqualTo("ZZ");
+    }
+
+    @Test
+    void otherIsTheOnlyEntryCalledOther() {
+        assertThat(countryRepository.findAll())
+                .filteredOn(country -> "Other".equalsIgnoreCase(country.getName()))
+                .extracting(Country::getCode)
+                .containsExactly("ZZ");
     }
 }
